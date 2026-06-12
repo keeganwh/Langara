@@ -686,7 +686,7 @@ function DocumentColumn({ doc, projectTypeId, roles, store, onUpdateDoc, onDelet
                     <polygon points="10,19 5,11 15,11" fill={doc.color} fillOpacity="0.7" />
                   </svg>
                   {arrowLabel && (
-                    <span className="text-xs text-teal-600 italic mt-0.5 text-center leading-tight">{arrowLabel}</span>
+                    <span className="text-xs italic mt-0.5 text-center leading-tight" style={{ color: doc.color }}>{arrowLabel}</span>
                   )}
                 </div>
               );
