@@ -55,6 +55,8 @@ const DEFAULT_ROLES = [
 ];
 
 const STORAGE_PRESETS = ['CS Mgmt SharePoint', 'CS SharePoint'];
+const STORAGE_SHAREPOINT = ['CS Mgmt SharePoint', 'CS SharePoint'];
+const STORAGE_ALL = [...STORAGE_SHAREPOINT, 'Download / Email Copy'];
 
 const mkAction = (type, label, person = '') => ({ id: uid(), type, label, person });
 const mkStep = (stageName, actions, presenterIds, carrierIds, notes = '', returnToStepId = null, storageLocation = '', fileOperation = '') =>
@@ -263,13 +265,39 @@ const inputCls = 'w-full border border-slate-300 rounded-lg px-3 py-2 text-sm bg
 const textareaCls = inputCls + ' resize-none';
 
 // ── StepForm Modal ─────────────────────────────────────────────────────────────
+// Parses a stored storageLocation string into { preset, subPath }
+function parseStorageLocation(loc) {
+  if (!loc) return { preset: '', subPath: '' };
+  for (const p of STORAGE_ALL) {
+    if (loc === p) return { preset: p, subPath: '' };
+    if (loc.startsWith(p + ' / ')) return { preset: p, subPath: loc.slice(p.length + 3) };
+  }
+  // Legacy: value doesn't match any preset — treat as sub-path under CS SharePoint
+  return { preset: 'CS SharePoint', subPath: loc };
+}
+
+function buildStorageLocation(preset, subPath) {
+  if (!preset) return '';
+  const sub = subPath.trim();
+  return sub ? `${preset} / ${sub}` : preset;
+}
+
 function StepForm({ step, docSteps, allSteps, roles, docColor, onSave, onClose }) {
   const [form, setForm] = useState(() => step ? { ...step, actions: step.actions.map(a => ({...a})) } : {
     id: uid(), stageName: '', actions: [], presenterIds: [], carrierIds: [],
     notes: '', returnToStepId: null, storageLocation: '', fileOperation: '',
   });
-  const isCustomStorage = form.storageLocation && !STORAGE_PRESETS.includes(form.storageLocation);
-  const [showCustomStorage, setShowCustomStorage] = useState(isCustomStorage);
+  const parsed = useMemo(() => parseStorageLocation(form.storageLocation), []);
+  const [storagePreset, setStoragePreset] = useState(parsed.preset);
+  const [storageSubPath, setStorageSubPath] = useState(parsed.subPath);
+
+  // Keep form.storageLocation in sync whenever preset/subpath changes
+  const updateStorage = (preset, subPath) => {
+    setStoragePreset(preset);
+    setStorageSubPath(subPath);
+    setForm(f => ({ ...f, storageLocation: buildStorageLocation(preset, subPath) }));
+  };
+  const showSubPath = STORAGE_SHAREPOINT.includes(storagePreset);
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
   const toggleArr = (k, id) => set(k, form[k].includes(id) ? form[k].filter(x => x !== id) : [...form[k], id]);
@@ -339,25 +367,15 @@ function StepForm({ step, docSteps, allSteps, roles, docColor, onSave, onClose }
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label className="block text-xs font-semibold text-slate-600 mb-1">File Location at This Step</label>
-            <select className={inputCls}
-              value={showCustomStorage ? '__custom__' : (form.storageLocation || '')}
-              onChange={e => {
-                if (e.target.value === '__custom__') {
-                  setShowCustomStorage(true);
-                  set('storageLocation', '');
-                } else {
-                  setShowCustomStorage(false);
-                  set('storageLocation', e.target.value);
-                }
-              }}>
+            <select className={inputCls} value={storagePreset}
+              onChange={e => updateStorage(e.target.value, showSubPath && STORAGE_SHAREPOINT.includes(e.target.value) ? storageSubPath : '')}>
               <option value="">— Not specified —</option>
-              {STORAGE_PRESETS.map(p => <option key={p} value={p}>{p}</option>)}
-              <option value="__custom__">Custom path…</option>
+              {STORAGE_ALL.map(p => <option key={p} value={p}>{p}</option>)}
             </select>
-            {showCustomStorage && (
-              <input className={inputCls + ' mt-1.5'} value={form.storageLocation}
-                onChange={e => set('storageLocation', e.target.value)}
-                placeholder="e.g. CS SharePoint / Programs / 2025 / New" autoFocus />
+            {showSubPath && (
+              <input className={inputCls + ' mt-1.5'} value={storageSubPath}
+                onChange={e => updateStorage(storagePreset, e.target.value)}
+                placeholder="Sub-folder (optional): e.g. Programs / 2025 / New" />
             )}
           </div>
           <div>
@@ -961,6 +979,92 @@ function NewProjectTypeModal({ store, onCreate, onClose }) {
   );
 }
 
+// ── Print / PDF generator ──────────────────────────────────────────────────────
+function generatePrintHTML(projectType, roles) {
+  const numCols = projectType.documents.length;
+  const zoom = Math.min(1, 870 / Math.max(1, numCols * 190)).toFixed(3);
+
+  const roleLabel = (ids) =>
+    (ids || []).map(id => roles.find(r => r.id === id)?.label ?? id).join(', ');
+
+  const actionIcon = (type) => type === 'review' ? '🔍' : type === 'approval' ? '✅' : '▸';
+
+  const stepHTML = (step, color) => {
+    const actions = (step.actions || []).map(a =>
+      `<div class="action">${actionIcon(a.type)} ${a.type === 'custom' ? a.label : `<b>${a.label}</b>${a.person ? ' ' + a.person : ''}`}</div>`
+    ).join('');
+
+    const parties = [];
+    if (step.presenterIds?.length) parties.push(`<span class="lbl-indigo">Prepares/Presents:</span> ${roleLabel(step.presenterIds)}`);
+    if (step.carrierIds?.length) parties.push(`<span class="lbl-green">Carries to next:</span> ${roleLabel(step.carrierIds)}`);
+
+    const storage = [];
+    if (step.storageLocation) storage.push(`📁 ${step.storageLocation}`);
+    if (step.fileOperation) storage.push(step.fileOperation === 'copy' ? '⎘ Copies forward' : '→ Moves forward');
+
+    const rejection = step.returnToStepId ? '<div class="rejection">↩ If rejected, returns to an earlier step</div>' : '';
+    const notes = step.notes ? `<div class="notes">📝 ${step.notes}</div>` : '';
+
+    return `
+      <div class="step" style="border-top-color:${color}">
+        <div class="step-name">${step.stageName || '(unnamed)'}</div>
+        ${actions ? `<div class="actions">${actions}</div>` : ''}
+        ${parties.length ? `<div class="parties">${parties.join('<br>')}</div>` : ''}
+        ${storage.length ? `<div class="storage">${storage.join(' &nbsp;·&nbsp; ')}</div>` : ''}
+        ${rejection}
+        ${notes}
+      </div>`;
+  };
+
+  const colsHTML = projectType.documents.map(doc => `
+    <div class="col">
+      <div class="col-header" style="background:${doc.color}18;color:${doc.color};border-bottom:2px solid ${doc.color}">${doc.name}</div>
+      ${doc.steps.length === 0
+        ? '<div class="empty">No steps defined</div>'
+        : doc.steps.map((s, i) =>
+            stepHTML(s, doc.color) + (i < doc.steps.length - 1 ? `<div class="arrow" style="color:${doc.color}">↓</div>` : '')
+          ).join('')
+      }
+      <div class="complete" style="color:${doc.color};border-color:${doc.color}20;background:${doc.color}10">✓ Complete</div>
+    </div>`).join('');
+
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<style>
+  @page { size: landscape; margin: 1.2cm; }
+  body { font-family: system-ui, sans-serif; font-size: 9px; margin: 0; zoom: ${zoom}; }
+  h1 { font-size: 13px; font-weight: bold; margin: 0 0 2px; }
+  .subtitle { font-size: 8px; color: #64748b; margin: 0 0 10px; }
+  .columns { display: flex; gap: 8px; align-items: flex-start; }
+  .col { flex: 1; min-width: 0; }
+  .col-header { font-weight: bold; font-size: 9.5px; padding: 4px 6px; border-radius: 4px 4px 0 0; margin-bottom: 5px; }
+  .step { border: 1px solid #e2e8f0; border-top-width: 2px; border-radius: 5px; padding: 5px 6px; margin-bottom: 2px; background: #fff; }
+  .step-name { font-weight: bold; font-size: 9px; margin-bottom: 2px; color: #1e293b; }
+  .actions { margin-bottom: 3px; }
+  .action { font-size: 8px; color: #374151; line-height: 1.5; }
+  .action b { color: #1e293b; }
+  .parties { font-size: 7.5px; color: #64748b; border-top: 1px solid #f1f5f9; padding-top: 2px; margin-top: 2px; line-height: 1.6; }
+  .lbl-indigo { font-weight: bold; color: #4f46e5; }
+  .lbl-green  { font-weight: bold; color: #059669; }
+  .storage { font-size: 7.5px; color: #0d9488; margin-top: 2px; border-top: 1px solid #f0fdfa; padding-top: 2px; }
+  .rejection { font-size: 7.5px; color: #b45309; margin-top: 2px; border-top: 1px dashed #fcd34d; padding-top: 2px; }
+  .notes { font-size: 7.5px; color: #78716c; background: #fefce8; border: 1px solid #fef08a; border-radius: 3px; padding: 2px 4px; margin-top: 2px; }
+  .arrow { text-align: center; font-size: 11px; line-height: 1.2; margin: 1px 0; }
+  .complete { text-align: center; font-size: 8px; font-weight: bold; padding: 3px; border-radius: 4px; border: 1px solid; margin-top: 4px; }
+  .empty { font-size: 8px; color: #94a3b8; font-style: italic; padding: 8px; text-align: center; }
+</style>
+</head>
+<body>
+  <h1>${projectType.name} — Program Development Pipeline</h1>
+  <div class="subtitle">Continuing Studies · Langara College &nbsp;|&nbsp; Generated ${new Date().toLocaleDateString('en-CA', { year:'numeric', month:'long', day:'numeric' })}</div>
+  <div class="columns">${colsHTML}</div>
+  <script>window.onload = () => { window.print(); };<\/script>
+</body>
+</html>`;
+}
+
 // ── App ────────────────────────────────────────────────────────────────────────
 function App() {
   const [store, updateStore] = useStore();
@@ -1083,7 +1187,12 @@ function App() {
           {activePT && (
             <div className="flex items-center gap-2 shrink-0">
               <Btn variant="secondary" sm onClick={() => setModal('saveTemplate')}>☆ Save as Template</Btn>
-              <Btn variant="secondary" sm onClick={() => window.print()}>🖨 Print / Export PDF</Btn>
+              <Btn variant="secondary" sm onClick={() => {
+                const html = generatePrintHTML(activePT, store.roles);
+                const win = window.open('', '_blank');
+                if (win) { win.document.write(html); win.document.close(); }
+                else alert('Pop-up blocked. Please allow pop-ups for this page and try again.');
+              }}>🖨 Print / Export PDF</Btn>
             </div>
           )}
         </header>
