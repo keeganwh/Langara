@@ -56,11 +56,11 @@ const DEFAULT_ROLES = [
 
 const STORAGE_PRESETS = ['CS Mgmt SharePoint', 'CS SharePoint'];
 const STORAGE_SHAREPOINT = ['CS Mgmt SharePoint', 'CS SharePoint'];
-const STORAGE_ALL = [...STORAGE_SHAREPOINT, 'Download / Email Copy'];
+const STORAGE_ALL = [...STORAGE_SHAREPOINT];
 
 const mkAction = (type, label, person = '') => ({ id: uid(), type, label, person });
-const mkStep = (stageName, actions, presenterIds, carrierIds, notes = '', returnToStepId = null, storageLocation = '', fileOperation = '') =>
-  ({ id: uid(), stageName, actions, presenterIds, carrierIds, notes, returnToStepId, storageLocation, fileOperation });
+const mkStep = (stageName, actions, presenterIds, carrierIds, notes = '', returnToStepId = null, storageLocation = '', fileOperation = '', deliveryMethod = '') =>
+  ({ id: uid(), stageName, actions, presenterIds, carrierIds, notes, returnToStepId, storageLocation, fileOperation, deliveryMethod });
 
 function makeSeedProjectTypes() {
   // ── New Program ──
@@ -272,7 +272,9 @@ function parseStorageLocation(loc) {
     if (loc === p) return { preset: p, subPath: '' };
     if (loc.startsWith(p + ' / ')) return { preset: p, subPath: loc.slice(p.length + 3) };
   }
-  // Legacy: value doesn't match any preset — treat as sub-path under CS SharePoint
+  // Legacy: 'Download / Email Copy' was previously a storage preset; clear it
+  if (loc === 'Download / Email Copy') return { preset: '', subPath: '' };
+  // Other unrecognized value — treat as sub-path under CS SharePoint
   return { preset: 'CS SharePoint', subPath: loc };
 }
 
@@ -285,7 +287,7 @@ function buildStorageLocation(preset, subPath) {
 function StepForm({ step, docSteps, allSteps, roles, docColor, onSave, onClose }) {
   const [form, setForm] = useState(() => step ? { ...step, actions: step.actions.map(a => ({...a})) } : {
     id: uid(), stageName: '', actions: [], presenterIds: [], carrierIds: [],
-    notes: '', returnToStepId: null, storageLocation: '', fileOperation: '',
+    notes: '', returnToStepId: null, storageLocation: '', fileOperation: '', deliveryMethod: '',
   });
   const parsed = useMemo(() => parseStorageLocation(form.storageLocation), []);
   const [storagePreset, setStoragePreset] = useState(parsed.preset);
@@ -381,13 +383,19 @@ function StepForm({ step, docSteps, allSteps, roles, docColor, onSave, onClose }
           <div>
             <label className="block text-xs font-semibold text-slate-600 mb-1">Moving to Next Step</label>
             <div className="space-y-1.5 mt-1">
-              {[['', 'Not specified'], ['copy', 'Copy  (original stays; copy advances)'], ['move', 'Move  (file is relocated)']].map(([val, label]) => (
+              {[['', 'Not specified'], ['copy', 'Copy  (original stays; copy advances)'], ['move', 'Move  (file is relocated)']].map(([val, lbl]) => (
                 <label key={val} className="flex items-center gap-2 cursor-pointer">
                   <input type="radio" name="fileOperation" value={val} checked={form.fileOperation === val}
                     onChange={() => set('fileOperation', val)} className="accent-teal-600" />
-                  <span className="text-xs text-slate-700">{label}</span>
+                  <span className="text-xs text-slate-700">{lbl}</span>
                 </label>
               ))}
+              <label className="flex items-start gap-2 cursor-pointer pt-1 border-t border-teal-100 mt-1">
+                <input type="checkbox" checked={form.deliveryMethod === 'download_email'}
+                  onChange={e => set('deliveryMethod', e.target.checked ? 'download_email' : '')}
+                  className="accent-teal-600 mt-0.5 shrink-0" />
+                <span className="text-xs text-slate-700">Delivered via download / email copy<br/><span className="text-slate-400">(file may still be stored in SharePoint above)</span></span>
+              </label>
             </div>
           </div>
         </div>
@@ -538,11 +546,6 @@ function StepCard({ step, stepIndex, totalSteps, docSteps, roles, docColor, onEd
                 <span className="font-semibold">📁 </span>{step.storageLocation}
               </div>
             )}
-            {step.fileOperation && (
-              <div className="text-xs text-teal-600">
-                {step.fileOperation === 'copy' ? '⎘ Copies forward' : '→ Moves forward'}
-              </div>
-            )}
           </div>
         )}
 
@@ -670,14 +673,24 @@ function DocumentColumn({ doc, projectTypeId, roles, store, onUpdateDoc, onDelet
               } : null}
             />
             {/* Arrow between steps */}
-            {i < doc.steps.length - 1 && (
-              <div className="flex justify-center py-1.5">
-                <svg width="20" height="20" viewBox="0 0 20 20">
-                  <line x1="10" y1="1" x2="10" y2="14" stroke={doc.color} strokeWidth="2" strokeOpacity="0.6" />
-                  <polygon points="10,19 5,11 15,11" fill={doc.color} fillOpacity="0.7" />
-                </svg>
-              </div>
-            )}
+            {i < doc.steps.length - 1 && (() => {
+              const s = doc.steps[i];
+              const opLabel = s.fileOperation === 'copy' ? 'copies forward'
+                            : s.fileOperation === 'move' ? 'moves forward' : null;
+              const dlLabel = s.deliveryMethod === 'download_email' ? 'download / email' : null;
+              const arrowLabel = [opLabel, dlLabel].filter(Boolean).join(' · ');
+              return (
+                <div className="flex flex-col items-center py-1">
+                  <svg width="20" height="20" viewBox="0 0 20 20">
+                    <line x1="10" y1="1" x2="10" y2="14" stroke={doc.color} strokeWidth="2" strokeOpacity="0.6" />
+                    <polygon points="10,19 5,11 15,11" fill={doc.color} fillOpacity="0.7" />
+                  </svg>
+                  {arrowLabel && (
+                    <span className="text-xs text-teal-600 italic mt-0.5 text-center leading-tight">{arrowLabel}</span>
+                  )}
+                </div>
+              );
+            })()}
           </div>
         ))}
       </div>
