@@ -686,9 +686,9 @@ function DocumentColumn({ doc, projectTypeId, roles, store, onUpdateDoc, onDelet
             {/* Arrow between steps */}
             {i < doc.steps.length - 1 && (() => {
               const s = doc.steps[i];
-              const opLabel = s.fileOperation === 'copy' ? 'copies forward'
-                            : s.fileOperation === 'move' ? 'moves forward' : null;
-              const dlLabel = s.deliveryMethod === 'download_email' ? 'download / email' : null;
+              const opLabel = s.fileOperation === 'copy' ? 'Document Copied'
+                            : s.fileOperation === 'move' ? 'Document Moved' : null;
+              const dlLabel = s.deliveryMethod === 'download_email' ? 'Document Emailed as Attachment' : null;
               const arrowLabel = [opLabel, dlLabel].filter(Boolean).join(' · ');
               return (
                 <div className="flex flex-col items-center py-1">
