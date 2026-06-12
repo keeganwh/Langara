@@ -692,13 +692,13 @@ function DocumentColumn({ doc, projectTypeId, roles, store, onUpdateDoc, onDelet
               const arrowLabel = [opLabel, dlLabel].filter(Boolean).join(' · ');
               return (
                 <div className="flex flex-col items-center py-1">
+                  {arrowLabel && (
+                    <span className="text-xs italic mb-0.5 text-center leading-tight" style={{ color: doc.color }}>{arrowLabel}</span>
+                  )}
                   <svg width="20" height="20" viewBox="0 0 20 20">
                     <line x1="10" y1="1" x2="10" y2="14" stroke={doc.color} strokeWidth="2" strokeOpacity="0.6" />
                     <polygon points="10,19 5,11 15,11" fill={doc.color} fillOpacity="0.7" />
                   </svg>
-                  {arrowLabel && (
-                    <span className="text-xs italic mt-0.5 text-center leading-tight" style={{ color: doc.color }}>{arrowLabel}</span>
-                  )}
                 </div>
               );
             })()}
