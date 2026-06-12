@@ -746,7 +746,7 @@ function DocumentColumn({ doc, docIndex, totalDocs, onMoveDoc, projectTypeId, ro
   return (
     <div className="doc-col flex flex-col">
       {/* Column header */}
-      <div className="group relative rounded-xl mb-3 px-3 py-2.5 flex items-center no-print"
+      <div className="group relative rounded-xl mb-3 px-3 py-2.5 flex items-center no-print sticky top-4 z-10"
         style={{ background: doc.color + '18', borderBottom: `3px solid ${doc.color}` }}>
         {editDocName ? (
           <input className="flex-1 text-sm font-bold bg-white border rounded px-2 py-0.5 border-slate-300"
