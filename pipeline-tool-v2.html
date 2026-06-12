@@ -58,9 +58,18 @@ const STORAGE_PRESETS = ['CS Mgmt SharePoint', 'CS SharePoint'];
 const STORAGE_SHAREPOINT = ['CS Mgmt SharePoint', 'CS SharePoint'];
 const STORAGE_ALL = [...STORAGE_SHAREPOINT];
 
+const TRIGGER_LABELS = {
+  immediate: '⚡ Immediately after previous step',
+  scheduled_meeting: '📅 Next scheduled meeting',
+  manual_request: '📧 Manual request',
+  task_assigned: '📋 Task assigned',
+};
+const TRIGGER_TYPES = Object.keys(TRIGGER_LABELS);
+const triggerDisplay = (step) => step.triggerType === 'custom' ? (step.triggerLabel || 'Custom trigger') : (TRIGGER_LABELS[step.triggerType] || '');
+
 const mkAction = (type, label, person = '') => ({ id: uid(), type, label, person });
-const mkStep = (stageName, actions, presenterIds, carrierIds, notes = '', returnToStepId = null, storageLocation = '', fileOperation = '', deliveryMethod = '', informationOnly = false) =>
-  ({ id: uid(), stageName, actions, presenterIds, carrierIds, notes, returnToStepId, storageLocation, fileOperation, deliveryMethod, informationOnly });
+const mkStep = (stageName, actions, presenterIds, carrierIds, notes = '', returnToStepId = null, storageLocation = '', fileOperation = '', deliveryMethod = '', informationOnly = false, triggerType = '', triggerLabel = '') =>
+  ({ id: uid(), stageName, actions, presenterIds, carrierIds, notes, returnToStepId, storageLocation, fileOperation, deliveryMethod, informationOnly, triggerType, triggerLabel });
 
 function makeSeedProjectTypes() {
   // ── New Program ──
@@ -287,7 +296,7 @@ function buildStorageLocation(preset, subPath) {
 function StepForm({ step, docSteps, allSteps, roles, docColor, onSave, onClose }) {
   const [form, setForm] = useState(() => step ? { ...step, actions: step.actions.map(a => ({...a})) } : {
     id: uid(), stageName: '', actions: [], presenterIds: [], carrierIds: [],
-    notes: '', returnToStepId: null, storageLocation: '', fileOperation: '', deliveryMethod: '', informationOnly: false,
+    notes: '', returnToStepId: null, storageLocation: '', fileOperation: '', deliveryMethod: '', informationOnly: false, triggerType: '', triggerLabel: '',
   });
   const parsed = useMemo(() => parseStorageLocation(form.storageLocation), []);
   const [storagePreset, setStoragePreset] = useState(parsed.preset);
@@ -327,6 +336,27 @@ function StepForm({ step, docSteps, allSteps, roles, docColor, onSave, onClose }
       <Field label="Stage / Committee Name" hint="e.g. JCCS, VPE – ELT, AQA – Langara Post, CS Consultations">
         <input className={inputCls} value={form.stageName} onChange={e => set('stageName', e.target.value)}
           placeholder="Stage name..." autoFocus />
+      </Field>
+
+      {/* Trigger */}
+      <Field label="What triggers this step?" hint="Optional — what prompts this step to begin?">
+        <div className="flex flex-wrap gap-1.5">
+          {TRIGGER_TYPES.map(t => (
+            <button key={t} onClick={() => set('triggerType', form.triggerType === t ? '' : t)}
+              className={`px-2.5 py-1 rounded-full text-xs font-medium border transition-colors ${form.triggerType === t ? 'bg-amber-500 text-white border-amber-500' : 'border-slate-300 text-slate-600 hover:border-amber-400'}`}>
+              {TRIGGER_LABELS[t]}
+            </button>
+          ))}
+          <button onClick={() => set('triggerType', form.triggerType === 'custom' ? '' : 'custom')}
+            className={`px-2.5 py-1 rounded-full text-xs font-medium border transition-colors ${form.triggerType === 'custom' ? 'bg-amber-500 text-white border-amber-500' : 'border-slate-300 text-slate-600 hover:border-amber-400'}`}>
+            ✏ Custom
+          </button>
+        </div>
+        {form.triggerType === 'custom' && (
+          <input className={inputCls + ' mt-2'} value={form.triggerLabel}
+            onChange={e => set('triggerLabel', e.target.value)}
+            placeholder="Describe what triggers this step..." />
+        )}
       </Field>
 
       {/* Actions */}
@@ -670,6 +700,14 @@ function DocumentColumn({ doc, docIndex, totalDocs, onMoveDoc, projectTypeId, ro
   const [editDocName, setEditDocName] = useState(false);
   const [docNameVal, setDocNameVal] = useState(doc.name);
   const [copyDocOpen, setCopyDocOpen] = useState(false);
+  const [inlineTriggerFor, setInlineTriggerFor] = useState(null); // stepId
+  const [inlineCustomText, setInlineCustomText] = useState('');
+
+  const setStepTrigger = (stepId, triggerType, triggerLabel = '') => {
+    onUpdateDoc({ ...doc, steps: doc.steps.map(s => s.id === stepId ? { ...s, triggerType, triggerLabel } : s) });
+    setInlineTriggerFor(null);
+    setInlineCustomText('');
+  };
 
   const saveStep = (stepData) => {
     const existing = doc.steps.find(s => s.id === stepData.id);
@@ -760,6 +798,14 @@ function DocumentColumn({ doc, docIndex, totalDocs, onMoveDoc, projectTypeId, ro
             {dropTarget?.docId === doc.id && dropTarget?.beforeStepId === step.id && (
               <div className="h-1 rounded mx-1 my-0.5" style={{ background: doc.color }} />
             )}
+            {/* Trigger mini-card */}
+            {step.triggerType && (
+              <div onClick={() => setEditStep(step)}
+                className="group/trigger mx-1 mb-1 px-3 py-1 rounded-lg border border-dashed border-amber-300 bg-amber-50 flex items-center justify-between text-xs text-amber-700 cursor-pointer hover:bg-amber-100 transition-colors no-print">
+                <span>{triggerDisplay(step)}</span>
+                <span className="opacity-0 group-hover/trigger:opacity-100 text-amber-400 text-xs ml-2" title="Edit step to change trigger">✎</span>
+              </div>
+            )}
             <StepCard
               step={step}
               stepIndex={i}
@@ -786,12 +832,14 @@ function DocumentColumn({ doc, docIndex, totalDocs, onMoveDoc, projectTypeId, ro
             {/* Arrow between steps */}
             {i < doc.steps.length - 1 && (() => {
               const s = doc.steps[i];
+              const nextStep = doc.steps[i + 1];
               const opLabel = s.fileOperation === 'copy' ? 'Document Copied'
                             : s.fileOperation === 'move' ? 'Document Moved' : null;
-              const dlLabel = s.deliveryMethod === 'download_email' ? 'Document Emailed as Attachment' : null;
+              const dlLabel = s.deliveryMethod === 'download_email' ? 'Emailed as Attachment' : null;
               const arrowLabel = [opLabel, dlLabel].filter(Boolean).join(' · ');
+              const showPicker = inlineTriggerFor === nextStep.id;
               return (
-                <div className="flex flex-col items-center py-1">
+                <div className="group/arrow flex flex-col items-center py-1 no-print">
                   {arrowLabel && (
                     <span className="text-xs italic mb-0.5 text-center leading-tight" style={{ color: doc.color }}>{arrowLabel}</span>
                   )}
@@ -799,6 +847,40 @@ function DocumentColumn({ doc, docIndex, totalDocs, onMoveDoc, projectTypeId, ro
                     <line x1="10" y1="1" x2="10" y2="14" stroke={doc.color} strokeWidth="2" strokeOpacity="0.6" />
                     <polygon points="10,19 5,11 15,11" fill={doc.color} fillOpacity="0.7" />
                   </svg>
+                  {showPicker ? (
+                    <div className="mt-1 w-full px-1">
+                      <div className="bg-white border border-amber-200 rounded-lg p-2 shadow-sm">
+                        <div className="text-xs text-slate-400 mb-1.5 font-medium">What triggers next step?</div>
+                        <div className="flex flex-wrap gap-1 mb-1">
+                          {TRIGGER_TYPES.map(t => (
+                            <button key={t} onClick={() => setStepTrigger(nextStep.id, t)}
+                              className="px-2 py-0.5 rounded-full text-xs border border-slate-200 hover:border-amber-400 hover:bg-amber-50 text-slate-600 transition-colors">
+                              {TRIGGER_LABELS[t]}
+                            </button>
+                          ))}
+                          <button onClick={() => { setInlineCustomText(''); setInlineTriggerFor(nextStep.id + '_custom'); }}
+                            className="px-2 py-0.5 rounded-full text-xs border border-slate-200 hover:border-amber-400 hover:bg-amber-50 text-slate-600 transition-colors">
+                            ✏ Custom
+                          </button>
+                        </div>
+                        {inlineTriggerFor === nextStep.id + '_custom' && (
+                          <div className="flex gap-1 mt-1">
+                            <input className="flex-1 text-xs border border-slate-300 rounded px-2 py-0.5" value={inlineCustomText}
+                              onChange={e => setInlineCustomText(e.target.value)}
+                              onKeyDown={e => { if (e.key === 'Enter' && inlineCustomText.trim()) setStepTrigger(nextStep.id, 'custom', inlineCustomText.trim()); if (e.key === 'Escape') setInlineTriggerFor(null); }}
+                              placeholder="Describe trigger..." autoFocus />
+                            <button onClick={() => inlineCustomText.trim() && setStepTrigger(nextStep.id, 'custom', inlineCustomText.trim())}
+                              className="px-2 py-0.5 text-xs bg-amber-500 text-white rounded hover:bg-amber-600">✓</button>
+                          </div>
+                        )}
+                        <button onClick={() => setInlineTriggerFor(null)} className="mt-1 text-xs text-slate-400 hover:text-slate-600">Cancel</button>
+                      </div>
+                    </div>
+                  ) : (
+                    <button onClick={() => setInlineTriggerFor(nextStep.id)}
+                      className="opacity-0 group-hover/arrow:opacity-100 mt-0.5 text-xs text-amber-400 hover:text-amber-600 transition-opacity"
+                      title="Add trigger for next step">⚡+</button>
+                  )}
                 </div>
               );
             })()}
