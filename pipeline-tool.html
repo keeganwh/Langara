@@ -970,6 +970,12 @@ function App() {
           <button onClick={() => setModal('backup')} className="w-full text-left px-3 py-2 rounded-lg text-sm text-slate-600 hover:bg-slate-100 flex items-center gap-2">
             <span>💾</span> Backup &amp; Restore
           </button>
+          <button onClick={() => {
+            if (!confirm('Reset everything back to the original default pipeline data? This will overwrite all current data.')) return;
+            updateStore(getDefaultStore());
+          }} className="w-full text-left px-3 py-2 rounded-lg text-sm text-slate-400 hover:bg-red-50 hover:text-red-600 flex items-center gap-2">
+            <span>↺</span> Reset to Defaults
+          </button>
         </div>
       </aside>
 
