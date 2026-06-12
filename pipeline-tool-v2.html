@@ -48,106 +48,106 @@ function saveStore(d) {
 
 // ── Seed data helpers ──────────────────────────────────────────────────────────
 const DEFAULT_ROLES = [
-  { id: 'r1', label: 'Program Coordinator (PC)' },
-  { id: 'r2', label: 'Admin' },
+  { id: 'r1', label: 'PC' },
+  { id: 'r2', label: 'CS Admin' },
   { id: 'r3', label: 'Dean' },
   { id: 'r4', label: 'Director' },
-  { id: 'r5', label: 'Faculty' },
-  { id: 'r6', label: 'TCDC' },
 ];
 
+const STORAGE_PRESETS = ['CS Mgmt SharePoint', 'CS SharePoint'];
+
 const mkAction = (type, label, person = '') => ({ id: uid(), type, label, person });
-const mkStep = (stageName, actions, presenterIds, carrierIds, notes = '', returnToStepId = null) =>
-  ({ id: uid(), stageName, actions, presenterIds, carrierIds, notes, returnToStepId });
+const mkStep = (stageName, actions, presenterIds, carrierIds, notes = '', returnToStepId = null, storageLocation = '', fileOperation = '') =>
+  ({ id: uid(), stageName, actions, presenterIds, carrierIds, notes, returnToStepId, storageLocation, fileOperation });
 
 function makeSeedProjectTypes() {
   // ── New Program ──
   const cpSteps = [
     mkStep('Upload to SharePoint',
       [mkAction('custom', 'PC uploads Concept Paper to SharePoint folder')],
-      ['r1'], ['r1'], 'Starting point for Concept Paper'),
+      ['r1'], ['r1'], 'Starting point for Concept Paper', null, 'CS SharePoint', 'copy'),
     mkStep('CS Consultations — Faculty & TCDC',
       [mkAction('review', 'Review by', 'Faculty'), mkAction('review', 'Review by', 'TCDC (Signs)')],
-      ['r3', 'r1'], ['r2'], 'Dean shares with Faculty; PC shares with TCDC for signature'),
+      ['r3', 'r1'], ['r2'], 'Dean shares with Faculty; PC shares with TCDC for signature', null, 'CS SharePoint', 'copy'),
     mkStep('JCCS',
       [mkAction('approval', 'Approval by', 'JCCS (Signs)')],
-      ['r2', 'r3'], ['r2'], 'Admin & Dean bring to JCCS meeting'),
+      ['r2', 'r3'], ['r2'], 'Admin & Dean bring to JCCS meeting', null, 'CS Mgmt SharePoint', 'move'),
     mkStep('AQA – Langara Post',
       [mkAction('approval', 'Approval by', 'AQA (Signs)')],
-      ['r4'], ['r2'], 'Director shares with AQA for sign-off'),
+      ['r4'], ['r2'], 'Director shares with AQA for sign-off', null, 'CS Mgmt SharePoint', 'move'),
   ];
 
   const coursePropSteps = [
     mkStep('Upload to SharePoint',
       [mkAction('custom', 'PC uploads Course Proposal to SharePoint folder')],
-      ['r1'], ['r1']),
+      ['r1'], ['r1'], '', null, 'CS SharePoint', 'copy'),
     mkStep('CS Consultations — Faculty & TCDC',
       [mkAction('review', 'Review by', 'Faculty (Signs)'), mkAction('review', 'Review by', 'TCDC (Signs)')],
-      ['r3', 'r1'], ['r2'], 'Dean shares with Faculty for signature; PC shares with TCDC for signature'),
+      ['r3', 'r1'], ['r2'], 'Dean shares with Faculty for signature; PC shares with TCDC for signature', null, 'CS SharePoint', 'copy'),
     mkStep('JCCS',
       [mkAction('approval', 'Approval by', 'JCCS (Signs)')],
-      ['r2', 'r3'], ['r2']),
+      ['r2', 'r3'], ['r2'], '', null, 'CS Mgmt SharePoint', 'move'),
     mkStep('VPE – ELT',
       [mkAction('approval', 'Approval by', 'VPE (Signs)')],
-      ['r3', 'r2'], ['r2'], 'Dean/Admin share with VPE for signature'),
+      ['r3', 'r2'], ['r2'], 'Dean/Admin share with VPE for signature', null, 'CS Mgmt SharePoint', 'move'),
     mkStep('ELT / RES Review',
       [mkAction('review', 'Review & Adjust by', 'RES'), mkAction('approval', 'Approval & Sign by', 'RES')],
-      ['r1', 'r4'], ['r2'], 'PC/Director share Course Proposal with RES for review, adjustment, and sign-off'),
+      ['r1', 'r4'], ['r2'], 'PC/Director share Course Proposal with RES for review, adjustment, and sign-off', null, 'CS Mgmt SharePoint', 'move'),
     mkStep('CRC – EDCO Approved',
       [mkAction('custom', 'Admin shares package to CRC & EDCO'), mkAction('custom', 'Admin moves final approved files to folder')],
-      ['r2'], ['r2'], 'Final approval and file archival'),
+      ['r2'], ['r2'], 'Final approval and file archival', null, 'CS Mgmt SharePoint', ''),
   ];
 
   const progPropSteps = [
     mkStep('Upload to SharePoint',
       [mkAction('custom', 'PC uploads Program Proposal to SharePoint folder')],
-      ['r1'], ['r1']),
+      ['r1'], ['r1'], '', null, 'CS SharePoint', 'copy'),
     mkStep('VPE – ELT',
       [mkAction('approval', 'Approval by', 'VPE (Signs)')],
-      ['r3', 'r2'], ['r2'], 'Dean/Admin share with VPE for signature'),
+      ['r3', 'r2'], ['r2'], 'Dean/Admin share with VPE for signature', null, 'CS Mgmt SharePoint', 'move'),
     mkStep('ELT / RES Review',
       [mkAction('review', 'Review & Adjust by', 'RES'), mkAction('approval', 'Approval & Sign by', 'RES')],
-      ['r1', 'r4'], ['r2']),
+      ['r1', 'r4'], ['r2'], '', null, 'CS Mgmt SharePoint', 'move'),
     mkStep('CRC – EDCO Approved',
       [mkAction('custom', 'Admin shares package to CRC & EDCO'), mkAction('custom', 'Admin moves final approved files to folder')],
-      ['r2'], ['r2'], 'Final approval and file archival'),
+      ['r2'], ['r2'], 'Final approval and file archival', null, 'CS Mgmt SharePoint', ''),
   ];
 
   const progSumSteps = [
     mkStep('Upload to SharePoint',
       [mkAction('custom', 'PC uploads Program Summary to SharePoint folder')],
-      ['r1'], ['r1']),
+      ['r1'], ['r1'], '', null, 'CS SharePoint', 'copy'),
     mkStep('TCDC',
       [mkAction('review', 'Review by', 'TCDC')],
-      ['r1'], ['r1'], 'PC shares Program Summary with TCDC'),
+      ['r1'], ['r1'], 'PC shares Program Summary with TCDC', null, 'CS SharePoint', 'copy'),
     mkStep('VPE – ELT',
       [mkAction('approval', 'Approval by', 'VPE (Signs)')],
-      ['r3', 'r2'], ['r2'], 'Dean/Admin share with VPE for signature'),
+      ['r3', 'r2'], ['r2'], 'Dean/Admin share with VPE for signature', null, 'CS Mgmt SharePoint', 'move'),
     mkStep('ELT Review',
       [mkAction('approval', 'ELT Approval (Signs & adds ELT approval date)')],
-      ['r4'], ['r2'], 'Director shares Program Summary with ELT; ELT approval date recorded'),
+      ['r4'], ['r2'], 'Director shares Program Summary with ELT; ELT approval date recorded', null, 'CS Mgmt SharePoint', 'move'),
     mkStep('RES Review',
       [mkAction('review', 'Review & Adjust by', 'RES'), mkAction('approval', 'Approval & Sign by', 'RES')],
-      ['r4', 'r1'], ['r2'], 'PC/Director share with RES for review and sign-off'),
+      ['r4', 'r1'], ['r2'], 'PC/Director share with RES for review and sign-off', null, 'CS Mgmt SharePoint', 'move'),
     mkStep('CRC – EDCO Approved',
       [mkAction('custom', 'Admin shares package to CRC & EDCO'), mkAction('custom', 'Admin moves final approved files to folder')],
-      ['r2'], ['r2'], 'Final approval and file archival'),
+      ['r2'], ['r2'], 'Final approval and file archival', null, 'CS Mgmt SharePoint', ''),
   ];
 
   // ── Discontinuation ──
   const discSteps = [
     mkStep('Director Creates & Uploads',
       [mkAction('custom', 'Director creates Discontinuation Form and uploads to SharePoint')],
-      ['r4'], ['r4'], 'Director is responsible for initiating discontinuation forms'),
+      ['r4'], ['r4'], 'Director is responsible for initiating discontinuation forms', null, 'CS SharePoint', 'copy'),
     mkStep('VPE – ELT',
       [mkAction('approval', 'Approval by', 'VPE (Signs)')],
-      ['r3', 'r2'], ['r2']),
+      ['r3', 'r2'], ['r2'], '', null, 'CS Mgmt SharePoint', 'move'),
     mkStep('ELT / RES Review',
       [mkAction('review', 'Review & Adjust by', 'RES'), mkAction('approval', 'Approval & Sign by', 'RES')],
-      ['r4', 'r1'], ['r2']),
+      ['r4', 'r1'], ['r2'], '', null, 'CS Mgmt SharePoint', 'move'),
     mkStep('CRC – EDCO Approved',
       [mkAction('custom', 'Admin shares to CRC & EDCO'), mkAction('custom', 'Admin moves final approved files to folder')],
-      ['r2'], ['r2']),
+      ['r2'], ['r2'], '', null, 'CS Mgmt SharePoint', ''),
   ];
 
   return [
@@ -265,8 +265,11 @@ const textareaCls = inputCls + ' resize-none';
 // ── StepForm Modal ─────────────────────────────────────────────────────────────
 function StepForm({ step, docSteps, allSteps, roles, docColor, onSave, onClose }) {
   const [form, setForm] = useState(() => step ? { ...step, actions: step.actions.map(a => ({...a})) } : {
-    id: uid(), stageName: '', actions: [], presenterIds: [], carrierIds: [], notes: '', returnToStepId: null,
+    id: uid(), stageName: '', actions: [], presenterIds: [], carrierIds: [],
+    notes: '', returnToStepId: null, storageLocation: '', fileOperation: '',
   });
+  const isCustomStorage = form.storageLocation && !STORAGE_PRESETS.includes(form.storageLocation);
+  const [showCustomStorage, setShowCustomStorage] = useState(isCustomStorage);
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
   const toggleArr = (k, id) => set(k, form[k].includes(id) ? form[k].filter(x => x !== id) : [...form[k], id]);
@@ -330,9 +333,51 @@ function StepForm({ step, docSteps, allSteps, roles, docColor, onSave, onClose }
         </div>
       </Field>
 
+      {/* Document Storage */}
+      <div className="mb-4 p-3 bg-teal-50 rounded-xl border border-teal-100">
+        <div className="text-sm font-semibold text-teal-800 mb-3">📁 Document Storage</div>
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="block text-xs font-semibold text-slate-600 mb-1">File Location at This Step</label>
+            <select className={inputCls}
+              value={showCustomStorage ? '__custom__' : (form.storageLocation || '')}
+              onChange={e => {
+                if (e.target.value === '__custom__') {
+                  setShowCustomStorage(true);
+                  set('storageLocation', '');
+                } else {
+                  setShowCustomStorage(false);
+                  set('storageLocation', e.target.value);
+                }
+              }}>
+              <option value="">— Not specified —</option>
+              {STORAGE_PRESETS.map(p => <option key={p} value={p}>{p}</option>)}
+              <option value="__custom__">Custom path…</option>
+            </select>
+            {showCustomStorage && (
+              <input className={inputCls + ' mt-1.5'} value={form.storageLocation}
+                onChange={e => set('storageLocation', e.target.value)}
+                placeholder="e.g. CS SharePoint / Programs / 2025 / New" autoFocus />
+            )}
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-slate-600 mb-1">Moving to Next Step</label>
+            <div className="space-y-1.5 mt-1">
+              {[['', 'Not specified'], ['copy', 'Copy  (original stays; copy advances)'], ['move', 'Move  (file is relocated)']].map(([val, label]) => (
+                <label key={val} className="flex items-center gap-2 cursor-pointer">
+                  <input type="radio" name="fileOperation" value={val} checked={form.fileOperation === val}
+                    onChange={() => set('fileOperation', val)} className="accent-teal-600" />
+                  <span className="text-xs text-slate-700">{label}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+
       {/* Responsible Parties */}
       <div className="grid grid-cols-2 gap-4 mb-4">
-        <Field label="Presents at this step" hint="Who presents/submits the doc AT this committee/meeting">
+        <Field label="Prepares / Presents at this step" hint="Who prepares and presents/submits the doc AT this committee/meeting">
           <div className="flex flex-wrap gap-1.5">
             {roles.map(r => (
               <button key={r.id} onClick={() => toggleArr('presenterIds', r.id)}
@@ -422,12 +467,12 @@ function StepCard({ step, stepIndex, totalSteps, docSteps, roles, docColor, onEd
           </div>
         )}
 
-        {/* Divider */}
-        {(step.presenterIds.length > 0 || step.carrierIds.length > 0) && (
+        {/* Responsible parties + storage */}
+        {(step.presenterIds.length > 0 || step.carrierIds.length > 0 || step.storageLocation || step.fileOperation) && (
           <div className="border-t border-slate-100 pt-2 mt-2 space-y-1">
             {step.presenterIds.length > 0 && (
               <div className="text-xs text-slate-500">
-                <span className="font-semibold text-indigo-600">Presents: </span>
+                <span className="font-semibold text-indigo-600">Prepares/Presents: </span>
                 {step.presenterIds.map(roleName).join(', ')}
               </div>
             )}
@@ -435,6 +480,16 @@ function StepCard({ step, stepIndex, totalSteps, docSteps, roles, docColor, onEd
               <div className="text-xs text-slate-500">
                 <span className="font-semibold text-emerald-600">Carries to next: </span>
                 {step.carrierIds.map(roleName).join(', ')}
+              </div>
+            )}
+            {step.storageLocation && (
+              <div className="text-xs text-teal-700">
+                <span className="font-semibold">📁 </span>{step.storageLocation}
+              </div>
+            )}
+            {step.fileOperation && (
+              <div className="text-xs text-teal-600">
+                {step.fileOperation === 'copy' ? '⎘ Copies forward' : '→ Moves forward'}
               </div>
             )}
           </div>
