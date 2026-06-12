@@ -1336,6 +1336,7 @@ function generatePrintHTML(projectType, roles) {
 function App() {
   const [store, updateStore] = useStore();
   const [modal, setModal] = useState(null);
+  const [sidebarOpen, setSidebarOpen] = useState(true);
 
   const activePT = store.projectTypes.find(p => p.id === store.activeProjectTypeId) || store.projectTypes[0];
 
@@ -1412,7 +1413,7 @@ function App() {
   return (
     <div className="flex h-screen overflow-hidden bg-slate-100">
       {/* Sidebar */}
-      <aside className="w-60 bg-white border-r border-slate-200 flex flex-col shrink-0 no-print">
+      <aside className={`${sidebarOpen ? 'w-60' : 'w-0'} bg-white border-r border-slate-200 flex flex-col shrink-0 no-print overflow-hidden transition-all duration-200`}>
         <div className="p-4 border-b border-slate-200">
           <div className="font-bold text-slate-800 text-sm leading-tight">CS Pipeline Tool</div>
           <div className="text-xs text-slate-400 mt-0.5">Continuing Studies · Langara</div>
@@ -1485,6 +1486,11 @@ function App() {
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         {/* Top bar */}
         <header className="bg-white border-b border-slate-200 px-5 py-2.5 flex items-center gap-3 shrink-0 no-print">
+          <button onClick={() => setSidebarOpen(o => !o)}
+            className="text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded p-1 transition-colors shrink-0"
+            title={sidebarOpen ? 'Collapse sidebar' : 'Expand sidebar'}>
+            {sidebarOpen ? '◀' : '▶'}
+          </button>
           <div className="flex-1 min-w-0">
             {activePT ? (
               <>
