@@ -1,0 +1,1014 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CS Pipeline Tool v2</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <style>
+    @media print {
+      .no-print { display: none !important; }
+      #canvas-print-area { overflow: visible !important; height: auto !important; }
+      body { background: white; }
+    }
+    body { font-family: system-ui, -apple-system, sans-serif; }
+    .step-controls { opacity: 0; transition: opacity 0.1s; }
+    .step-card:hover .step-controls { opacity: 1; }
+    .step-card { transition: box-shadow 0.15s, border-color 0.15s; }
+    input:focus, select:focus, textarea:focus { outline: 2px solid #6366f1; outline-offset: 1px; }
+    .fade-in { animation: fadeIn 0.15s ease; }
+    @keyframes fadeIn { from { opacity:0; transform:translateY(-4px); } to { opacity:1; transform:translateY(0); } }
+    ::-webkit-scrollbar { width:6px; height:6px; }
+    ::-webkit-scrollbar-thumb { background:#cbd5e1; border-radius:3px; }
+    .doc-col { min-width: 260px; max-width: 260px; }
+    .notes-expand { max-height: 0; overflow: hidden; transition: max-height 0.2s ease; }
+    .notes-expand.open { max-height: 200px; }
+  </style>
+</head>
+<body class="bg-slate-100 min-h-screen">
+<div id="root"></div>
+
+<script type="text/babel">
+const { useState, useEffect, useRef, useCallback, useMemo } = React;
+
+// ── Utilities ──────────────────────────────────────────────────────────────────
+const uid = () => Math.random().toString(36).slice(2, 9);
+const STORAGE_KEY = 'cs_pipeline_tool_v2';
+
+function loadStore() {
+  try { const r = localStorage.getItem(STORAGE_KEY); if (r) return JSON.parse(r); } catch {}
+  return null;
+}
+function saveStore(d) {
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(d)); } catch {}
+}
+
+// ── Seed data helpers ──────────────────────────────────────────────────────────
+const DEFAULT_ROLES = [
+  { id: 'r1', label: 'Program Coordinator (PC)' },
+  { id: 'r2', label: 'Admin' },
+  { id: 'r3', label: 'Dean' },
+  { id: 'r4', label: 'Director' },
+  { id: 'r5', label: 'Faculty' },
+  { id: 'r6', label: 'TCDC' },
+];
+
+const mkAction = (type, label, person = '') => ({ id: uid(), type, label, person });
+const mkStep = (stageName, actions, presenterIds, carrierIds, notes = '', returnToStepId = null) =>
+  ({ id: uid(), stageName, actions, presenterIds, carrierIds, notes, returnToStepId });
+
+function makeSeedProjectTypes() {
+  // ── New Program ──
+  const cpSteps = [
+    mkStep('Upload to SharePoint',
+      [mkAction('custom', 'PC uploads Concept Paper to SharePoint folder')],
+      ['r1'], ['r1'], 'Starting point for Concept Paper'),
+    mkStep('CS Consultations — Faculty & TCDC',
+      [mkAction('review', 'Review by', 'Faculty'), mkAction('review', 'Review by', 'TCDC (Signs)')],
+      ['r3', 'r1'], ['r2'], 'Dean shares with Faculty; PC shares with TCDC for signature'),
+    mkStep('JCCS',
+      [mkAction('approval', 'Approval by', 'JCCS (Signs)')],
+      ['r2', 'r3'], ['r2'], 'Admin & Dean bring to JCCS meeting'),
+    mkStep('AQA – Langara Post',
+      [mkAction('approval', 'Approval by', 'AQA (Signs)')],
+      ['r4'], ['r2'], 'Director shares with AQA for sign-off'),
+  ];
+
+  const coursePropSteps = [
+    mkStep('Upload to SharePoint',
+      [mkAction('custom', 'PC uploads Course Proposal to SharePoint folder')],
+      ['r1'], ['r1']),
+    mkStep('CS Consultations — Faculty & TCDC',
+      [mkAction('review', 'Review by', 'Faculty (Signs)'), mkAction('review', 'Review by', 'TCDC (Signs)')],
+      ['r3', 'r1'], ['r2'], 'Dean shares with Faculty for signature; PC shares with TCDC for signature'),
+    mkStep('JCCS',
+      [mkAction('approval', 'Approval by', 'JCCS (Signs)')],
+      ['r2', 'r3'], ['r2']),
+    mkStep('VPE – ELT',
+      [mkAction('approval', 'Approval by', 'VPE (Signs)')],
+      ['r3', 'r2'], ['r2'], 'Dean/Admin share with VPE for signature'),
+    mkStep('ELT / RES Review',
+      [mkAction('review', 'Review & Adjust by', 'RES'), mkAction('approval', 'Approval & Sign by', 'RES')],
+      ['r1', 'r4'], ['r2'], 'PC/Director share Course Proposal with RES for review, adjustment, and sign-off'),
+    mkStep('CRC – EDCO Approved',
+      [mkAction('custom', 'Admin shares package to CRC & EDCO'), mkAction('custom', 'Admin moves final approved files to folder')],
+      ['r2'], ['r2'], 'Final approval and file archival'),
+  ];
+
+  const progPropSteps = [
+    mkStep('Upload to SharePoint',
+      [mkAction('custom', 'PC uploads Program Proposal to SharePoint folder')],
+      ['r1'], ['r1']),
+    mkStep('VPE – ELT',
+      [mkAction('approval', 'Approval by', 'VPE (Signs)')],
+      ['r3', 'r2'], ['r2'], 'Dean/Admin share with VPE for signature'),
+    mkStep('ELT / RES Review',
+      [mkAction('review', 'Review & Adjust by', 'RES'), mkAction('approval', 'Approval & Sign by', 'RES')],
+      ['r1', 'r4'], ['r2']),
+    mkStep('CRC – EDCO Approved',
+      [mkAction('custom', 'Admin shares package to CRC & EDCO'), mkAction('custom', 'Admin moves final approved files to folder')],
+      ['r2'], ['r2'], 'Final approval and file archival'),
+  ];
+
+  const progSumSteps = [
+    mkStep('Upload to SharePoint',
+      [mkAction('custom', 'PC uploads Program Summary to SharePoint folder')],
+      ['r1'], ['r1']),
+    mkStep('TCDC',
+      [mkAction('review', 'Review by', 'TCDC')],
+      ['r1'], ['r1'], 'PC shares Program Summary with TCDC'),
+    mkStep('VPE – ELT',
+      [mkAction('approval', 'Approval by', 'VPE (Signs)')],
+      ['r3', 'r2'], ['r2'], 'Dean/Admin share with VPE for signature'),
+    mkStep('ELT Review',
+      [mkAction('approval', 'ELT Approval (Signs & adds ELT approval date)')],
+      ['r4'], ['r2'], 'Director shares Program Summary with ELT; ELT approval date recorded'),
+    mkStep('RES Review',
+      [mkAction('review', 'Review & Adjust by', 'RES'), mkAction('approval', 'Approval & Sign by', 'RES')],
+      ['r4', 'r1'], ['r2'], 'PC/Director share with RES for review and sign-off'),
+    mkStep('CRC – EDCO Approved',
+      [mkAction('custom', 'Admin shares package to CRC & EDCO'), mkAction('custom', 'Admin moves final approved files to folder')],
+      ['r2'], ['r2'], 'Final approval and file archival'),
+  ];
+
+  // ── Discontinuation ──
+  const discSteps = [
+    mkStep('Director Creates & Uploads',
+      [mkAction('custom', 'Director creates Discontinuation Form and uploads to SharePoint')],
+      ['r4'], ['r4'], 'Director is responsible for initiating discontinuation forms'),
+    mkStep('VPE – ELT',
+      [mkAction('approval', 'Approval by', 'VPE (Signs)')],
+      ['r3', 'r2'], ['r2']),
+    mkStep('ELT / RES Review',
+      [mkAction('review', 'Review & Adjust by', 'RES'), mkAction('approval', 'Approval & Sign by', 'RES')],
+      ['r4', 'r1'], ['r2']),
+    mkStep('CRC – EDCO Approved',
+      [mkAction('custom', 'Admin shares to CRC & EDCO'), mkAction('custom', 'Admin moves final approved files to folder')],
+      ['r2'], ['r2']),
+  ];
+
+  return [
+    {
+      id: 'pt1', name: 'New Program',
+      documents: [
+        { id: uid(), name: 'Concept Paper',    color: '#b45309', steps: cpSteps },
+        { id: uid(), name: 'Course Proposal',  color: '#16a34a', steps: coursePropSteps },
+        { id: uid(), name: 'Program Proposal', color: '#2563eb', steps: progPropSteps },
+        { id: uid(), name: 'Program Summary',  color: '#7c3aed', steps: progSumSteps },
+      ],
+      createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
+    },
+    {
+      id: 'pt2', name: 'New Courses',
+      documents: [
+        { id: uid(), name: 'Concept Paper',   color: '#b45309', steps: cpSteps.map(s => ({...s, id: uid(), actions: s.actions.map(a => ({...a, id: uid()}))})) },
+        { id: uid(), name: 'Course Proposal', color: '#16a34a', steps: coursePropSteps.map(s => ({...s, id: uid(), actions: s.actions.map(a => ({...a, id: uid()}))})) },
+      ],
+      createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
+    },
+    {
+      id: 'pt3', name: 'Course Changes',
+      documents: [
+        { id: uid(), name: 'Course Proposal', color: '#16a34a', steps: coursePropSteps.map(s => ({...s, id: uid(), actions: s.actions.map(a => ({...a, id: uid()}))})) },
+      ],
+      createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
+    },
+    {
+      id: 'pt4', name: 'Discontinuation',
+      documents: [
+        { id: uid(), name: 'Discontinuation Form', color: '#dc2626', steps: discSteps },
+      ],
+      createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
+    },
+    {
+      id: 'pt5', name: 'Micro-Credential',
+      documents: [
+        { id: uid(), name: 'Concept Paper',    color: '#b45309', steps: cpSteps.map(s => ({...s, id: uid(), actions: s.actions.map(a => ({...a, id: uid()}))})) },
+        { id: uid(), name: 'Course Proposal',  color: '#16a34a', steps: coursePropSteps.map(s => ({...s, id: uid(), actions: s.actions.map(a => ({...a, id: uid()}))})) },
+        { id: uid(), name: 'Program Proposal', color: '#2563eb', steps: progPropSteps.map(s => ({...s, id: uid(), actions: s.actions.map(a => ({...a, id: uid()}))})) },
+        { id: uid(), name: 'Program Summary',  color: '#7c3aed', steps: progSumSteps.map(s => ({...s, id: uid(), actions: s.actions.map(a => ({...a, id: uid()}))})) },
+      ],
+      createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
+    },
+  ];
+}
+
+function getDefaultStore() {
+  const projectTypes = makeSeedProjectTypes();
+  return {
+    roles: DEFAULT_ROLES,
+    projectTypes,
+    templates: [],
+    activeProjectTypeId: projectTypes[0].id,
+  };
+}
+
+// ── useStore ───────────────────────────────────────────────────────────────────
+function useStore() {
+  const [store, setStore] = useState(() => loadStore() || getDefaultStore());
+  useEffect(() => { saveStore(store); }, [store]);
+  const update = useCallback((updater) => {
+    setStore(prev => typeof updater === 'function' ? updater(prev) : { ...prev, ...updater });
+  }, []);
+  return [store, update];
+}
+
+// ── Primitive Components ───────────────────────────────────────────────────────
+function Modal({ title, onClose, wide, children }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+      onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className={`bg-white rounded-xl shadow-2xl flex flex-col ${wide ? 'w-full max-w-2xl' : 'w-full max-w-lg'} max-h-[90vh] fade-in`}>
+        <div className="flex items-center justify-between px-5 py-3 border-b">
+          <h2 className="font-bold text-slate-800 text-base">{title}</h2>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-700 text-xl font-bold leading-none">&times;</button>
+        </div>
+        <div className="overflow-y-auto flex-1 px-5 py-4">{children}</div>
+      </div>
+    </div>
+  );
+}
+
+function Btn({ onClick, children, variant = 'primary', sm, disabled, className = '' }) {
+  const base = 'inline-flex items-center gap-1.5 font-medium rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-offset-1';
+  const size = sm ? 'text-xs px-2.5 py-1.5' : 'text-sm px-3.5 py-2';
+  const vs = {
+    primary: 'bg-indigo-600 hover:bg-indigo-700 text-white focus:ring-indigo-500',
+    secondary: 'bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 focus:ring-indigo-400',
+    danger: 'bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 focus:ring-red-400',
+    ghost: 'text-slate-500 hover:bg-slate-100 focus:ring-slate-400',
+  };
+  return (
+    <button onClick={onClick} disabled={disabled}
+      className={`${base} ${size} ${vs[variant]} ${disabled ? 'opacity-50 cursor-not-allowed' : ''} ${className}`}>
+      {children}
+    </button>
+  );
+}
+
+function Field({ label, hint, children }) {
+  return (
+    <div className="mb-4">
+      <label className="block text-sm font-semibold text-slate-700 mb-1">{label}</label>
+      {hint && <p className="text-xs text-slate-400 mb-1.5">{hint}</p>}
+      {children}
+    </div>
+  );
+}
+
+const inputCls = 'w-full border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white focus:border-indigo-400 transition-colors';
+const textareaCls = inputCls + ' resize-none';
+
+// ── StepForm Modal ─────────────────────────────────────────────────────────────
+function StepForm({ step, docSteps, allSteps, roles, docColor, onSave, onClose }) {
+  const [form, setForm] = useState(() => step ? { ...step, actions: step.actions.map(a => ({...a})) } : {
+    id: uid(), stageName: '', actions: [], presenterIds: [], carrierIds: [], notes: '', returnToStepId: null,
+  });
+
+  const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
+  const toggleArr = (k, id) => set(k, form[k].includes(id) ? form[k].filter(x => x !== id) : [...form[k], id]);
+
+  const addAction = (type) => {
+    const label = type === 'review' ? 'Review by' : type === 'approval' ? 'Approval by' : '';
+    setForm(f => ({ ...f, actions: [...f.actions, { id: uid(), type, label, person: '' }] }));
+  };
+  const updateAction = (id, field, val) => setForm(f => ({
+    ...f, actions: f.actions.map(a => a.id === id ? { ...a, [field]: val } : a)
+  }));
+  const removeAction = (id) => setForm(f => ({ ...f, actions: f.actions.filter(a => a.id !== id) }));
+  const moveAction = (idx, dir) => {
+    const arr = [...form.actions];
+    const t = idx + dir;
+    if (t < 0 || t >= arr.length) return;
+    [arr[idx], arr[t]] = [arr[t], arr[idx]];
+    setForm(f => ({ ...f, actions: arr }));
+  };
+
+  const prevSteps = (allSteps || docSteps || []).filter(s => s.id !== form.id);
+
+  return (
+    <Modal title={step ? 'Edit Step' : 'Add Step'} wide onClose={onClose}>
+      <Field label="Stage / Committee Name" hint="e.g. JCCS, VPE – ELT, AQA – Langara Post, CS Consultations">
+        <input className={inputCls} value={form.stageName} onChange={e => set('stageName', e.target.value)}
+          placeholder="Stage name..." autoFocus />
+      </Field>
+
+      {/* Actions */}
+      <Field label="Actions / Approvals Required" hint="What happens at this step? Add structured actions below.">
+        <div className="space-y-2 mb-2">
+          {form.actions.map((a, idx) => (
+            <div key={a.id} className="flex items-start gap-2 bg-slate-50 rounded-lg p-2 border border-slate-200">
+              <div className="flex flex-col gap-0.5 pt-0.5">
+                <button onClick={() => moveAction(idx, -1)} disabled={idx === 0} className="text-slate-300 hover:text-slate-600 disabled:opacity-20 text-xs leading-none">▲</button>
+                <button onClick={() => moveAction(idx, 1)} disabled={idx === form.actions.length - 1} className="text-slate-300 hover:text-slate-600 disabled:opacity-20 text-xs leading-none">▼</button>
+              </div>
+              <div className="flex-1 min-w-0">
+                {a.type === 'custom' ? (
+                  <input className={inputCls} value={a.label} onChange={e => updateAction(a.id, 'label', e.target.value)}
+                    placeholder="Custom action description..." />
+                ) : (
+                  <div className="flex gap-2">
+                    <input className={inputCls} value={a.label} onChange={e => updateAction(a.id, 'label', e.target.value)}
+                      placeholder={a.type === 'review' ? 'Review by' : 'Approval by'} style={{ flex: '0 0 130px' }} />
+                    <input className={inputCls} value={a.person} onChange={e => updateAction(a.id, 'person', e.target.value)}
+                      placeholder="Who? (e.g. Dean, JCCS Chair...)" />
+                  </div>
+                )}
+              </div>
+              <button onClick={() => removeAction(a.id)} className="text-red-400 hover:text-red-600 text-sm font-bold pt-1.5 shrink-0">✕</button>
+            </div>
+          ))}
+          {form.actions.length === 0 && <p className="text-xs text-slate-400 italic">No actions yet. Add one below.</p>}
+        </div>
+        <div className="flex gap-2 flex-wrap">
+          <Btn sm variant="secondary" onClick={() => addAction('review')}>+ Review by ___</Btn>
+          <Btn sm variant="secondary" onClick={() => addAction('approval')}>+ Approval by ___</Btn>
+          <Btn sm variant="secondary" onClick={() => addAction('custom')}>+ Custom action</Btn>
+        </div>
+      </Field>
+
+      {/* Responsible Parties */}
+      <div className="grid grid-cols-2 gap-4 mb-4">
+        <Field label="Presents at this step" hint="Who presents/submits the doc AT this committee/meeting">
+          <div className="flex flex-wrap gap-1.5">
+            {roles.map(r => (
+              <button key={r.id} onClick={() => toggleArr('presenterIds', r.id)}
+                className={`px-2.5 py-1 rounded-full text-xs font-semibold border transition-colors ${form.presenterIds.includes(r.id) ? 'bg-indigo-600 text-white border-indigo-600' : 'border-slate-300 text-slate-600 hover:border-indigo-400'}`}>
+                {r.label.replace('Program Coordinator ', 'PC ')}
+              </button>
+            ))}
+          </div>
+        </Field>
+        <Field label="Carries to next step" hint="Who is responsible for moving the doc TO the next stage">
+          <div className="flex flex-wrap gap-1.5">
+            {roles.map(r => (
+              <button key={r.id} onClick={() => toggleArr('carrierIds', r.id)}
+                className={`px-2.5 py-1 rounded-full text-xs font-semibold border transition-colors ${form.carrierIds.includes(r.id) ? 'bg-emerald-600 text-white border-emerald-600' : 'border-slate-300 text-slate-600 hover:border-emerald-400'}`}>
+                {r.label.replace('Program Coordinator ', 'PC ')}
+              </button>
+            ))}
+          </div>
+        </Field>
+      </div>
+
+      <Field label="If Rejected / Needs Revision — Return To" hint="Optional: if the document is not approved, which earlier step does it return to?">
+        <select className={inputCls} value={form.returnToStepId || ''} onChange={e => set('returnToStepId', e.target.value || null)}>
+          <option value="">— No return step (proceed or re-discuss) —</option>
+          {prevSteps.map(s => <option key={s.id} value={s.id}>{s.stageName || '(unnamed step)'}</option>)}
+        </select>
+      </Field>
+
+      <Field label="Notes" hint="Context, reminders, or clarifications — visible on hover/click in the canvas">
+        <textarea className={textareaCls} rows={3} value={form.notes} onChange={e => set('notes', e.target.value)}
+          placeholder="e.g. Bring signed copy; allow 2 weeks lead time; contact Jane for scheduling..." />
+      </Field>
+
+      <div className="flex justify-end gap-2 mt-2">
+        <Btn variant="secondary" onClick={onClose}>Cancel</Btn>
+        <Btn onClick={() => { if (form.stageName.trim()) onSave(form); }} disabled={!form.stageName.trim()}>
+          {step ? 'Save Changes' : 'Add Step'}
+        </Btn>
+      </div>
+    </Modal>
+  );
+}
+
+// ── StepCard ───────────────────────────────────────────────────────────────────
+function StepCard({ step, stepIndex, totalSteps, docSteps, roles, docColor, onEdit, onDelete, onMove, returnStepName }) {
+  const [notesOpen, setNotesOpen] = useState(false);
+  const roleName = (id) => {
+    const r = roles.find(r => r.id === id);
+    return r ? r.label.replace('Program Coordinator', 'PC') : id;
+  };
+  const actionIcon = (type) => type === 'review' ? '🔍' : type === 'approval' ? '✅' : '▸';
+
+  return (
+    <div className="step-card relative bg-white rounded-xl border-2 border-slate-200 overflow-hidden"
+      style={{ '--doc-color': docColor, borderTopColor: docColor, borderTopWidth: 3 }}>
+
+      {/* Hover controls */}
+      <div className="step-controls absolute top-2 right-2 flex gap-1 z-10">
+        <button onClick={() => onMove(stepIndex, -1)} disabled={stepIndex === 0}
+          className="w-6 h-6 rounded bg-slate-100 hover:bg-slate-200 text-slate-500 text-xs disabled:opacity-30 flex items-center justify-center">▲</button>
+        <button onClick={() => onMove(stepIndex, 1)} disabled={stepIndex === totalSteps - 1}
+          className="w-6 h-6 rounded bg-slate-100 hover:bg-slate-200 text-slate-500 text-xs disabled:opacity-30 flex items-center justify-center">▼</button>
+        <button onClick={onEdit}
+          className="w-6 h-6 rounded bg-indigo-100 hover:bg-indigo-200 text-indigo-600 text-xs flex items-center justify-center" title="Edit step">✎</button>
+        <button onClick={onDelete}
+          className="w-6 h-6 rounded bg-red-50 hover:bg-red-100 text-red-500 text-xs flex items-center justify-center" title="Delete step">✕</button>
+      </div>
+
+      <div className="p-3 pr-24">
+        {/* Stage name */}
+        <div className="font-bold text-sm text-slate-800 mb-2 leading-tight pr-2">{step.stageName}</div>
+
+        {/* Actions */}
+        {step.actions.length > 0 && (
+          <div className="mb-2 space-y-1">
+            {step.actions.map(a => (
+              <div key={a.id} className="flex items-start gap-1.5 text-xs text-slate-700">
+                <span className="shrink-0 mt-0.5 text-base leading-none" style={{ fontSize: 11 }}>{actionIcon(a.type)}</span>
+                <span>
+                  {a.type === 'custom'
+                    ? a.label
+                    : <><span className="font-medium">{a.label}</span>{a.person ? <span className="text-slate-500"> {a.person}</span> : null}</>
+                  }
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Divider */}
+        {(step.presenterIds.length > 0 || step.carrierIds.length > 0) && (
+          <div className="border-t border-slate-100 pt-2 mt-2 space-y-1">
+            {step.presenterIds.length > 0 && (
+              <div className="text-xs text-slate-500">
+                <span className="font-semibold text-indigo-600">Presents: </span>
+                {step.presenterIds.map(roleName).join(', ')}
+              </div>
+            )}
+            {step.carrierIds.length > 0 && (
+              <div className="text-xs text-slate-500">
+                <span className="font-semibold text-emerald-600">Carries to next: </span>
+                {step.carrierIds.map(roleName).join(', ')}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Return path */}
+        {step.returnToStepId && returnStepName && (
+          <div className="mt-2 pt-2 border-t border-dashed border-amber-300 text-xs text-amber-700 flex items-start gap-1">
+            <span className="shrink-0">↩</span>
+            <span><span className="font-semibold">If rejected:</span> returns to "{returnStepName}"</span>
+          </div>
+        )}
+
+        {/* Notes toggle */}
+        {step.notes && (
+          <div className="mt-2 pt-2 border-t border-slate-100">
+            <button onClick={() => setNotesOpen(o => !o)}
+              className="text-xs text-slate-400 hover:text-slate-600 flex items-center gap-1">
+              <span>{notesOpen ? '▾' : '▸'}</span>
+              <span>📝 Notes</span>
+            </button>
+            <div className={`notes-expand ${notesOpen ? 'open' : ''}`}>
+              <p className="text-xs text-slate-500 mt-1 bg-amber-50 rounded p-2 border border-amber-100">{step.notes}</p>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── DocumentColumn ─────────────────────────────────────────────────────────────
+function DocumentColumn({ doc, projectTypeId, roles, store, onUpdateDoc, onDeleteDoc }) {
+  const [addingStep, setAddingStep] = useState(false);
+  const [editStep, setEditStep] = useState(null);
+  const [editDocName, setEditDocName] = useState(false);
+  const [docNameVal, setDocNameVal] = useState(doc.name);
+
+  const saveStep = (stepData) => {
+    const existing = doc.steps.find(s => s.id === stepData.id);
+    const steps = existing
+      ? doc.steps.map(s => s.id === stepData.id ? stepData : s)
+      : [...doc.steps, stepData];
+    onUpdateDoc({ ...doc, steps });
+    setAddingStep(false);
+    setEditStep(null);
+  };
+
+  const deleteStep = (id) => {
+    if (!confirm('Delete this step?')) return;
+    onUpdateDoc({ ...doc, steps: doc.steps.filter(s => s.id !== id) });
+  };
+
+  const moveStep = (idx, dir) => {
+    const steps = [...doc.steps];
+    const t = idx + dir;
+    if (t < 0 || t >= steps.length) return;
+    [steps[idx], steps[t]] = [steps[t], steps[idx]];
+    onUpdateDoc({ ...doc, steps });
+  };
+
+  const saveName = () => {
+    if (docNameVal.trim()) onUpdateDoc({ ...doc, name: docNameVal.trim() });
+    setEditDocName(false);
+  };
+
+  const returnStepName = (id) => doc.steps.find(s => s.id === id)?.stageName;
+
+  return (
+    <div className="doc-col flex flex-col">
+      {/* Column header */}
+      <div className="rounded-xl mb-3 px-3 py-2.5 flex items-center gap-2 no-print"
+        style={{ background: doc.color + '18', borderBottom: `3px solid ${doc.color}` }}>
+        {editDocName ? (
+          <input className="flex-1 text-sm font-bold bg-white border rounded px-2 py-0.5 border-slate-300"
+            value={docNameVal} onChange={e => setDocNameVal(e.target.value)}
+            onBlur={saveName} onKeyDown={e => e.key === 'Enter' && saveName()} autoFocus />
+        ) : (
+          <span className="flex-1 font-bold text-sm truncate" style={{ color: doc.color }}
+            onDoubleClick={() => { setDocNameVal(doc.name); setEditDocName(true); }}
+            title="Double-click to rename">{doc.name}</span>
+        )}
+        <div className="flex gap-1 shrink-0">
+          <button onClick={() => { setDocNameVal(doc.name); setEditDocName(true); }}
+            className="text-xs px-1.5 py-0.5 rounded hover:bg-white/60 transition-colors" style={{ color: doc.color }} title="Rename">✎</button>
+          <input type="color" value={doc.color}
+            onChange={e => onUpdateDoc({ ...doc, color: e.target.value })}
+            className="w-5 h-5 rounded cursor-pointer border-0 p-0 bg-transparent" title="Change color" />
+          <button onClick={() => { if (confirm(`Delete "${doc.name}" and all its steps?`)) onDeleteDoc(doc.id); }}
+            className="text-xs px-1.5 py-0.5 rounded hover:bg-red-100 text-red-400 transition-colors" title="Delete document">✕</button>
+        </div>
+      </div>
+
+      {/* Print header */}
+      <div className="rounded-xl mb-3 px-3 py-2.5 hidden" style={{ background: doc.color + '18', borderBottom: `3px solid ${doc.color}` }}
+        id={`print-header-${doc.id}`}>
+        <span className="font-bold text-sm" style={{ color: doc.color }}>{doc.name}</span>
+      </div>
+
+      {/* Steps */}
+      <div className="flex-1 space-y-0">
+        {doc.steps.length === 0 && (
+          <div className="text-center py-8 text-slate-400 text-xs border-2 border-dashed border-slate-200 rounded-xl">
+            No steps yet.<br />Click below to add.
+          </div>
+        )}
+        {doc.steps.map((step, i) => (
+          <div key={step.id}>
+            <StepCard
+              step={step}
+              stepIndex={i}
+              totalSteps={doc.steps.length}
+              docSteps={doc.steps}
+              roles={roles}
+              docColor={doc.color}
+              onEdit={() => setEditStep(step)}
+              onDelete={() => deleteStep(step.id)}
+              onMove={moveStep}
+              returnStepName={step.returnToStepId ? returnStepName(step.returnToStepId) : null}
+            />
+            {/* Arrow between steps */}
+            {i < doc.steps.length - 1 && (
+              <div className="flex justify-center py-1.5">
+                <svg width="20" height="20" viewBox="0 0 20 20">
+                  <line x1="10" y1="1" x2="10" y2="14" stroke={doc.color} strokeWidth="2" strokeOpacity="0.6" />
+                  <polygon points="10,19 5,11 15,11" fill={doc.color} fillOpacity="0.7" />
+                </svg>
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+
+      {/* Add Step */}
+      <div className="mt-3 no-print">
+        <button onClick={() => setAddingStep(true)}
+          className="w-full py-2 rounded-xl text-xs font-semibold border-2 border-dashed transition-colors hover:bg-white"
+          style={{ borderColor: doc.color + '60', color: doc.color }}>
+          + Add Step
+        </button>
+      </div>
+
+      {/* End marker */}
+      <div className="mt-2 rounded-lg py-1.5 px-3 text-center text-xs font-semibold"
+        style={{ background: doc.color + '15', color: doc.color }}>
+        ✓ Complete
+      </div>
+
+      {(addingStep || editStep) && (
+        <StepForm
+          step={editStep}
+          docSteps={doc.steps}
+          roles={roles}
+          docColor={doc.color}
+          onSave={saveStep}
+          onClose={() => { setAddingStep(false); setEditStep(null); }}
+        />
+      )}
+    </div>
+  );
+}
+
+// ── ProjectTypeCanvas ──────────────────────────────────────────────────────────
+function ProjectTypeCanvas({ projectType, roles, onUpdateProjectType }) {
+  const updateDoc = (updated) => {
+    onUpdateProjectType({
+      ...projectType,
+      documents: projectType.documents.map(d => d.id === updated.id ? updated : d),
+      updatedAt: new Date().toISOString(),
+    });
+  };
+
+  const deleteDoc = (id) => {
+    onUpdateProjectType({
+      ...projectType,
+      documents: projectType.documents.filter(d => d.id !== id),
+      updatedAt: new Date().toISOString(),
+    });
+  };
+
+  const addDocument = () => {
+    const name = prompt('Document name:');
+    if (!name?.trim()) return;
+    const colors = ['#0891b2', '#d97706', '#9333ea', '#0d9488', '#db2777'];
+    const color = colors[projectType.documents.length % colors.length];
+    onUpdateProjectType({
+      ...projectType,
+      documents: [...projectType.documents, { id: uid(), name: name.trim(), color, steps: [] }],
+      updatedAt: new Date().toISOString(),
+    });
+  };
+
+  if (projectType.documents.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center h-64 text-slate-400">
+        <div className="text-4xl mb-3">📄</div>
+        <p className="text-sm mb-3">No documents defined for this project type.</p>
+        <Btn onClick={addDocument}>+ Add Document Type</Btn>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col h-full">
+      <div className="overflow-x-auto overflow-y-auto flex-1 pb-4" id="canvas-print-area">
+        <div className="flex gap-4 items-start p-4" style={{ minWidth: 'max-content' }}>
+          {projectType.documents.map(doc => (
+            <DocumentColumn
+              key={doc.id}
+              doc={doc}
+              projectTypeId={projectType.id}
+              roles={roles}
+              onUpdateDoc={updateDoc}
+              onDeleteDoc={deleteDoc}
+            />
+          ))}
+          {/* Add document column button */}
+          <div className="doc-col no-print">
+            <button onClick={addDocument}
+              className="w-full h-24 rounded-xl border-2 border-dashed border-slate-300 text-slate-400 hover:border-indigo-400 hover:text-indigo-500 transition-colors text-sm font-medium flex flex-col items-center justify-center gap-1">
+              <span className="text-2xl">+</span>
+              <span>Add Document</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── ProjectTypeEditor Modal ────────────────────────────────────────────────────
+function ProjectTypeEditor({ store, onUpdateStore, onClose }) {
+  const [pts, setPts] = useState(store.projectTypes.map(pt => ({ ...pt })));
+  const [newName, setNewName] = useState('');
+  const [renamingId, setRenamingId] = useState(null);
+  const [renameVal, setRenameVal] = useState('');
+
+  const add = () => {
+    if (!newName.trim()) return;
+    setPts(prev => [...prev, { id: uid(), name: newName.trim(), documents: [], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }]);
+    setNewName('');
+  };
+  const del = (id) => { if (confirm('Delete this project type?')) setPts(prev => prev.filter(p => p.id !== id)); };
+  const rename = (id) => {
+    if (renameVal.trim()) setPts(prev => prev.map(p => p.id === id ? { ...p, name: renameVal.trim() } : p));
+    setRenamingId(null);
+  };
+  const save = () => { onUpdateStore({ ...store, projectTypes: pts }); onClose(); };
+
+  return (
+    <Modal title="Manage Project / Program Types" onClose={onClose}>
+      <p className="text-xs text-slate-500 mb-4">Project types define the top-level category. Documents and steps are configured directly on the canvas.</p>
+      <div className="space-y-2 mb-4">
+        {pts.map(pt => (
+          <div key={pt.id} className="flex items-center gap-2 border rounded-lg px-3 py-2">
+            {renamingId === pt.id ? (
+              <input className={inputCls + ' flex-1'} value={renameVal} onChange={e => setRenameVal(e.target.value)}
+                autoFocus onBlur={() => rename(pt.id)} onKeyDown={e => e.key === 'Enter' && rename(pt.id)} />
+            ) : (
+              <span className="flex-1 text-sm font-medium">{pt.name}</span>
+            )}
+            <button className="text-xs text-indigo-500 hover:underline" onClick={() => { setRenamingId(pt.id); setRenameVal(pt.name); }}>Rename</button>
+            <button className="text-xs text-red-400 hover:underline" onClick={() => del(pt.id)}>Delete</button>
+          </div>
+        ))}
+      </div>
+      <div className="flex gap-2 mb-4">
+        <input className={inputCls} value={newName} onChange={e => setNewName(e.target.value)} placeholder="New project type name..."
+          onKeyDown={e => e.key === 'Enter' && add()} />
+        <Btn onClick={add}>Add</Btn>
+      </div>
+      <div className="flex justify-end gap-2">
+        <Btn variant="secondary" onClick={onClose}>Cancel</Btn>
+        <Btn onClick={save}>Save Changes</Btn>
+      </div>
+    </Modal>
+  );
+}
+
+// ── RolesEditor Modal ──────────────────────────────────────────────────────────
+function RolesEditor({ store, onUpdateStore, onClose }) {
+  const [roles, setRoles] = useState(store.roles);
+  const [newRole, setNewRole] = useState('');
+  const add = () => { if (!newRole.trim()) return; setRoles(r => [...r, { id: uid(), label: newRole.trim() }]); setNewRole(''); };
+  const del = (id) => setRoles(r => r.filter(x => x.id !== id));
+  const save = () => { onUpdateStore({ ...store, roles }); onClose(); };
+  return (
+    <Modal title="Manage Roles & Responsible Parties" onClose={onClose}>
+      <p className="text-xs text-slate-500 mb-3">These roles appear when setting who presents at a step or carries documents to the next step.</p>
+      <div className="space-y-2 mb-4">
+        {roles.map(r => (
+          <div key={r.id} className="flex items-center gap-2 border rounded-lg px-3 py-2">
+            <span className="flex-1 text-sm">{r.label}</span>
+            <button onClick={() => del(r.id)} className="text-xs text-red-400 hover:underline">Remove</button>
+          </div>
+        ))}
+      </div>
+      <div className="flex gap-2 mb-4">
+        <input className={inputCls} value={newRole} onChange={e => setNewRole(e.target.value)} placeholder="New role or person..."
+          onKeyDown={e => e.key === 'Enter' && add()} />
+        <Btn onClick={add}>Add</Btn>
+      </div>
+      <div className="flex justify-end gap-2">
+        <Btn variant="secondary" onClick={onClose}>Cancel</Btn>
+        <Btn onClick={save}>Save</Btn>
+      </div>
+    </Modal>
+  );
+}
+
+// ── BackupModal ────────────────────────────────────────────────────────────────
+function BackupModal({ store, onRestore, onClose }) {
+  const fileRef = useRef(null);
+  const exportBackup = () => {
+    const blob = new Blob([JSON.stringify(store, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `langara-pipeline-v2-backup-${new Date().toISOString().slice(0,10)}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+  const importBackup = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        const data = JSON.parse(ev.target.result);
+        if (!data.projectTypes || !data.roles) { alert('Invalid backup file.'); return; }
+        if (!confirm('Replace ALL current data with this backup?')) return;
+        onRestore(data); onClose();
+      } catch { alert('Could not read file.'); }
+    };
+    reader.readAsText(file);
+  };
+  return (
+    <Modal title="Backup & Restore" onClose={onClose}>
+      <div className="space-y-4">
+        <div className="border rounded-lg p-4 bg-slate-50">
+          <div className="font-semibold text-sm mb-1">Export Backup</div>
+          <p className="text-xs text-slate-500 mb-3">Downloads all project types, documents, steps, templates, and roles as a JSON file.</p>
+          <Btn onClick={exportBackup}>⬇ Download Backup</Btn>
+        </div>
+        <div className="border rounded-lg p-4 bg-slate-50">
+          <div className="font-semibold text-sm mb-1">Restore from Backup</div>
+          <p className="text-xs text-red-500 mb-3">⚠ This will overwrite all current data.</p>
+          <input type="file" accept=".json" ref={fileRef} onChange={importBackup} className="hidden" />
+          <Btn variant="secondary" onClick={() => fileRef.current.click()}>⬆ Import Backup File</Btn>
+        </div>
+      </div>
+      <div className="flex justify-end mt-4">
+        <Btn variant="secondary" onClick={onClose}>Close</Btn>
+      </div>
+    </Modal>
+  );
+}
+
+// ── TemplateSaveModal ──────────────────────────────────────────────────────────
+function TemplateSaveModal({ projectType, onSave, onClose }) {
+  const [name, setName] = useState(projectType.name + ' (Template)');
+  return (
+    <Modal title="Save as Template" onClose={onClose}>
+      <p className="text-sm text-slate-500 mb-4">Saves this project type's documents and all their steps as a reusable template.</p>
+      <Field label="Template Name">
+        <input className={inputCls} value={name} onChange={e => setName(e.target.value)} autoFocus />
+      </Field>
+      <div className="flex justify-end gap-2 mt-2">
+        <Btn variant="secondary" onClick={onClose}>Cancel</Btn>
+        <Btn onClick={() => { if (name.trim()) onSave(name.trim()); }}>Save Template</Btn>
+      </div>
+    </Modal>
+  );
+}
+
+// ── NewProjectTypeModal ────────────────────────────────────────────────────────
+function NewProjectTypeModal({ store, onCreate, onClose }) {
+  const [name, setName] = useState('');
+  const [fromTemplate, setFromTemplate] = useState('');
+
+  const create = () => {
+    if (!name.trim()) return;
+    let documents = [];
+    if (fromTemplate) {
+      const tmpl = store.templates.find(t => t.id === fromTemplate);
+      if (tmpl) {
+        documents = tmpl.projectType.documents.map(d => ({
+          ...d, id: uid(),
+          steps: d.steps.map(s => ({ ...s, id: uid(), actions: s.actions.map(a => ({...a, id: uid()})) }))
+        }));
+      }
+    }
+    onCreate({ id: uid(), name: name.trim(), documents, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
+  };
+
+  return (
+    <Modal title="New Project / Program Type" onClose={onClose}>
+      <Field label="Project Type Name" hint="e.g. New Program, Course Changes, Micro-Credential">
+        <input className={inputCls} value={name} onChange={e => setName(e.target.value)} placeholder="Project type name..." autoFocus
+          onKeyDown={e => e.key === 'Enter' && create()} />
+      </Field>
+      {store.templates.length > 0 && (
+        <Field label="Start from Template (optional)" hint="Copy documents and steps from an existing template">
+          <select className={inputCls} value={fromTemplate} onChange={e => setFromTemplate(e.target.value)}>
+            <option value="">— Start blank —</option>
+            {store.templates.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+          </select>
+        </Field>
+      )}
+      <div className="flex justify-end gap-2 mt-2">
+        <Btn variant="secondary" onClick={onClose}>Cancel</Btn>
+        <Btn onClick={create} disabled={!name.trim()}>Create</Btn>
+      </div>
+    </Modal>
+  );
+}
+
+// ── App ────────────────────────────────────────────────────────────────────────
+function App() {
+  const [store, updateStore] = useStore();
+  const [modal, setModal] = useState(null);
+
+  const activePT = store.projectTypes.find(p => p.id === store.activeProjectTypeId) || store.projectTypes[0];
+
+  const setActivePT = (id) => updateStore(s => ({ ...s, activeProjectTypeId: id }));
+
+  const updatePT = (updated) => {
+    updateStore(s => ({ ...s, projectTypes: s.projectTypes.map(p => p.id === updated.id ? updated : p) }));
+  };
+
+  const deletePT = (id) => {
+    if (!confirm('Delete this project type and all its data?')) return;
+    updateStore(s => {
+      const pts = s.projectTypes.filter(p => p.id !== id);
+      return { ...s, projectTypes: pts, activeProjectTypeId: pts[0]?.id || null };
+    });
+  };
+
+  const createPT = (pt) => {
+    updateStore(s => ({ ...s, projectTypes: [...s.projectTypes, pt], activeProjectTypeId: pt.id }));
+    setModal(null);
+  };
+
+  const saveTemplate = (name) => {
+    if (!activePT) return;
+    const tmpl = {
+      id: uid(), name,
+      projectType: { name: activePT.name, documents: activePT.documents }
+    };
+    updateStore(s => ({ ...s, templates: [...s.templates, tmpl] }));
+    setModal(null);
+    alert(`Template "${name}" saved!`);
+  };
+
+  const deleteTemplate = (id) => {
+    if (!confirm('Delete this template?')) return;
+    updateStore(s => ({ ...s, templates: s.templates.filter(t => t.id !== id) }));
+  };
+
+  return (
+    <div className="flex h-screen overflow-hidden bg-slate-100">
+      {/* Sidebar */}
+      <aside className="w-60 bg-white border-r border-slate-200 flex flex-col shrink-0 no-print">
+        <div className="p-4 border-b border-slate-200">
+          <div className="font-bold text-slate-800 text-sm leading-tight">CS Pipeline Tool</div>
+          <div className="text-xs text-slate-400 mt-0.5">Continuing Studies · Langara</div>
+          <div className="text-xs text-indigo-500 font-semibold mt-0.5">v2</div>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-3">
+          {/* Project Types */}
+          <div className="flex items-center justify-between mb-2 px-1">
+            <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">Project Types</span>
+            <button onClick={() => setModal('newPT')} className="text-indigo-600 hover:text-indigo-800 text-lg font-bold leading-none" title="New project type">+</button>
+          </div>
+
+          {store.projectTypes.map(pt => (
+            <div key={pt.id}
+              onClick={() => setActivePT(pt.id)}
+              className={`group flex items-center justify-between px-3 py-2 rounded-lg cursor-pointer mb-1 transition-colors ${pt.id === activePT?.id ? 'bg-indigo-600 text-white' : 'text-slate-700 hover:bg-slate-100'}`}>
+              <span className="text-sm font-medium truncate flex-1">{pt.name}</span>
+              {pt.id !== activePT?.id && (
+                <button onClick={e => { e.stopPropagation(); deletePT(pt.id); }}
+                  className="opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-600 ml-1 text-xs shrink-0">✕</button>
+              )}
+            </div>
+          ))}
+
+          {/* Templates */}
+          {store.templates.length > 0 && (
+            <div className="mt-4">
+              <div className="text-xs font-bold text-slate-400 uppercase tracking-widest px-1 mb-2">Templates</div>
+              {store.templates.map(t => (
+                <div key={t.id} className="group flex items-center justify-between px-3 py-1.5 rounded-lg mb-1 text-slate-500 hover:bg-slate-50">
+                  <span className="text-xs truncate flex-1">{t.name}</span>
+                  <button onClick={() => deleteTemplate(t.id)} className="opacity-0 group-hover:opacity-100 text-red-400 text-xs ml-1">✕</button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Bottom settings */}
+        <div className="p-3 border-t border-slate-200 space-y-1">
+          <button onClick={() => setModal('manageTypes')} className="w-full text-left px-3 py-2 rounded-lg text-sm text-slate-600 hover:bg-slate-100 flex items-center gap-2">
+            <span>🗂</span> Manage Project Types
+          </button>
+          <button onClick={() => setModal('roles')} className="w-full text-left px-3 py-2 rounded-lg text-sm text-slate-600 hover:bg-slate-100 flex items-center gap-2">
+            <span>👥</span> Roles &amp; People
+          </button>
+          <button onClick={() => setModal('backup')} className="w-full text-left px-3 py-2 rounded-lg text-sm text-slate-600 hover:bg-slate-100 flex items-center gap-2">
+            <span>💾</span> Backup &amp; Restore
+          </button>
+          <button onClick={() => {
+            if (!confirm('Reset ALL data to the original defaults?')) return;
+            updateStore(getDefaultStore());
+          }} className="w-full text-left px-3 py-2 rounded-lg text-sm text-slate-400 hover:bg-red-50 hover:text-red-600 flex items-center gap-2">
+            <span>↺</span> Reset to Defaults
+          </button>
+        </div>
+      </aside>
+
+      {/* Main area */}
+      <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+        {/* Top bar */}
+        <header className="bg-white border-b border-slate-200 px-5 py-2.5 flex items-center gap-3 shrink-0 no-print">
+          <div className="flex-1 min-w-0">
+            {activePT ? (
+              <>
+                <h1 className="font-bold text-slate-800 text-base truncate">{activePT.name}</h1>
+                <div className="text-xs text-slate-400">{activePT.documents.length} document type{activePT.documents.length !== 1 ? 's' : ''} &middot; Updated {new Date(activePT.updatedAt).toLocaleDateString()}</div>
+              </>
+            ) : (
+              <h1 className="font-bold text-slate-400">No project type selected</h1>
+            )}
+          </div>
+          {activePT && (
+            <div className="flex items-center gap-2 shrink-0">
+              <Btn variant="secondary" sm onClick={() => setModal('saveTemplate')}>☆ Save as Template</Btn>
+              <Btn variant="secondary" sm onClick={() => window.print()}>🖨 Print / Export PDF</Btn>
+            </div>
+          )}
+        </header>
+
+        {/* Canvas */}
+        <div className="flex-1 min-h-0 overflow-hidden">
+          {activePT ? (
+            <ProjectTypeCanvas
+              projectType={activePT}
+              roles={store.roles}
+              onUpdateProjectType={updatePT}
+            />
+          ) : (
+            <div className="flex items-center justify-center h-full text-slate-400">
+              <div className="text-center">
+                <div className="text-4xl mb-3">📋</div>
+                <p className="text-sm">No project type selected. Create one using the sidebar.</p>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Modals */}
+      {modal === 'newPT' && <NewProjectTypeModal store={store} onCreate={createPT} onClose={() => setModal(null)} />}
+      {modal === 'manageTypes' && <ProjectTypeEditor store={store} onUpdateStore={s => updateStore(s)} onClose={() => setModal(null)} />}
+      {modal === 'roles' && <RolesEditor store={store} onUpdateStore={s => updateStore(s)} onClose={() => setModal(null)} />}
+      {modal === 'backup' && <BackupModal store={store} onRestore={data => updateStore(data)} onClose={() => setModal(null)} />}
+      {modal === 'saveTemplate' && activePT && <TemplateSaveModal projectType={activePT} onSave={saveTemplate} onClose={() => setModal(null)} />}
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>
