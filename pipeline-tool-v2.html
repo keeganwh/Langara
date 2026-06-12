@@ -708,7 +708,7 @@ function DocumentColumn({ doc, docIndex, totalDocs, onMoveDoc, projectTypeId, ro
   return (
     <div className="doc-col flex flex-col">
       {/* Column header */}
-      <div className="group rounded-xl mb-3 px-3 py-2.5 flex items-center gap-2 no-print"
+      <div className="group relative rounded-xl mb-3 px-3 py-2.5 flex items-center no-print"
         style={{ background: doc.color + '18', borderBottom: `3px solid ${doc.color}` }}>
         {editDocName ? (
           <input className="flex-1 text-sm font-bold bg-white border rounded px-2 py-0.5 border-slate-300"
@@ -719,7 +719,8 @@ function DocumentColumn({ doc, docIndex, totalDocs, onMoveDoc, projectTypeId, ro
             onDoubleClick={() => { setDocNameVal(doc.name); setEditDocName(true); }}
             title="Double-click to rename">{doc.name}</span>
         )}
-        <div className="flex gap-0.5 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+        <div className="absolute right-2 top-1/2 -translate-y-1/2 flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
+          style={{ background: doc.color + '18' }}>
           <button onClick={() => onMoveDoc(-1)} disabled={docIndex === 0}
             className="w-5 h-5 rounded text-xs flex items-center justify-center disabled:opacity-20 hover:bg-white/60 transition-colors" style={{ color: doc.color }} title="Move column left">◀</button>
           <button onClick={() => onMoveDoc(1)} disabled={docIndex === totalDocs - 1}
