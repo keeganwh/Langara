@@ -216,6 +216,7 @@ function getDefaultStore() {
     projectTypes,
     templates: [],
     activeProjectTypeId: projectTypes[0].id,
+    syncGroupMeta: {},
   };
 }
 
@@ -295,7 +296,7 @@ function buildStorageLocation(preset, subPath) {
   return sub ? `${preset} / ${sub}` : preset;
 }
 
-function StepForm({ step, docSteps, allSteps, roles, docColor, syncGroups, onSave, onClose }) {
+function StepForm({ step, docSteps, allSteps, roles, docColor, syncGroupMeta, onUpdateSyncGroupMeta, onDissolveGroup, onSave, onClose }) {
   const [form, setForm] = useState(() => step ? { ...step, actions: step.actions.map(a => ({...a})) } : {
     id: uid(), stageName: '', actions: [], presenterIds: [], carrierIds: [],
     notes: '', returnToStepId: null, storageLocation: '', fileOperation: '', deliveryMethod: '', informationOnly: false, triggerType: '', triggerLabel: '',
@@ -477,39 +478,51 @@ function StepForm({ step, docSteps, allSteps, roles, docColor, syncGroups, onSav
           placeholder="e.g. Bring signed copy; allow 2 weeks lead time; contact Jane for scheduling..." />
       </Field>
 
-      {/* Sync group */}
-      {syncGroups && (() => {
-        const groupEntries = Object.entries(syncGroups);
-        const groupLabel = (gid) => {
-          const members = syncGroups[gid] || [];
-          return members.map(m => m.docName).join(', ') || gid;
+      {/* Sync group panel — shown only if this step is in a group */}
+      {form.syncGroupId && syncGroupMeta && (() => {
+        const gid = form.syncGroupId;
+        const meta = syncGroupMeta[gid] || { name: 'Sync Group', color: '#64748b' };
+        const [editingName, setEditingName] = useState(false);
+        const [nameVal, setNameVal] = useState(meta.name);
+        const saveName = () => {
+          onUpdateSyncGroupMeta && onUpdateSyncGroupMeta({ ...syncGroupMeta, [gid]: { ...meta, name: nameVal.trim() || meta.name } });
+          setEditingName(false);
         };
         return (
-          <Field label="Runs concurrently with other steps?" hint="Link steps across documents that happen at the same meeting or time">
-            <select className={inputCls} value={form.syncGroupId || ''}
-              onChange={e => {
-                const v = e.target.value;
-                if (v === '__new__') {
-                  set('syncGroupId', uid());
-                } else {
-                  set('syncGroupId', v || null);
-                }
-              }}>
-              <option value="">— None —</option>
-              {groupEntries.filter(([gid]) => gid !== form.syncGroupId).map(([gid]) => (
-                <option key={gid} value={gid}>{groupLabel(gid)}</option>
-              ))}
-              {form.syncGroupId && groupEntries.some(([gid]) => gid === form.syncGroupId) && (
-                <option value={form.syncGroupId}>{groupLabel(form.syncGroupId)} (current)</option>
+          <div className="mb-4 p-3 rounded-xl border-2" style={{ borderColor: meta.color + '60', background: meta.color + '0d' }}>
+            <div className="flex items-center gap-2 mb-2">
+              <span style={{ color: meta.color }}>🔗</span>
+              {editingName ? (
+                <input className="flex-1 text-sm font-semibold border border-slate-300 rounded px-2 py-0.5"
+                  value={nameVal} onChange={e => setNameVal(e.target.value)}
+                  onBlur={saveName} onKeyDown={e => { if (e.key === 'Enter' || e.key === 'Escape') saveName(); }} autoFocus />
+              ) : (
+                <span className="flex-1 text-sm font-semibold" style={{ color: meta.color }}>{meta.name}</span>
               )}
-              <option value="__new__">+ New sync group</option>
-            </select>
-            {form.syncGroupId && (
-              <p className="text-xs text-amber-600 mt-1">
-                This step is in a sync group. Other steps with the same group will be visually connected on the canvas.
-              </p>
-            )}
-          </Field>
+              <button onClick={() => { setNameVal(meta.name); setEditingName(true); }}
+                className="text-xs px-2 py-0.5 rounded bg-white border border-slate-200 hover:bg-slate-50 text-slate-600" title="Rename group">Rename</button>
+            </div>
+            <div className="mb-2">
+              <div className="text-xs text-slate-500 mb-1">Group colour:</div>
+              <div className="flex gap-1.5 flex-wrap">
+                {SYNC_COLORS.map(c => (
+                  <button key={c} onClick={() => onUpdateSyncGroupMeta && onUpdateSyncGroupMeta({ ...syncGroupMeta, [gid]: { ...meta, color: c } })}
+                    className="w-5 h-5 rounded-full border-2 transition-transform hover:scale-110"
+                    style={{ background: c, borderColor: meta.color === c ? '#1e293b' : 'transparent' }} />
+                ))}
+              </div>
+            </div>
+            <div className="flex gap-2 flex-wrap">
+              <button onClick={() => set('syncGroupId', null)}
+                className="text-xs px-2 py-1 rounded bg-white border border-slate-200 hover:bg-slate-50 text-slate-600">
+                Remove from group
+              </button>
+              <button onClick={() => { onDissolveGroup && onDissolveGroup(gid); set('syncGroupId', null); }}
+                className="text-xs px-2 py-1 rounded bg-red-50 border border-red-200 hover:bg-red-100 text-red-600">
+                Dissolve group (remove all)
+              </button>
+            </div>
+          </div>
         );
       })()}
 
@@ -615,7 +628,7 @@ function CopyDocModal({ doc, otherProjects, onCopy, onClose }) {
 }
 
 // ── StepCard ───────────────────────────────────────────────────────────────────
-function StepCard({ step, stepIndex, totalSteps, docSteps, roles, docColor, onEdit, onDelete, onMove, onCopyTo, returnStepName, isDragging, onDragStart, onDragEnd, onDragOver, onDrop }) {
+function StepCard({ step, stepIndex, totalSteps, docSteps, roles, docColor, onEdit, onDelete, onMove, onCopyTo, returnStepName, isDragging, onDragStart, onDragEnd, onDragOver, onDrop, linkingGroupId, onLinkStep, syncGroupColor }) {
   const [notesOpen, setNotesOpen] = useState(false);
   const [copyOpen, setCopyOpen] = useState(false);
   const roleName = (id) => {
@@ -624,10 +637,22 @@ function StepCard({ step, stepIndex, totalSteps, docSteps, roles, docColor, onEd
   };
   const actionIcon = (type) => type === 'review' ? '🔍' : type === 'approval' ? '✅' : type === 'consultation' ? '💬' : type === 'prepared_by' ? '📝' : '▸';
 
+  const inActiveGroup = step.syncGroupId && step.syncGroupId === linkingGroupId;
+  const inDifferentGroup = step.syncGroupId && linkingGroupId && step.syncGroupId !== linkingGroupId;
+  const dimmed = linkingGroupId && !inActiveGroup && !isDragging;
+  const linkColor = syncGroupColor || '#64748b';
+
   return (
     <div className="step-card relative bg-white rounded-xl border-2 border-slate-200 overflow-hidden"
       data-step-id={step.id}
-      style={{ '--doc-color': docColor, borderTopColor: docColor, borderTopWidth: 3, opacity: isDragging ? 0.4 : 1, cursor: 'grab' }}
+      style={{
+        '--doc-color': docColor,
+        borderTopColor: docColor, borderTopWidth: 3,
+        borderLeftColor: syncGroupColor || undefined, borderLeftWidth: syncGroupColor ? 4 : undefined,
+        opacity: isDragging ? 0.4 : dimmed ? 0.3 : 1,
+        cursor: 'grab',
+        transition: 'opacity 0.15s',
+      }}
       draggable
       onDragStart={e => { e.dataTransfer.effectAllowed = 'move'; onDragStart && onDragStart(); }}
       onDragEnd={() => onDragEnd && onDragEnd()}
@@ -646,13 +671,32 @@ function StepCard({ step, stepIndex, totalSteps, docSteps, roles, docColor, onEd
           <button onClick={() => setCopyOpen(true)}
             className="w-6 h-6 rounded bg-violet-50 hover:bg-violet-100 text-violet-600 text-xs flex items-center justify-center" title="Copy step to another document">⎘</button>
         )}
+        {onLinkStep && (
+          <button
+            onClick={e => { e.stopPropagation(); if (!inDifferentGroup) onLinkStep(); }}
+            className="w-6 h-6 rounded text-xs flex items-center justify-center transition-colors"
+            style={inActiveGroup
+              ? { background: linkColor + '30', color: linkColor, opacity: 1 }
+              : inDifferentGroup
+                ? { background: '#f1f5f9', color: '#94a3b8', cursor: 'not-allowed', opacity: 0.4 }
+                : step.syncGroupId
+                  ? { background: linkColor + '20', color: linkColor, opacity: 1 }
+                  : { background: '#f1f5f9', color: '#64748b' }}
+            title={inActiveGroup ? 'Remove from sync group' : inDifferentGroup ? 'Already in a different group' : step.syncGroupId ? 'Edit sync group' : 'Add to sync group'}>
+            🔗
+          </button>
+        )}
         <button onClick={onDelete}
           className="w-6 h-6 rounded bg-red-50 hover:bg-red-100 text-red-500 text-xs flex items-center justify-center" title="Delete step">✕</button>
       </div>
 
       <div className="p-3">
+        {/* Sync group badge — always visible when in a group */}
+        {syncGroupColor && (
+          <div className="absolute top-2 left-2 w-3 h-3 rounded-full z-10" style={{ background: syncGroupColor }} title="In a sync group" />
+        )}
         {/* Stage name */}
-        <div className={`font-bold text-sm text-slate-800 leading-tight pr-2 ${step.informationOnly ? 'mb-1' : 'mb-2'}`}>{step.stageName}</div>
+        <div className={`font-bold text-sm text-slate-800 leading-tight ${syncGroupColor ? 'pl-4' : ''} pr-2 ${step.informationOnly ? 'mb-1' : 'mb-2'}`}>{step.stageName}</div>
         {step.informationOnly && (
           <div className="mb-2 inline-flex items-center gap-1 text-xs font-semibold text-sky-600 bg-sky-50 border border-sky-200 rounded-full px-2 py-0.5">
             <span>ⓘ</span><span>Information Only</span>
@@ -734,7 +778,7 @@ function StepCard({ step, stepIndex, totalSteps, docSteps, roles, docColor, onEd
 }
 
 // ── DocumentColumn ─────────────────────────────────────────────────────────────
-function DocumentColumn({ doc, docIndex, totalDocs, onMoveDoc, projectTypeId, roles, store, onUpdateDoc, onDeleteDoc, otherDocs, otherProjects, onCopyStepToDoc, onCopyStepToProject, onCopyDocToProject, dragRef, dropTarget, setDropTarget, onMoveStepDrop, syncGroups, renderMode = 'body' }) {
+function DocumentColumn({ doc, docIndex, totalDocs, onMoveDoc, projectTypeId, roles, store, onUpdateDoc, onDeleteDoc, otherDocs, otherProjects, onCopyStepToDoc, onCopyStepToProject, onCopyDocToProject, dragRef, dropTarget, setDropTarget, onMoveStepDrop, linkingGroupId, onLinkStep, syncGroupMeta, onUpdateSyncGroupMeta, onDissolveGroup, renderMode = 'body' }) {
   const [addingStep, setAddingStep] = useState(false);
   const [editStep, setEditStep] = useState(null);
   const [editDocName, setEditDocName] = useState(false);
@@ -907,6 +951,9 @@ function DocumentColumn({ doc, docIndex, totalDocs, onMoveDoc, projectTypeId, ro
               onDragEnd={() => { dragRef.current = null; setDropTarget(null); }}
               onDragOver={() => { if (dragRef?.current) setDropTarget({ docId: doc.id, beforeStepId: step.id }); }}
               onDrop={() => { if (dragRef?.current) { const { stepId, srcDocId } = dragRef.current; onMoveStepDrop(srcDocId, stepId, doc.id, step.id); } }}
+              linkingGroupId={linkingGroupId}
+              onLinkStep={onLinkStep ? () => onLinkStep(step) : null}
+              syncGroupColor={step.syncGroupId && syncGroupMeta ? syncGroupMeta[step.syncGroupId]?.color : null}
             />
             {/* Arrow between steps */}
             {i < doc.steps.length - 1 && (() => {
@@ -992,7 +1039,9 @@ function DocumentColumn({ doc, docIndex, totalDocs, onMoveDoc, projectTypeId, ro
           docSteps={doc.steps}
           roles={roles}
           docColor={doc.color}
-          syncGroups={syncGroups}
+          syncGroupMeta={syncGroupMeta}
+          onUpdateSyncGroupMeta={onUpdateSyncGroupMeta}
+          onDissolveGroup={onDissolveGroup}
           onSave={saveStep}
           onClose={() => { setAddingStep(false); setEditStep(null); }}
         />
@@ -1002,54 +1051,52 @@ function DocumentColumn({ doc, docIndex, totalDocs, onMoveDoc, projectTypeId, ro
 }
 
 // ── ProjectTypeCanvas ──────────────────────────────────────────────────────────
-function ProjectTypeCanvas({ projectType, roles, onUpdateProjectType, allProjectTypes, onCopyStepToProject, onCopyDocToProject }) {
+function ProjectTypeCanvas({ projectType, roles, onUpdateProjectType, allProjectTypes, onCopyStepToProject, onCopyDocToProject, syncGroupMeta, onUpdateSyncGroupMeta, onDissolveGroup }) {
   const dragRef = React.useRef(null);
   const [dropTarget, setDropTarget] = React.useState(null);
   const canvasRef = React.useRef(null);
-  const svgRef = React.useRef(null);
+  const [linkingGroupId, setLinkingGroupId] = React.useState(null);
 
-  const syncGroups = React.useMemo(() => {
-    const map = {};
-    projectType.documents.forEach(d => d.steps.forEach(s => {
-      if (s.syncGroupId) {
-        if (!map[s.syncGroupId]) map[s.syncGroupId] = [];
-        map[s.syncGroupId].push({ docName: d.name, stepName: s.stageName, stepId: s.id });
-      }
-    }));
-    return map;
-  }, [projectType]);
-
+  // Exit linking mode on Escape
   React.useEffect(() => {
-    if (!svgRef.current || !canvasRef.current) return;
-    const container = canvasRef.current;
-    const cRect = container.getBoundingClientRect();
-    const toLocal = r => ({
-      left:   r.left   - cRect.left + container.scrollLeft,
-      right:  r.right  - cRect.left + container.scrollLeft,
-      top:    r.top    - cRect.top  + container.scrollTop,
-      bottom: r.bottom - cRect.top  + container.scrollTop,
-      midY:  (r.top + r.bottom) / 2 - cRect.top + container.scrollTop,
-    });
-    const groupIds = Object.keys(syncGroups);
-    const shapes = [];
-    groupIds.forEach((gid, gIdx) => {
-      const color = SYNC_COLORS[gIdx % SYNC_COLORS.length];
-      const members = syncGroups[gid];
-      const rects = members.map(m => {
-        const el = container.querySelector(`[data-step-id="${m.stepId}"]`);
-        return el ? toLocal(el.getBoundingClientRect()) : null;
-      }).filter(Boolean);
-      if (rects.length < 2) return;
-      const x1 = Math.min(...rects.map(r => r.left))   - 6;
-      const x2 = Math.max(...rects.map(r => r.right))  + 6;
-      const y1 = Math.min(...rects.map(r => r.top))    - 4;
-      const y2 = Math.max(...rects.map(r => r.bottom)) + 4;
-      shapes.push(`<rect x="${x1}" y="${y1}" width="${x2-x1}" height="${y2-y1}" rx="10" fill="${color}" fill-opacity="0.10" />`);
-      const midY = (y1 + y2) / 2;
-      shapes.push(`<line x1="${x1}" y1="${midY}" x2="${x2}" y2="${midY}" stroke="${color}" stroke-width="2" stroke-dasharray="5 3" stroke-opacity="0.55" />`);
-    });
-    svgRef.current.innerHTML = shapes.join('');
-  });
+    if (!linkingGroupId) return;
+    const handler = (e) => { if (e.key === 'Escape') setLinkingGroupId(null); };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [linkingGroupId]);
+
+  const onLinkStep = (step, doc) => {
+    if (step.syncGroupId) {
+      if (step.syncGroupId === linkingGroupId) {
+        // Remove this step from the active group
+        const newSteps = doc.steps.map(s => s.id === step.id ? { ...s, syncGroupId: null } : s);
+        onUpdateProjectType({ ...projectType, documents: projectType.documents.map(d => d.id === doc.id ? { ...d, steps: newSteps } : d), updatedAt: new Date().toISOString() });
+        // If no steps remain in the group, dissolve it
+        const remaining = projectType.documents.flatMap(d => d.steps).filter(s => s.syncGroupId === linkingGroupId && s.id !== step.id);
+        if (remaining.length === 0) { onDissolveGroup(linkingGroupId); setLinkingGroupId(null); }
+      } else if (!linkingGroupId) {
+        // Enter linking mode for this step's existing group
+        setLinkingGroupId(step.syncGroupId);
+      }
+      // If in linking mode with a different group: ignore
+      return;
+    }
+    // Step is ungrouped
+    if (linkingGroupId) {
+      // Add to current group
+      const newSteps = doc.steps.map(s => s.id === step.id ? { ...s, syncGroupId: linkingGroupId } : s);
+      onUpdateProjectType({ ...projectType, documents: projectType.documents.map(d => d.id === doc.id ? { ...d, steps: newSteps } : d), updatedAt: new Date().toISOString() });
+    } else {
+      // Create new group
+      const newGroupId = uid();
+      const groupCount = Object.keys(syncGroupMeta).length;
+      const newMeta = { ...syncGroupMeta, [newGroupId]: { name: `Sync Group ${groupCount + 1}`, color: SYNC_COLORS[groupCount % SYNC_COLORS.length] } };
+      onUpdateSyncGroupMeta(newMeta);
+      const newSteps = doc.steps.map(s => s.id === step.id ? { ...s, syncGroupId: newGroupId } : s);
+      onUpdateProjectType({ ...projectType, documents: projectType.documents.map(d => d.id === doc.id ? { ...d, steps: newSteps } : d), updatedAt: new Date().toISOString() });
+      setLinkingGroupId(newGroupId);
+    }
+  };
 
   const updateDoc = (updated) => {
     onUpdateProjectType({
@@ -1161,7 +1208,7 @@ function ProjectTypeCanvas({ projectType, roles, onUpdateProjectType, allProject
   });
 
   return (
-    <div className="flex flex-col h-full overflow-hidden" id="canvas-print-area">
+    <div className="flex flex-col h-full overflow-hidden relative" id="canvas-print-area">
 
       {/* Fixed header row — never scrolls vertically */}
       <div className="shrink-0 overflow-hidden relative z-20 no-print" ref={headerScrollRef}>
@@ -1178,7 +1225,6 @@ function ProjectTypeCanvas({ projectType, roles, onUpdateProjectType, allProject
         {/* Gradient overlays the top of the steps area, below the fixed headers */}
         <div className="sticky top-0 left-0 right-0 h-8 pointer-events-none no-print z-10 -mb-8"
           style={{ background: 'linear-gradient(to bottom, #f1f5f9 0%, transparent 100%)' }} />
-        <svg ref={svgRef} style={{ position:'absolute', inset:0, width:'100%', height:'100%', pointerEvents:'none', overflow:'visible', zIndex:0 }} />
         <div className="flex gap-4 px-4 pt-3 pb-4 relative" style={{ minWidth: 'max-content', zIndex:1 }}>
           {projectType.documents.map((doc, docIdx) => (
             <DocumentColumn
@@ -1189,7 +1235,11 @@ function ProjectTypeCanvas({ projectType, roles, onUpdateProjectType, allProject
               dropTarget={dropTarget}
               setDropTarget={setDropTarget}
               onMoveStepDrop={moveStepDrop}
-              syncGroups={syncGroups}
+              linkingGroupId={linkingGroupId}
+              onLinkStep={(step) => onLinkStep(step, doc)}
+              syncGroupMeta={syncGroupMeta}
+              onUpdateSyncGroupMeta={onUpdateSyncGroupMeta}
+              onDissolveGroup={onDissolveGroup}
             />
           ))}
           {/* Add document column button */}
@@ -1202,6 +1252,24 @@ function ProjectTypeCanvas({ projectType, roles, onUpdateProjectType, allProject
           </div>
         </div>
       </div>
+
+      {/* Done-linking floating button */}
+      {linkingGroupId && (() => {
+        const meta = syncGroupMeta[linkingGroupId];
+        return (
+          <div className="absolute bottom-6 right-6 z-50 no-print flex flex-col items-end gap-2">
+            <div className="text-xs px-3 py-1 rounded-full font-semibold text-white shadow"
+              style={{ background: meta?.color || '#64748b' }}>
+              Editing: {meta?.name || 'Sync Group'}
+            </div>
+            <button onClick={() => setLinkingGroupId(null)}
+              className="px-4 py-2 rounded-xl text-sm font-semibold text-white shadow-lg transition-transform hover:scale-105"
+              style={{ background: meta?.color || '#64748b' }}>
+              ✓ Done linking
+            </button>
+          </div>
+        );
+      })()}
 
     </div>
   );
@@ -1542,6 +1610,23 @@ function App() {
     }));
   };
 
+  const updateSyncGroupMeta = (meta) => updateStore(s => ({ ...s, syncGroupMeta: meta }));
+
+  const dissolveGroup = (groupId) => {
+    updateStore(s => {
+      const newMeta = { ...s.syncGroupMeta };
+      delete newMeta[groupId];
+      const newPTs = s.projectTypes.map(pt => ({
+        ...pt,
+        documents: pt.documents.map(d => ({
+          ...d,
+          steps: d.steps.map(step => step.syncGroupId === groupId ? { ...step, syncGroupId: null } : step)
+        }))
+      }));
+      return { ...s, syncGroupMeta: newMeta, projectTypes: newPTs };
+    });
+  };
+
   const saveTemplate = (name) => {
     if (!activePT) return;
     const tmpl = {
@@ -1672,6 +1757,9 @@ function App() {
               allProjectTypes={store.projectTypes}
               onCopyStepToProject={copyStepToProject}
               onCopyDocToProject={copyDocToProject}
+              syncGroupMeta={store.syncGroupMeta || {}}
+              onUpdateSyncGroupMeta={updateSyncGroupMeta}
+              onDissolveGroup={dissolveGroup}
             />
           ) : (
             <div className="flex items-center justify-center h-full text-slate-400">
