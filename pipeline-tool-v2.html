@@ -739,6 +739,8 @@ function DocumentColumn({ doc, docIndex, totalDocs, onMoveDoc, projectTypeId, ro
   const [editStep, setEditStep] = useState(null);
   const [editDocName, setEditDocName] = useState(false);
   const [docNameVal, setDocNameVal] = useState(doc.name);
+  const [editOrderLabel, setEditOrderLabel] = useState(false);
+  const [orderLabelVal, setOrderLabelVal] = useState(doc.orderLabel || '');
   const [copyDocOpen, setCopyDocOpen] = useState(false);
   const [inlineTriggerFor, setInlineTriggerFor] = useState(null); // stepId
   const [inlineCustomText, setInlineCustomText] = useState('');
@@ -794,10 +796,29 @@ function DocumentColumn({ doc, docIndex, totalDocs, onMoveDoc, projectTypeId, ro
             onBlur={saveName} onKeyDown={e => e.key === 'Enter' && saveName()} autoFocus />
         ) : (
           <>
+            {editOrderLabel ? (
+              <input
+                className="w-8 text-xs font-bold text-center bg-white border rounded px-1 py-0.5 border-slate-300 mr-1.5 shrink-0"
+                style={{ color: doc.color }}
+                value={orderLabelVal}
+                onChange={e => setOrderLabelVal(e.target.value)}
+                onBlur={() => { onUpdateDoc({ ...doc, orderLabel: orderLabelVal.trim() }); setEditOrderLabel(false); }}
+                onKeyDown={e => { if (e.key === 'Enter' || e.key === 'Escape') { onUpdateDoc({ ...doc, orderLabel: orderLabelVal.trim() }); setEditOrderLabel(false); } }}
+                autoFocus
+                placeholder="#"
+              />
+            ) : (
+              <span
+                className="text-xs font-bold mr-1.5 shrink-0 cursor-pointer hover:opacity-80 transition-opacity"
+                style={{ color: doc.color, opacity: doc.orderLabel ? 1 : 0.3 }}
+                onClick={() => { setOrderLabelVal(doc.orderLabel || ''); setEditOrderLabel(true); }}
+                title="Click to set order number">
+                {doc.orderLabel ? `#${doc.orderLabel}` : '#'}
+              </span>
+            )}
             <span className="flex-1 font-bold text-sm truncate" style={{ color: doc.color }}
               onDoubleClick={() => { setDocNameVal(doc.name); setEditDocName(true); }}
               title="Double-click to rename">{doc.name}</span>
-            <span className="text-xs font-normal ml-1.5 shrink-0 opacity-50 no-print" style={{ color: doc.color }}>({doc.steps.length})</span>
           </>
         )}
         <div className="absolute right-2 top-1/2 -translate-y-1/2 flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
@@ -1046,7 +1067,7 @@ function ProjectTypeCanvas({ projectType, roles, onUpdateProjectType, allProject
     const color = colors[projectType.documents.length % colors.length];
     onUpdateProjectType({
       ...projectType,
-      documents: [...projectType.documents, { id: uid(), name: name.trim(), color, steps: [] }],
+      documents: [...projectType.documents, { id: uid(), name: name.trim(), color, steps: [], orderLabel: '' }],
       updatedAt: new Date().toISOString(),
     });
   };
