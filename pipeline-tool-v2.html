@@ -1465,14 +1465,29 @@ function NewProjectTypeModal({ store, onCreate, onClose }) {
 }
 
 // ── Print / PDF generator ──────────────────────────────────────────────────────
-function generatePrintHTML(projectType, roles) {
+function generatePrintHTML(projectType, roles, syncGroupMeta) {
   const numCols = projectType.documents.length;
-  const zoom = Math.min(1, 870 / Math.max(1, numCols * 190)).toFixed(3);
+  // Page width: ~62mm per column + 20mm margins; height auto
+  const pageWidthMM = Math.max(150, numCols * 65 + 20);
 
   const roleLabel = (ids) =>
     (ids || []).map(id => roles.find(r => r.id === id)?.label ?? id).join(', ');
 
   const actionIcon = (type) => type === 'review' ? '🔍' : type === 'approval' ? '✅' : type === 'consultation' ? '💬' : type === 'prepared_by' ? '📝' : '▸';
+
+  const fileOpLabel = (op) => {
+    if (op === 'copy') return '⎘ Document Copied';
+    if (op === 'move') return '→ Document Moved';
+    if (op === 'download_email') return '📧 Emailed as Attachment';
+    return '';
+  };
+
+  const deliveryLabel = (method) => {
+    if (method === 'download_email') return '📧 Emailed as Attachment';
+    if (method === 'in_person') return '🤝 Delivered In Person';
+    if (method === 'shared_folder') return '📂 Via Shared Folder';
+    return '';
+  };
 
   const stepHTML = (step, color) => {
     const actions = (step.actions || []).map(a =>
@@ -1485,25 +1500,45 @@ function generatePrintHTML(projectType, roles) {
 
     const storage = [];
     if (step.storageLocation) storage.push(`📁 ${step.storageLocation}`);
-    if (step.fileOperation) storage.push(step.fileOperation === 'copy' ? '⎘ Copies forward' : '→ Moves forward');
+    if (step.fileOperation) storage.push(fileOpLabel(step.fileOperation));
+
+    const delivery = step.deliveryMethod ? deliveryLabel(step.deliveryMethod) : '';
+
+    const triggerBadge = (step.triggerType && step.triggerLabel)
+      ? `<div class="trigger">⚡ ${step.triggerLabel}</div>` : '';
+
+    const infoBadge = step.informationOnly
+      ? '<span class="info-only">ⓘ Information Only</span>' : '';
+
+    const syncMeta = step.syncGroupId && syncGroupMeta?.[step.syncGroupId];
+    const syncBadge = syncMeta
+      ? `<div class="sync-badge" style="border-color:${syncMeta.color};color:${syncMeta.color}">🔗 ${syncMeta.name}</div>` : '';
 
     const rejection = step.returnToStepId ? '<div class="rejection">↩ If rejected, returns to an earlier step</div>' : '';
     const notes = step.notes ? `<div class="notes">📝 ${step.notes}</div>` : '';
 
+    const borderStyle = syncMeta
+      ? `border:2px solid ${syncMeta.color};border-top-color:${color};border-top-width:3px`
+      : `border:1px solid #e2e8f0;border-top:2px solid ${color}`;
+
     return `
-      <div class="step" style="border-top-color:${color}">
-        <div class="step-name">${step.stageName || '(unnamed)'}</div>
+      <div class="step" style="${borderStyle}">
+        <div class="step-name">${infoBadge}${step.stageName || '(unnamed)'}</div>
+        ${triggerBadge}
         ${actions ? `<div class="actions">${actions}</div>` : ''}
         ${parties.length ? `<div class="parties">${parties.join('<br>')}</div>` : ''}
-        ${storage.length ? `<div class="storage">${storage.join(' &nbsp;·&nbsp; ')}</div>` : ''}
+        ${(storage.length || delivery) ? `<div class="storage">${[...storage, delivery].filter(Boolean).join(' &nbsp;·&nbsp; ')}</div>` : ''}
+        ${syncBadge}
         ${rejection}
         ${notes}
       </div>`;
   };
 
-  const colsHTML = projectType.documents.map(doc => `
+  const colsHTML = projectType.documents.map(doc => {
+    const orderLabel = doc.orderLabel ? `<span class="order-lbl">#${doc.orderLabel}</span> ` : '';
+    return `
     <div class="col">
-      <div class="col-header" style="background:${doc.color}18;color:${doc.color};border-bottom:2px solid ${doc.color}">${doc.name}</div>
+      <div class="col-header" style="background:${doc.color}18;color:${doc.color};border-bottom:2px solid ${doc.color}">${orderLabel}${doc.name}</div>
       ${doc.steps.length === 0
         ? '<div class="empty">No steps defined</div>'
         : doc.steps.map((s, i) =>
@@ -1511,22 +1546,27 @@ function generatePrintHTML(projectType, roles) {
           ).join('')
       }
       <div class="complete" style="color:${doc.color};border-color:${doc.color}20;background:${doc.color}10">✓ Complete</div>
-    </div>`).join('');
+    </div>`;
+  }).join('');
 
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8"/>
 <style>
-  @page { size: landscape; margin: 1.2cm; }
-  body { font-family: system-ui, sans-serif; font-size: 9px; margin: 0; zoom: ${zoom}; }
+  @page { size: ${pageWidthMM}mm auto; margin: 10mm; }
+  * { box-sizing: border-box; }
+  body { font-family: system-ui, sans-serif; font-size: 9px; margin: 0; }
   h1 { font-size: 13px; font-weight: bold; margin: 0 0 2px; }
   .subtitle { font-size: 8px; color: #64748b; margin: 0 0 10px; }
   .columns { display: flex; gap: 8px; align-items: flex-start; }
   .col { flex: 1; min-width: 0; }
   .col-header { font-weight: bold; font-size: 9.5px; padding: 4px 6px; border-radius: 4px 4px 0 0; margin-bottom: 5px; }
-  .step { border: 1px solid #e2e8f0; border-top-width: 2px; border-radius: 5px; padding: 5px 6px; margin-bottom: 2px; background: #fff; }
+  .order-lbl { font-weight: bold; opacity: 0.7; }
+  .step { border-radius: 5px; padding: 5px 6px; margin-bottom: 2px; background: #fff; }
   .step-name { font-weight: bold; font-size: 9px; margin-bottom: 2px; color: #1e293b; }
+  .info-only { font-size: 7px; font-weight: bold; color: #0284c7; background: #e0f2fe; border-radius: 3px; padding: 1px 3px; margin-right: 3px; vertical-align: middle; }
+  .trigger { font-size: 7.5px; color: #92400e; background: #fef3c7; border: 1px solid #fcd34d; border-radius: 3px; padding: 1px 4px; margin-bottom: 3px; display: inline-block; }
   .actions { margin-bottom: 3px; }
   .action { font-size: 8px; color: #374151; line-height: 1.5; }
   .action b { color: #1e293b; }
@@ -1534,6 +1574,7 @@ function generatePrintHTML(projectType, roles) {
   .lbl-indigo { font-weight: bold; color: #4f46e5; }
   .lbl-green  { font-weight: bold; color: #059669; }
   .storage { font-size: 7.5px; color: #0d9488; margin-top: 2px; border-top: 1px solid #f0fdfa; padding-top: 2px; }
+  .sync-badge { font-size: 7px; font-weight: bold; border: 1px solid; border-radius: 3px; padding: 1px 4px; margin-top: 2px; display: inline-block; }
   .rejection { font-size: 7.5px; color: #b45309; margin-top: 2px; border-top: 1px dashed #fcd34d; padding-top: 2px; }
   .notes { font-size: 7.5px; color: #78716c; background: #fefce8; border: 1px solid #fef08a; border-radius: 3px; padding: 2px 4px; margin-top: 2px; }
   .arrow { text-align: center; font-size: 11px; line-height: 1.2; margin: 1px 0; }
@@ -1545,7 +1586,6 @@ function generatePrintHTML(projectType, roles) {
   <h1>${projectType.name} — Program Development Pipeline</h1>
   <div class="subtitle">Continuing Studies · Langara College &nbsp;|&nbsp; Generated ${new Date().toLocaleDateString('en-CA', { year:'numeric', month:'long', day:'numeric' })}</div>
   <div class="columns">${colsHTML}</div>
-  <script>window.onload = () => { window.print(); };<\/script>
 </body>
 </html>`;
 }
@@ -1740,10 +1780,16 @@ function App() {
             <div className="flex items-center gap-2 shrink-0">
               <Btn variant="secondary" sm onClick={() => setModal('saveTemplate')}>☆ Save as Template</Btn>
               <Btn variant="secondary" sm onClick={() => {
-                const html = generatePrintHTML(activePT, store.roles);
-                const win = window.open('', '_blank');
-                if (win) { win.document.write(html); win.document.close(); }
-                else alert('Pop-up blocked. Please allow pop-ups for this page and try again.');
+                const html = generatePrintHTML(activePT, store.roles, store.syncGroupMeta);
+                const iframe = document.createElement('iframe');
+                iframe.style.cssText = 'position:fixed;width:0;height:0;border:0;left:-9999px;top:-9999px;';
+                document.body.appendChild(iframe);
+                iframe.contentDocument.open();
+                iframe.contentDocument.write(html);
+                iframe.contentDocument.close();
+                iframe.contentWindow.focus();
+                iframe.contentWindow.print();
+                setTimeout(() => document.body.removeChild(iframe), 2000);
               }}>🖨 Print / Export PDF</Btn>
             </div>
           )}
