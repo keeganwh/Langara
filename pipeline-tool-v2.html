@@ -54,8 +54,8 @@ const DEFAULT_ROLES = [
   { id: 'r4', label: 'Director' },
 ];
 
-const STORAGE_PRESETS = ['CS Mgmt SharePoint', 'CS SharePoint'];
-const STORAGE_SHAREPOINT = ['CS Mgmt SharePoint', 'CS SharePoint'];
+const STORAGE_PRESETS = ['CS Mgmt SharePoint', 'CS SharePoint', 'N Drive'];
+const STORAGE_SHAREPOINT = ['CS Mgmt SharePoint', 'CS SharePoint', 'N Drive'];
 const STORAGE_ALL = [...STORAGE_SHAREPOINT];
 
 const TRIGGER_LABELS = {
@@ -67,9 +67,11 @@ const TRIGGER_LABELS = {
 const TRIGGER_TYPES = Object.keys(TRIGGER_LABELS);
 const triggerDisplay = (step) => step.triggerType === 'custom' ? (step.triggerLabel || 'Custom trigger') : (TRIGGER_LABELS[step.triggerType] || '');
 
+const SYNC_COLORS = ['#f59e0b','#10b981','#3b82f6','#a855f7','#ef4444','#f97316'];
+
 const mkAction = (type, label, person = '') => ({ id: uid(), type, label, person });
-const mkStep = (stageName, actions, presenterIds, carrierIds, notes = '', returnToStepId = null, storageLocation = '', fileOperation = '', deliveryMethod = '', informationOnly = false, triggerType = '', triggerLabel = '') =>
-  ({ id: uid(), stageName, actions, presenterIds, carrierIds, notes, returnToStepId, storageLocation, fileOperation, deliveryMethod, informationOnly, triggerType, triggerLabel });
+const mkStep = (stageName, actions, presenterIds, carrierIds, notes = '', returnToStepId = null, storageLocation = '', fileOperation = '', deliveryMethod = '', informationOnly = false, triggerType = '', triggerLabel = '', syncGroupId = null) =>
+  ({ id: uid(), stageName, actions, presenterIds, carrierIds, notes, returnToStepId, storageLocation, fileOperation, deliveryMethod, informationOnly, triggerType, triggerLabel, syncGroupId });
 
 function makeSeedProjectTypes() {
   // ── New Program ──
@@ -293,7 +295,7 @@ function buildStorageLocation(preset, subPath) {
   return sub ? `${preset} / ${sub}` : preset;
 }
 
-function StepForm({ step, docSteps, allSteps, roles, docColor, onSave, onClose }) {
+function StepForm({ step, docSteps, allSteps, roles, docColor, syncGroups, onSave, onClose }) {
   const [form, setForm] = useState(() => step ? { ...step, actions: step.actions.map(a => ({...a})) } : {
     id: uid(), stageName: '', actions: [], presenterIds: [], carrierIds: [],
     notes: '', returnToStepId: null, storageLocation: '', fileOperation: '', deliveryMethod: '', informationOnly: false, triggerType: '', triggerLabel: '',
@@ -314,7 +316,7 @@ function StepForm({ step, docSteps, allSteps, roles, docColor, onSave, onClose }
   const toggleArr = (k, id) => set(k, form[k].includes(id) ? form[k].filter(x => x !== id) : [...form[k], id]);
 
   const addAction = (type) => {
-    const label = type === 'review' ? 'Review by' : type === 'approval' ? 'Approval by' : '';
+    const label = type === 'review' ? 'Review by' : type === 'approval' ? 'Approval by' : type === 'consultation' ? 'Consultation by' : type === 'prepared_by' ? 'Document(s) Prepared by' : '';
     setForm(f => ({ ...f, actions: [...f.actions, { id: uid(), type, label, person: '' }] }));
   };
   const updateAction = (id, field, val) => setForm(f => ({
@@ -389,6 +391,8 @@ function StepForm({ step, docSteps, allSteps, roles, docColor, onSave, onClose }
         <div className="flex gap-2 flex-wrap">
           <Btn sm variant="secondary" onClick={() => addAction('review')}>+ Review by ___</Btn>
           <Btn sm variant="secondary" onClick={() => addAction('approval')}>+ Approval by ___</Btn>
+          <Btn sm variant="secondary" onClick={() => addAction('consultation')}>+ Consultation by ___</Btn>
+          <Btn sm variant="secondary" onClick={() => addAction('prepared_by')}>+ Document(s) Prepared by ___</Btn>
           <Btn sm variant="secondary" onClick={() => addAction('custom')}>+ Custom action</Btn>
         </div>
         <label className="flex items-center gap-2 cursor-pointer mt-2.5 pt-2.5 border-t border-slate-200">
@@ -472,6 +476,42 @@ function StepForm({ step, docSteps, allSteps, roles, docColor, onSave, onClose }
         <textarea className={textareaCls} rows={3} value={form.notes} onChange={e => set('notes', e.target.value)}
           placeholder="e.g. Bring signed copy; allow 2 weeks lead time; contact Jane for scheduling..." />
       </Field>
+
+      {/* Sync group */}
+      {syncGroups && (() => {
+        const groupEntries = Object.entries(syncGroups);
+        const groupLabel = (gid) => {
+          const members = syncGroups[gid] || [];
+          return members.map(m => m.docName).join(', ') || gid;
+        };
+        return (
+          <Field label="Runs concurrently with other steps?" hint="Link steps across documents that happen at the same meeting or time">
+            <select className={inputCls} value={form.syncGroupId || ''}
+              onChange={e => {
+                const v = e.target.value;
+                if (v === '__new__') {
+                  set('syncGroupId', uid());
+                } else {
+                  set('syncGroupId', v || null);
+                }
+              }}>
+              <option value="">— None —</option>
+              {groupEntries.filter(([gid]) => gid !== form.syncGroupId).map(([gid]) => (
+                <option key={gid} value={gid}>{groupLabel(gid)}</option>
+              ))}
+              {form.syncGroupId && groupEntries.some(([gid]) => gid === form.syncGroupId) && (
+                <option value={form.syncGroupId}>{groupLabel(form.syncGroupId)} (current)</option>
+              )}
+              <option value="__new__">+ New sync group</option>
+            </select>
+            {form.syncGroupId && (
+              <p className="text-xs text-amber-600 mt-1">
+                This step is in a sync group. Other steps with the same group will be visually connected on the canvas.
+              </p>
+            )}
+          </Field>
+        );
+      })()}
 
       <div className="flex justify-end gap-2 mt-2">
         <Btn variant="secondary" onClick={onClose}>Cancel</Btn>
@@ -582,7 +622,7 @@ function StepCard({ step, stepIndex, totalSteps, docSteps, roles, docColor, onEd
     const r = roles.find(r => r.id === id);
     return r ? r.label.replace('Program Coordinator', 'PC') : id;
   };
-  const actionIcon = (type) => type === 'review' ? '🔍' : type === 'approval' ? '✅' : '▸';
+  const actionIcon = (type) => type === 'review' ? '🔍' : type === 'approval' ? '✅' : type === 'consultation' ? '💬' : type === 'prepared_by' ? '📝' : '▸';
 
   return (
     <div className="step-card relative bg-white rounded-xl border-2 border-slate-200 overflow-hidden"
@@ -694,7 +734,7 @@ function StepCard({ step, stepIndex, totalSteps, docSteps, roles, docColor, onEd
 }
 
 // ── DocumentColumn ─────────────────────────────────────────────────────────────
-function DocumentColumn({ doc, docIndex, totalDocs, onMoveDoc, projectTypeId, roles, store, onUpdateDoc, onDeleteDoc, otherDocs, otherProjects, onCopyStepToDoc, onCopyStepToProject, onCopyDocToProject, dragRef, dropTarget, setDropTarget, onMoveStepDrop }) {
+function DocumentColumn({ doc, docIndex, totalDocs, onMoveDoc, projectTypeId, roles, store, onUpdateDoc, onDeleteDoc, otherDocs, otherProjects, onCopyStepToDoc, onCopyStepToProject, onCopyDocToProject, dragRef, dropTarget, setDropTarget, onMoveStepDrop, syncGroups }) {
   const [addingStep, setAddingStep] = useState(false);
   const [editStep, setEditStep] = useState(null);
   const [editDocName, setEditDocName] = useState(false);
@@ -746,16 +786,19 @@ function DocumentColumn({ doc, docIndex, totalDocs, onMoveDoc, projectTypeId, ro
   return (
     <div className="doc-col flex flex-col bg-slate-100">
       {/* Column header */}
-      <div className="group relative rounded-xl mb-3 px-3 py-2.5 flex items-center no-print sticky top-4 z-10"
+      <div className="group relative rounded-xl mb-0 px-3 py-2.5 flex items-center no-print sticky top-0 z-10"
         style={{ background: `color-mix(in srgb, ${doc.color} 12%, white)`, borderBottom: `3px solid ${doc.color}` }}>
         {editDocName ? (
           <input className="flex-1 text-sm font-bold bg-white border rounded px-2 py-0.5 border-slate-300"
             value={docNameVal} onChange={e => setDocNameVal(e.target.value)}
             onBlur={saveName} onKeyDown={e => e.key === 'Enter' && saveName()} autoFocus />
         ) : (
-          <span className="flex-1 font-bold text-sm truncate" style={{ color: doc.color }}
-            onDoubleClick={() => { setDocNameVal(doc.name); setEditDocName(true); }}
-            title="Double-click to rename">{doc.name}</span>
+          <>
+            <span className="flex-1 font-bold text-sm truncate" style={{ color: doc.color }}
+              onDoubleClick={() => { setDocNameVal(doc.name); setEditDocName(true); }}
+              title="Double-click to rename">{doc.name}</span>
+            <span className="text-xs font-normal ml-1.5 shrink-0 opacity-50 no-print" style={{ color: doc.color }}>({doc.steps.length})</span>
+          </>
         )}
         <div className="absolute right-2 top-1/2 -translate-y-1/2 flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
           style={{ background: doc.color + '18' }}>
@@ -776,6 +819,9 @@ function DocumentColumn({ doc, docIndex, totalDocs, onMoveDoc, projectTypeId, ro
             className="w-5 h-5 rounded text-xs flex items-center justify-center hover:bg-red-100 text-red-400 transition-colors" title="Delete document">✕</button>
         </div>
       </div>
+      {/* Gradient fade strip so steps disappear cleanly under the sticky header */}
+      <div className="h-3 pointer-events-none no-print z-10 relative"
+        style={{ background: 'linear-gradient(to bottom, #f1f5f9, transparent)' }} />
 
       {/* Print header */}
       <div className="rounded-xl mb-3 px-3 py-2.5 hidden" style={{ background: doc.color + '18', borderBottom: `3px solid ${doc.color}` }}
@@ -913,6 +959,7 @@ function DocumentColumn({ doc, docIndex, totalDocs, onMoveDoc, projectTypeId, ro
           docSteps={doc.steps}
           roles={roles}
           docColor={doc.color}
+          syncGroups={syncGroups}
           onSave={saveStep}
           onClose={() => { setAddingStep(false); setEditStep(null); }}
         />
@@ -930,6 +977,51 @@ function DocumentColumn({ doc, docIndex, totalDocs, onMoveDoc, projectTypeId, ro
 function ProjectTypeCanvas({ projectType, roles, onUpdateProjectType, allProjectTypes, onCopyStepToProject, onCopyDocToProject }) {
   const dragRef = React.useRef(null);
   const [dropTarget, setDropTarget] = React.useState(null);
+  const canvasRef = React.useRef(null);
+  const svgRef = React.useRef(null);
+
+  const syncGroups = React.useMemo(() => {
+    const map = {};
+    projectType.documents.forEach(d => d.steps.forEach(s => {
+      if (s.syncGroupId) {
+        if (!map[s.syncGroupId]) map[s.syncGroupId] = [];
+        map[s.syncGroupId].push({ docName: d.name, stepName: s.stageName, stepId: s.id });
+      }
+    }));
+    return map;
+  }, [projectType]);
+
+  React.useEffect(() => {
+    if (!svgRef.current || !canvasRef.current) return;
+    const container = canvasRef.current;
+    const cRect = container.getBoundingClientRect();
+    const toLocal = r => ({
+      left:   r.left   - cRect.left + container.scrollLeft,
+      right:  r.right  - cRect.left + container.scrollLeft,
+      top:    r.top    - cRect.top  + container.scrollTop,
+      bottom: r.bottom - cRect.top  + container.scrollTop,
+      midY:  (r.top + r.bottom) / 2 - cRect.top + container.scrollTop,
+    });
+    const groupIds = Object.keys(syncGroups);
+    const shapes = [];
+    groupIds.forEach((gid, gIdx) => {
+      const color = SYNC_COLORS[gIdx % SYNC_COLORS.length];
+      const members = syncGroups[gid];
+      const rects = members.map(m => {
+        const el = container.querySelector(`[data-step-id="${m.stepId}"]`);
+        return el ? toLocal(el.getBoundingClientRect()) : null;
+      }).filter(Boolean);
+      if (rects.length < 2) return;
+      const x1 = Math.min(...rects.map(r => r.left))   - 6;
+      const x2 = Math.max(...rects.map(r => r.right))  + 6;
+      const y1 = Math.min(...rects.map(r => r.top))    - 4;
+      const y2 = Math.max(...rects.map(r => r.bottom)) + 4;
+      shapes.push(`<rect x="${x1}" y="${y1}" width="${x2-x1}" height="${y2-y1}" rx="10" fill="${color}" fill-opacity="0.10" />`);
+      const midY = (y1 + y2) / 2;
+      shapes.push(`<line x1="${x1}" y1="${midY}" x2="${x2}" y2="${midY}" stroke="${color}" stroke-width="2" stroke-dasharray="5 3" stroke-opacity="0.55" />`);
+    });
+    svgRef.current.innerHTML = shapes.join('');
+  });
 
   const updateDoc = (updated) => {
     onUpdateProjectType({
@@ -1021,8 +1113,9 @@ function ProjectTypeCanvas({ projectType, roles, onUpdateProjectType, allProject
 
   return (
     <div className="flex flex-col h-full">
-      <div className="overflow-x-auto overflow-y-auto flex-1 pb-4" id="canvas-print-area">
-        <div className="flex gap-4 items-start p-4" style={{ minWidth: 'max-content' }}>
+      <div className="overflow-x-auto overflow-y-auto flex-1 pb-4 relative" id="canvas-print-area" ref={canvasRef}>
+        <svg ref={svgRef} style={{ position:'absolute', inset:0, width:'100%', height:'100%', pointerEvents:'none', overflow:'visible', zIndex:0 }} />
+        <div className="flex gap-4 items-start p-4 relative" style={{ minWidth: 'max-content', zIndex:1 }}>
           {projectType.documents.map((doc, docIdx) => (
             <DocumentColumn
               key={doc.id}
@@ -1043,6 +1136,7 @@ function ProjectTypeCanvas({ projectType, roles, onUpdateProjectType, allProject
               dropTarget={dropTarget}
               setDropTarget={setDropTarget}
               onMoveStepDrop={moveStepDrop}
+              syncGroups={syncGroups}
             />
           ))}
           {/* Add document column button */}
@@ -1254,7 +1348,7 @@ function generatePrintHTML(projectType, roles) {
   const roleLabel = (ids) =>
     (ids || []).map(id => roles.find(r => r.id === id)?.label ?? id).join(', ');
 
-  const actionIcon = (type) => type === 'review' ? '🔍' : type === 'approval' ? '✅' : '▸';
+  const actionIcon = (type) => type === 'review' ? '🔍' : type === 'approval' ? '✅' : type === 'consultation' ? '💬' : type === 'prepared_by' ? '📝' : '▸';
 
   const stepHTML = (step, color) => {
     const actions = (step.actions || []).map(a =>
