@@ -1554,7 +1554,7 @@ function generatePrintHTML(projectType, roles, syncGroupMeta) {
 <html lang="en">
 <head>
 <meta charset="UTF-8"/>
-<style id="page-style">
+<style>
   @page { size: ${pageWidthMM}mm auto; margin: 10mm; }
   * { box-sizing: border-box; }
   body { font-family: system-ui, sans-serif; font-size: 9px; margin: 0; }
@@ -1587,19 +1587,7 @@ function generatePrintHTML(projectType, roles, syncGroupMeta) {
   <h1>${projectType.name} — Program Development Pipeline</h1>
   <div class="subtitle">Continuing Studies · Langara College &nbsp;|&nbsp; Generated ${new Date().toLocaleDateString('en-CA', { year:'numeric', month:'long', day:'numeric' })}</div>
   <div class="columns">${colsHTML}</div>
-<script>
-window.onload = function() {
-  var body = document.body;
-  var w = body.scrollWidth;
-  var h = body.scrollHeight;
-  var PX_TO_MM = 0.264583;
-  var wMM = Math.ceil(w * PX_TO_MM) + 20;
-  var hMM = Math.ceil(h * PX_TO_MM) + 20;
-  document.getElementById('page-style').textContent =
-    '@page { size: ' + wMM + 'mm ' + hMM + 'mm; margin: 10mm; } * { box-sizing: border-box; } body { font-family: system-ui, sans-serif; font-size: 9px; margin: 0; }';
-  window.print();
-};
-<\/script>
+<script>window.onload = function() { window.print(); };<\/script>
 </body>
 </html>`;
 }
