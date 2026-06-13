@@ -1587,7 +1587,17 @@ function generatePrintHTML(projectType, roles, syncGroupMeta) {
   <h1>${projectType.name} — Program Development Pipeline</h1>
   <div class="subtitle">Continuing Studies · Langara College &nbsp;|&nbsp; Generated ${new Date().toLocaleDateString('en-CA', { year:'numeric', month:'long', day:'numeric' })}</div>
   <div class="columns">${colsHTML}</div>
-<script>window.onload = function() { window.print(); };<\/script>
+<script>
+window.onload = function() {
+  var PX_MM = 0.264583;
+  var wMM = Math.ceil(document.body.scrollWidth * PX_MM) + 22;
+  var hMM = Math.ceil(document.body.scrollHeight * PX_MM) + 22;
+  var s = document.createElement('style');
+  s.textContent = '@page{size:' + wMM + 'mm ' + hMM + 'mm;margin:10mm;}';
+  document.head.appendChild(s);
+  window.print();
+};
+<\/script>
 </body>
 </html>`;
 }
@@ -1784,7 +1794,8 @@ function App() {
               <Btn variant="secondary" sm onClick={() => {
                 const html = generatePrintHTML(activePT, store.roles, store.syncGroupMeta);
                 const iframe = document.createElement('iframe');
-                iframe.style.cssText = 'position:fixed;width:0;height:0;border:0;left:-9999px;top:-9999px;';
+                // Give real dimensions off-screen so flex layout renders before we measure
+                iframe.style.cssText = 'position:fixed;left:-9999px;top:-9999px;border:0;width:3000px;height:4000px;';
                 document.body.appendChild(iframe);
                 iframe.contentDocument.open();
                 iframe.contentDocument.write(html);
