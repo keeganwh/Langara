@@ -1590,10 +1590,10 @@ function generatePrintHTML(projectType, roles, syncGroupMeta) {
 <script>
 window.onload = function() {
   var PX_MM = 0.264583;
-  var wMM = Math.ceil(document.body.scrollWidth * PX_MM) + 22;
-  var hMM = Math.ceil(document.body.scrollHeight * PX_MM) + 22;
+  var wMM = Math.ceil(document.body.scrollWidth * PX_MM * 1.03) + 25;
+  var hMM = Math.ceil(document.body.scrollHeight * PX_MM * 1.03) + 25;
   var s = document.createElement('style');
-  s.textContent = '@page{size:' + wMM + 'mm ' + hMM + 'mm;margin:10mm;}';
+  s.textContent = '@page{size:' + wMM + 'mm ' + hMM + 'mm;margin:8mm;}';
   document.head.appendChild(s);
   window.print();
 };
