@@ -65,14 +65,35 @@ function getFbDb() {
 }
 function getFbAuth() { return firebase.auth(getFbApp()); }
 
+// Firebase drops empty arrays/objects on save, so restore defaults after loading
+function normalizeStep(s) {
+  return { ...s,
+    actions: s.actions || [], presenterIds: s.presenterIds || [], carrierIds: s.carrierIds || [],
+    notes: s.notes || '', storageLocation: s.storageLocation || '', fileOperation: s.fileOperation || '',
+    deliveryMethod: s.deliveryMethod || '', informationOnly: s.informationOnly || false,
+    triggerType: s.triggerType || '', triggerLabel: s.triggerLabel || '',
+    syncGroupId: s.syncGroupId || null, returnToStepId: s.returnToStepId || null,
+  };
+}
+function normalizeStore(store) {
+  if (!store) return store;
+  return { ...store,
+    roles: store.roles || [], templates: store.templates || [], syncGroupMeta: store.syncGroupMeta || {},
+    projectTypes: (store.projectTypes || []).map(pt => ({
+      ...pt,
+      documents: (pt.documents || []).map(d => ({ ...d, steps: (d.steps || []).map(normalizeStep), orderLabel: d.orderLabel || '' })),
+    })),
+  };
+}
+
 async function loadFromFB() {
   try {
     const snap = await getFbDb().ref(FB_PATH).get();
-    if (snap.exists()) return snap.val();
+    if (snap.exists()) return normalizeStore(snap.val());
     return null;
   } catch (e) {
     console.warn('Firebase load failed, using localStorage fallback:', e);
-    try { const r = localStorage.getItem(STORAGE_KEY); return r ? JSON.parse(r) : null; } catch {}
+    try { const r = localStorage.getItem(STORAGE_KEY); return r ? normalizeStore(JSON.parse(r)) : null; } catch {}
     return null;
   }
 }
