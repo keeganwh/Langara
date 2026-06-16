@@ -1190,6 +1190,7 @@ function ProjectTypeCanvas({ projectType, roles, onUpdateProjectType, allProject
   const [dropTarget, setDropTarget] = React.useState(null);
   const canvasRef = React.useRef(null);
   const [linkingGroupId, setLinkingGroupId] = React.useState(null);
+  const headerScrollRef = React.useRef(null);
 
   // Exit linking mode on Escape
   React.useEffect(() => {
@@ -1320,7 +1321,6 @@ function ProjectTypeCanvas({ projectType, roles, onUpdateProjectType, allProject
     dragRef.current = null;
   };
 
-  const headerScrollRef = React.useRef(null);
   const onStepsScroll = (e) => {
     if (headerScrollRef.current) headerScrollRef.current.scrollLeft = e.currentTarget.scrollLeft;
   };
