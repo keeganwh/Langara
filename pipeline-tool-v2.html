@@ -357,7 +357,7 @@ function useStore() {
     }, 2000);
   }, [store]);
   const update = useCallback((updater) => {
-    setStore(prev => typeof updater === 'function' ? updater(prev) : { ...prev, ...updater });
+    setStore(prev => normalizeStore(typeof updater === 'function' ? updater(prev) : { ...prev, ...updater }));
   }, []);
   return [store, update, syncStatus, refreshStore];
 }
