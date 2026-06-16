@@ -1510,7 +1510,7 @@ function generatePrintHTML(projectType, roles, syncGroupMeta) {
     const infoBadge = step.informationOnly
       ? '<span class="info-only">ⓘ Information Only</span>' : '';
 
-    const syncMeta = step.syncGroupId && syncGroupMeta?.[step.syncGroupId];
+    const syncMeta = step.syncGroupId && syncGroupMeta && syncGroupMeta[step.syncGroupId];
     const syncBadge = syncMeta
       ? `<div class="sync-badge" style="border-color:${syncMeta.color};color:${syncMeta.color}">🔗 ${syncMeta.name}</div>` : '';
 
