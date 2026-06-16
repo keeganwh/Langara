@@ -365,7 +365,7 @@ function useStore() {
 // ── Primitive Components ───────────────────────────────────────────────────────
 function Modal({ title, onClose, wide, children }) {
   return (
-    <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/40 p-4"
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/40 p-4"
       onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
       <div className={`bg-white rounded-xl shadow-2xl flex flex-col ${wide ? 'w-full max-w-2xl' : 'w-full max-w-lg'} max-h-[90vh] fade-in`}>
         <div className="flex items-center justify-between px-5 py-3 border-b">
@@ -1041,7 +1041,7 @@ function DocumentColumn({ doc, docIndex, totalDocs, onMoveDoc, projectTypeId, ro
       </div>
 
       {/* Steps */}
-      <div className="flex-1 space-y-0"
+      <div className="space-y-0"
         onDragOver={e => { e.preventDefault(); if (dragRef?.current) setDropTarget({ docId: doc.id, atEnd: true }); }}
         onDrop={e => { e.preventDefault(); if (dragRef?.current) { const { stepId, srcDocId } = dragRef.current; onMoveStepDrop(srcDocId, stepId, doc.id, null); } }}>
         {doc.steps.length === 0 && (
@@ -1733,11 +1733,41 @@ window.onload = function() {
 </html>`;
 }
 
+// ── Presence ───────────────────────────────────────────────────────────────────
+function usePresence(authUser) {
+  const [activeUsers, setActiveUsers] = useState([]);
+  useEffect(() => {
+    if (!authUser) return;
+    const db = getFbDb();
+    const presenceRef = db.ref('presence/' + authUser.uid);
+    presenceRef.set({
+      email: authUser.email,
+      displayName: authUser.displayName || authUser.email,
+      online: true,
+      lastSeen: firebase.database.ServerValue.TIMESTAMP,
+    });
+    presenceRef.onDisconnect().remove();
+    const allPresenceRef = db.ref('presence');
+    const listener = allPresenceRef.on('value', snap => {
+      const val = snap.val() || {};
+      setActiveUsers(Object.entries(val).map(([uid, data]) => ({ uid, ...data })));
+    });
+    return () => {
+      allPresenceRef.off('value', listener);
+      presenceRef.remove();
+    };
+  }, [authUser?.uid]);
+  return activeUsers;
+}
+
 // ── App ────────────────────────────────────────────────────────────────────────
 function App({ authUser }) {
   const [store, updateStore, syncStatus, refreshStore] = useStore();
+  const activeUsers = usePresence(authUser);
   const [modal, setModal] = useState(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [sidebarWidth, setSidebarWidth] = useState(240);
+  const sidebarDragRef = useRef(false);
 
   if (!store) return (
     <div className="flex items-center justify-center h-screen bg-slate-100">
@@ -1840,7 +1870,7 @@ function App({ authUser }) {
   return (
     <div className="flex h-screen overflow-hidden bg-slate-100">
       {/* Sidebar */}
-      <aside className={`${sidebarOpen ? 'w-60' : 'w-0'} bg-white border-r border-slate-200 flex flex-col shrink-0 no-print overflow-hidden transition-all duration-200`}>
+      <aside className="bg-white border-r border-slate-200 flex flex-col shrink-0 no-print overflow-hidden" style={{ width: sidebarOpen ? sidebarWidth : 0, position: 'relative' }}>
         <div className="p-4 border-b border-slate-200">
           <div className="font-bold text-slate-800 text-sm leading-tight">CS Pipeline Tool</div>
           <div className="text-xs text-slate-400 mt-0.5">Continuing Studies · Langara</div>
@@ -1907,6 +1937,30 @@ function App({ authUser }) {
             <span>↺</span> Reset to Defaults
           </button>
         </div>
+        <div
+          style={{ position:'absolute', top:0, right:0, width:4, height:'100%', cursor:'col-resize', zIndex:10, userSelect:'none' }}
+          onMouseDown={e => {
+            sidebarDragRef.current = true;
+            const onMove = ev => {
+              if (!sidebarDragRef.current) return;
+              const newWidth = ev.clientX;
+              if (newWidth < 48) {
+                setSidebarOpen(false);
+              } else {
+                const clamped = Math.min(400, Math.max(48, newWidth));
+                setSidebarWidth(clamped);
+                setSidebarOpen(true);
+              }
+            };
+            const onUp = () => {
+              sidebarDragRef.current = false;
+              document.removeEventListener('mousemove', onMove);
+              document.removeEventListener('mouseup', onUp);
+            };
+            document.addEventListener('mousemove', onMove);
+            document.addEventListener('mouseup', onUp);
+          }}
+        />
       </aside>
 
       {/* Main area */}
@@ -1929,6 +1983,22 @@ function App({ authUser }) {
             )}
           </div>
           <div className="flex items-center gap-1.5 shrink-0 no-print">
+            {activeUsers.length > 0 && (
+              <div className="flex items-center gap-1 mr-1">
+                {activeUsers.slice(0, 5).map(u => {
+                  const initials = (u.displayName || u.email || '?').slice(0,2).toUpperCase();
+                  const hash = [...(u.uid || '')].reduce((acc, c) => acc + c.charCodeAt(0), 0);
+                  const colors = ['#6366f1','#10b981','#f59e0b','#ef4444','#8b5cf6','#0ea5e9'];
+                  const bg = colors[hash % colors.length];
+                  return (
+                    <div key={u.uid} title={u.email || u.displayName}
+                      style={{ width:24, height:24, borderRadius:'50%', background: bg, color:'white', fontSize:9, fontWeight:'bold', display:'flex', alignItems:'center', justifyContent:'center', border:'2px solid white', marginLeft: -4 }}>
+                      {initials}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
             <button onClick={refreshStore} title="Pull latest from Firebase"
               className="text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded px-1.5 py-1 text-xs transition-colors">↻</button>
             <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
