@@ -364,8 +364,9 @@ function useStore() {
 
 // ── Primitive Components ───────────────────────────────────────────────────────
 function Modal({ title, onClose, wide, children }) {
-  return (
-    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/40 p-4"
+  const content = (
+    <div className="fixed inset-0 flex items-center justify-center bg-black/40 p-4"
+      style={{ zIndex: 99999 }}
       onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
       <div className={`bg-white rounded-xl shadow-2xl flex flex-col ${wide ? 'w-full max-w-2xl' : 'w-full max-w-lg'} max-h-[90vh] fade-in`}>
         <div className="flex items-center justify-between px-5 py-3 border-b">
@@ -376,6 +377,7 @@ function Modal({ title, onClose, wide, children }) {
       </div>
     </div>
   );
+  return ReactDOM.createPortal(content, document.body);
 }
 
 function Btn({ onClick, children, variant = 'primary', sm, disabled, className = '' }) {
