@@ -161,10 +161,26 @@ There is no test suite. Verify changes by opening the file in a browser and
 exercising the affected flow. A blank page almost always means a syntax or
 Babel-transform error — check the browser console first.
 
+## Deployment — read this before pushing
+
+The live app is served by **GitHub Pages** at
+<https://keeganwh.github.io/Langara/pipeline-tool-v2.html>, deployed from
+the **`claude/sharp-mayer-090866`** branch (odd name, but it is the trunk
+and the repo's GitHub default). Pages is configured as *deploy from a
+branch*, so **pushing to `claude/sharp-mayer-090866` publishes to the live
+URL within about a minute.** There is no review gate.
+
+Consequences:
+
+- Work committed to any other branch is **not live**, however finished it is.
+- A push to the trunk is a production deploy. Verify in a browser first.
+- `main` exists (created 2026-08-26) but is **not** what Pages serves.
+  Don't assume the usual `main` convention here.
+
 ## Git
 
-`main` is the trunk — work directly on it unless there's a reason not to.
-Commit with descriptive messages. Never commit `.claude/` (gitignored).
+Trunk is `claude/sharp-mayer-090866` — see above. Commit with descriptive
+messages. Never commit `.claude/` (gitignored).
 
 Before a change big enough to be worth naming, cut an
 `archive/vX.Y-<short-name>` branch at the current tip and push it, then
@@ -173,10 +189,17 @@ distinction between backing up the **code** (git) and the **data** (the
 app's Backup & Restore export) — they are separate, and rolling one back
 does not roll back the other.
 
-Note: the repository's GitHub default branch is still the older
-`claude/sharp-mayer-090866`, and `main` was created on 2026-08-26. If the
-default hasn't been switched to `main` in GitHub's settings yet, that's the
-reason PRs and fresh clones may point somewhere unexpected.
+## Ask before creating
+
+Don't create branches, files, tags, services, or accounts that weren't
+asked for. If the obvious path seems to need one, **ask first** — say what's
+missing and what you propose, rather than inventing scaffolding and
+reporting it afterwards. Prefer using what already exists, even when the
+naming is unintuitive.
+
+This applies especially to anything with a name that implies convention
+(`main`, `dist/`, `.github/workflows/`), because those quietly become
+structure that everyone afterwards has to work around.
 
 ## Known rough edges
 

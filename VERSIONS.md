@@ -67,7 +67,8 @@ This is the fallback if anything in v2.1 misbehaves.
 
 ## Conventions
 
-- `main` is the trunk. Work happens here.
+- `claude/sharp-mayer-090866` is the trunk **and the GitHub Pages deploy
+  branch** — pushing to it publishes the live site. See CLAUDE.md.
 - Before a change big enough to be worth naming, cut
   `archive/vX.Y-<short-name>` at the current tip of `main` and push it.
 - Annotated git tags would be tidier, but tag pushes are currently blocked
