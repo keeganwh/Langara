@@ -163,8 +163,20 @@ Babel-transform error — check the browser console first.
 
 ## Git
 
-Work on the designated feature branch. Commit with descriptive messages.
-Never commit `.claude/` (gitignored).
+`main` is the trunk — work directly on it unless there's a reason not to.
+Commit with descriptive messages. Never commit `.claude/` (gitignored).
+
+Before a change big enough to be worth naming, cut an
+`archive/vX.Y-<short-name>` branch at the current tip and push it, then
+record it in `VERSIONS.md`. See that file for rollback steps and for the
+distinction between backing up the **code** (git) and the **data** (the
+app's Backup & Restore export) — they are separate, and rolling one back
+does not roll back the other.
+
+Note: the repository's GitHub default branch is still the older
+`claude/sharp-mayer-090866`, and `main` was created on 2026-08-26. If the
+default hasn't been switched to `main` in GitHub's settings yet, that's the
+reason PRs and fresh clones may point somewhere unexpected.
 
 ## Known rough edges
 
