@@ -81,12 +81,54 @@ always regenerates ids (and clears `returnToStepId`) — see `copyStepToDoc`,
 | 673–763 | `CopyToModal`, `CopyDocModal` | cross-document / cross-project copying |
 | 765–915 | `StepCard` | one step; drag source & drop target |
 | 917–1188 | `DocumentColumn` | one document column; `renderMode` is `'header'` or `'body'` |
-| 1190–1413 | `ProjectTypeCanvas` | **the main view** — horizontal document columns |
+| 1190–1413 | `ProjectTypeCanvas` | **Documents view** — horizontal document columns |
 | 1415–1600 | editor modals | project types, roles, backup/restore, templates |
-| 1602–1737 | `generatePrintHTML` | standalone HTML string for print/PDF export |
-| 1739–1764 | `usePresence` | live avatars of other signed-in editors |
-| 1766–2075 | `App` | sidebar, top bar, modal routing |
-| 2076–2094 | `Root` | auth gate |
+| 1602–1750 | `buildStepSpine`, `docTrack`, flow prefs | step-matching + ordering logic for the Step Flow view |
+| 1751–1770 | `FlowStepNode` | one cell of the Step Flow matrix |
+| 1771–1930 | `StepFlowView` | **Step Flow view** — documents as rows, steps as columns |
+| 1932–2060 | `generatePrintHTML` | print/PDF for the Documents view |
+| 2062–2222 | `generateFlowPrintHTML` | print/PDF for the Step Flow view |
+| 2224–2248 | `usePresence` | live avatars of other signed-in editors |
+| 2250–2570 | `App` | sidebar, top bar, view toggle, modal routing |
+| 2571–2590 | `Root` | auth gate |
+
+(Line numbers drift with edits — grep for the `// ── Name ──` banner comments.)
+
+## The two views
+
+The top bar toggles between them; `view` state lives in `App`.
+
+- **Documents** (`ProjectTypeCanvas`) — the original, full-detail view. One
+  column per document, steps stacked vertically. All editing happens here.
+- **Step Flow** (`StepFlowView`) — read-only "at a glance" view. One **row per
+  document**, one **column per step**, so you can see each document's whole
+  journey as a horizontal track: solid coloured line through steps it goes
+  through, dashed grey line through steps it **bypasses**, `▸ START` on its
+  first step and `✓ END` on its last.
+
+### How Step Flow matches steps across documents
+
+**By name, deliberately** — not by sync group. Two steps called "JCCS" are the
+same stage of the process even if the documents reach it at different
+meetings; sync groups mean "the *same* meeting", which is a different question
+and is ignored here. `stepKey()` normalizes case, whitespace, and dash
+variants, so "VPE – ELT" and "VPE - ELT" collapse into one column.
+
+Column order comes from `buildStepSpine()`: each document's own step sequence
+contributes ordering constraints, and a topological sort merges them into one
+canonical pipeline. Documents that disagree, or a genuine return loop, fall
+back to earliest-position-wins — the sort is cycle-safe and always terminates.
+
+### Step Flow view preferences
+
+Per-step visibility and per-detail toggles are **view preferences, stored in
+`localStorage`** under `cs_pipeline_flow_prefs_v1`, keyed by project type id —
+deliberately *not* in the Firebase store, so toggling what you look at never
+writes to the shared document or triggers a sync. All detail toggles default
+to **off**; the bare view shows only presence/absence, which is the point.
+
+If these should ever become shared team settings, they move into `store` and
+need a `normalizeStore` default.
 
 ## Conventions to follow
 
@@ -107,8 +149,11 @@ always regenerates ids (and clears `returnToStepId`) — see `copyStepToDoc`,
   stamps `updatedAt`.
 - Modals must render via the `Modal` primitive (portal) to sit above the
   sticky headers.
-- Print output has its own renderer (`generatePrintHTML`) — **new views need
-  a matching change there** if they should be printable.
+- Print output has its own renderer per view (`generatePrintHTML` for
+  Documents, `generateFlowPrintHTML` for Step Flow) — the React components are
+  **not** reused for print. **New views need a matching renderer** if they
+  should be printable. The Print button in `App` dispatches on `view`.
+- The `?.[expr]` Babel caveat applies to **both** print generators.
 
 ## Testing
 

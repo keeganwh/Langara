@@ -1598,6 +1598,340 @@ function NewProjectTypeModal({ store, onCreate, onClose }) {
   );
 }
 
+// ── Step Flow view (step-centric) ──────────────────────────────────────────────
+// Second view: rows are documents, columns are the shared pipeline of steps.
+// Steps are matched across documents *by name* — two steps called "JCCS" are the
+// same stage of the process, regardless of whether they happen at the same
+// meeting (that's what sync groups are for, and they're deliberately ignored
+// here). A document that never visits a step is shown bypassing it.
+
+const FLOW_PREFS_KEY = 'cs_pipeline_flow_prefs_v1';
+
+// Normalized matching key: case-, whitespace- and dash-insensitive so
+// "VPE – ELT" and "VPE - ELT" collapse to one column.
+const stepKey = (name) => (name || '')
+  .replace(/[‐-―]/g, '-')
+  .trim().toLowerCase().replace(/\s+/g, ' ');
+
+// Derive the canonical left-to-right order of steps for a project type.
+// Each document contributes ordering constraints (its own step sequence);
+// a topological sort merges them. Documents that disagree, or a genuine
+// cycle (a return loop), fall back to earliest-position-wins.
+function buildStepSpine(projectType) {
+  const docs = (projectType && projectType.documents) || [];
+  const nodes = new Map();   // key -> { key, label, firstIdx }
+  const succ  = new Map();   // key -> Set(key)
+  const indeg = new Map();   // key -> number
+
+  docs.forEach(doc => {
+    (doc.steps || []).forEach((s, i) => {
+      const k = stepKey(s.stageName);
+      if (!k) return;
+      if (!nodes.has(k)) {
+        nodes.set(k, { key: k, label: (s.stageName || '').trim(), firstIdx: i });
+        succ.set(k, new Set());
+        indeg.set(k, 0);
+      } else if (i < nodes.get(k).firstIdx) {
+        nodes.get(k).firstIdx = i;
+      }
+    });
+  });
+
+  docs.forEach(doc => {
+    const keys = (doc.steps || []).map(s => stepKey(s.stageName)).filter(Boolean);
+    for (let i = 0; i < keys.length - 1; i++) {
+      const a = keys[i], b = keys[i + 1];
+      if (a === b || !succ.has(a)) continue;
+      if (!succ.get(a).has(b)) { succ.get(a).add(b); indeg.set(b, indeg.get(b) + 1); }
+    }
+  });
+
+  const cmp = (a, b) =>
+    (nodes.get(a).firstIdx - nodes.get(b).firstIdx) ||
+    nodes.get(a).label.localeCompare(nodes.get(b).label);
+
+  const order = [];
+  const remaining = new Set(nodes.keys());
+  while (remaining.size) {
+    let ready = [...remaining].filter(k => indeg.get(k) === 0);
+    if (!ready.length) ready = [...remaining];  // cycle — break at the earliest
+    ready.sort(cmp);
+    const k = ready[0];
+    order.push(nodes.get(k));
+    remaining.delete(k);
+    succ.get(k).forEach(n => { if (remaining.has(n)) indeg.set(n, indeg.get(n) - 1); });
+  }
+  return order;
+}
+
+// Which steps of `doc` land on each spine column, plus where its track starts
+// and ends. Steps whose name matches a spine entry more than once are kept
+// together in the same cell.
+function docTrack(doc, spine) {
+  const byKey = new Map();
+  (doc.steps || []).forEach(s => {
+    const k = stepKey(s.stageName);
+    if (!k) return;
+    if (!byKey.has(k)) byKey.set(k, []);
+    byKey.get(k).push(s);
+  });
+  const cells = spine.map(n => byKey.get(n.key) || []);
+  let first = -1, last = -1;
+  cells.forEach((c, i) => { if (c.length) { if (first < 0) first = i; last = i; } });
+  // Steps that exist on the document but were filtered out of the spine.
+  const hiddenCount = (doc.steps || []).filter(s => {
+    const k = stepKey(s.stageName);
+    return k && !spine.some(n => n.key === k);
+  }).length;
+  return { cells, first, last, hiddenCount };
+}
+
+const FLOW_DETAILS = [
+  { id: 'trigger',    label: 'Trigger' },
+  { id: 'actions',    label: 'Actions' },
+  { id: 'presenters', label: 'Prepares / Presents' },
+  { id: 'carriers',   label: 'Carries to next' },
+  { id: 'storage',    label: 'Where it lives' },
+  { id: 'notes',      label: 'Notes' },
+];
+const NO_DETAILS = { trigger: false, actions: false, presenters: false, carriers: false, storage: false, notes: false };
+
+function loadFlowPrefs(projectTypeId) {
+  try {
+    const all = JSON.parse(localStorage.getItem(FLOW_PREFS_KEY) || '{}');
+    const p = all[projectTypeId] || {};
+    return { hidden: p.hidden || [], details: { ...NO_DETAILS, ...(p.details || {}) } };
+  } catch (e) {
+    return { hidden: [], details: { ...NO_DETAILS } };
+  }
+}
+function saveFlowPrefs(projectTypeId, prefs) {
+  try {
+    const all = JSON.parse(localStorage.getItem(FLOW_PREFS_KEY) || '{}');
+    all[projectTypeId] = prefs;
+    localStorage.setItem(FLOW_PREFS_KEY, JSON.stringify(all));
+  } catch (e) { /* view preference only — safe to lose */ }
+}
+
+const FLOW_ROW_H = 62;   // vertical centre of a node sits at FLOW_ROW_H / 2
+
+function FlowStepNode({ steps, doc, roles, details, anyDetail }) {
+  const roleLabel = (ids) => (ids || [])
+    .map(id => { const r = roles.find(x => x.id === id); return r ? r.label : id; })
+    .join(', ');
+
+  const actionIcon = (type) => type === 'review' ? '🔍' : type === 'approval' ? '✅' : type === 'consultation' ? '💬' : type === 'prepared_by' ? '📝' : '▸';
+
+  const lines = [];
+  steps.forEach(step => {
+    if (details.trigger && triggerDisplay(step)) lines.push({ k: 'trigger', t: triggerDisplay(step) });
+    if (details.actions) (step.actions || []).forEach(a => lines.push({
+      k: 'action', t: `${actionIcon(a.type)} ${a.type === 'custom' ? a.label : a.label + (a.person ? ' ' + a.person : '')}`,
+    }));
+    if (details.presenters && (step.presenterIds || []).length) lines.push({ k: 'pres', t: `Presents: ${roleLabel(step.presenterIds)}` });
+    if (details.carriers && (step.carrierIds || []).length) lines.push({ k: 'carr', t: `Carries: ${roleLabel(step.carrierIds)}` });
+    if (details.storage && step.storageLocation) lines.push({ k: 'stor', t: `📁 ${step.storageLocation}${step.fileOperation === 'copy' ? ' (copy)' : step.fileOperation === 'move' ? ' (move)' : ''}` });
+    if (details.notes && step.notes) lines.push({ k: 'note', t: `📝 ${step.notes}` });
+  });
+
+  const infoOnly = steps.every(s => s.informationOnly) && steps.length > 0;
+  const returns = steps.some(s => s.returnToStepId);
+
+  return (
+    <div className="relative z-10 rounded-lg px-2 py-1.5 text-center shadow-sm"
+      style={{
+        background: infoOnly ? '#ffffff' : `linear-gradient(${doc.color}14, ${doc.color}14), #ffffff`,
+        border: `2px ${infoOnly ? 'dashed' : 'solid'} ${doc.color}`,
+        minWidth: anyDetail ? 0 : 44,
+      }}>
+      <div className="flex items-center justify-center gap-1">
+        <span style={{ color: doc.color, fontSize: 13, lineHeight: 1 }}>{infoOnly ? 'ⓘ' : '●'}</span>
+        {steps.length > 1 && <span className="text-[10px] font-bold" style={{ color: doc.color }}>×{steps.length}</span>}
+        {returns && <span className="text-[10px]" style={{ color: '#b45309' }} title="Can return to an earlier step">↩</span>}
+      </div>
+      {lines.length > 0 && (
+        <div className="mt-1 space-y-0.5 text-left">
+          {lines.map((l, i) => (
+            <div key={i} className="text-[10px] leading-snug text-slate-600 break-words">{l.t}</div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function StepFlowView({ projectType, roles }) {
+  const [prefs, setPrefs] = React.useState(() => loadFlowPrefs(projectType.id));
+  const [panel, setPanel] = React.useState(null); // 'steps' | 'details' | null
+
+  React.useEffect(() => { setPrefs(loadFlowPrefs(projectType.id)); }, [projectType.id]);
+
+  const setAndSave = (next) => { setPrefs(next); saveFlowPrefs(projectType.id, next); };
+
+  const fullSpine = React.useMemo(() => buildStepSpine(projectType), [projectType]);
+  const hiddenSet = new Set(prefs.hidden);
+  const spine = fullSpine.filter(n => !hiddenSet.has(n.key));
+
+  const details = prefs.details;
+  const anyDetail = FLOW_DETAILS.some(d => details[d.id]);
+  const colW = anyDetail ? 190 : 128;
+  const docs = projectType.documents || [];
+
+  const toggleStep = (key) => {
+    const hidden = hiddenSet.has(key) ? prefs.hidden.filter(k => k !== key) : [...prefs.hidden, key];
+    setAndSave({ ...prefs, hidden });
+  };
+  const toggleDetail = (id) => setAndSave({ ...prefs, details: { ...details, [id]: !details[id] } });
+
+  if (fullSpine.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center h-64 text-slate-400">
+        <div className="text-4xl mb-3">🪜</div>
+        <p className="text-sm">No named steps yet — add steps in the Documents view and they'll appear here.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col h-full overflow-hidden" id="flow-print-area">
+
+      {/* Toolbar */}
+      <div className="shrink-0 flex items-center gap-2 px-4 py-2 border-b border-slate-200 bg-white no-print relative z-30">
+        <div className="relative">
+          <Btn variant="secondary" sm onClick={() => setPanel(panel === 'steps' ? null : 'steps')}>
+            ⚑ Steps shown {prefs.hidden.length > 0 && <span className="text-indigo-600 font-bold">({spine.length}/{fullSpine.length})</span>}
+          </Btn>
+          {panel === 'steps' && (
+            <div className="absolute left-0 top-full mt-1 w-72 bg-white border border-slate-200 rounded-xl shadow-xl p-2 fade-in max-h-80 overflow-y-auto">
+              <div className="text-xs text-slate-400 px-2 py-1">Uncheck a step to drop it from this view. Doesn't change the data.</div>
+              {fullSpine.map(n => (
+                <label key={n.key} className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-slate-50 cursor-pointer">
+                  <input type="checkbox" checked={!hiddenSet.has(n.key)} onChange={() => toggleStep(n.key)} />
+                  <span className="text-sm text-slate-700 truncate">{n.label}</span>
+                </label>
+              ))}
+              {prefs.hidden.length > 0 && (
+                <button onClick={() => setAndSave({ ...prefs, hidden: [] })}
+                  className="w-full mt-1 text-xs text-indigo-600 hover:bg-indigo-50 rounded-lg py-1.5">Show all steps</button>
+              )}
+            </div>
+          )}
+        </div>
+
+        <div className="relative">
+          <Btn variant="secondary" sm onClick={() => setPanel(panel === 'details' ? null : 'details')}>
+            ⚙ Details {anyDetail && <span className="text-indigo-600 font-bold">({FLOW_DETAILS.filter(d => details[d.id]).length})</span>}
+          </Btn>
+          {panel === 'details' && (
+            <div className="absolute left-0 top-full mt-1 w-64 bg-white border border-slate-200 rounded-xl shadow-xl p-2 fade-in">
+              <div className="text-xs text-slate-400 px-2 py-1">Off by default — turn on only what you need.</div>
+              {FLOW_DETAILS.map(d => (
+                <label key={d.id} className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-slate-50 cursor-pointer">
+                  <input type="checkbox" checked={!!details[d.id]} onChange={() => toggleDetail(d.id)} />
+                  <span className="text-sm text-slate-700">{d.label}</span>
+                </label>
+              ))}
+              {anyDetail && (
+                <button onClick={() => setAndSave({ ...prefs, details: { ...NO_DETAILS } })}
+                  className="w-full mt-1 text-xs text-indigo-600 hover:bg-indigo-50 rounded-lg py-1.5">Hide all details</button>
+              )}
+            </div>
+          )}
+        </div>
+
+        <div className="flex-1" />
+        <div className="flex items-center gap-3 text-[11px] text-slate-400">
+          <span className="flex items-center gap-1"><span className="text-slate-700">●</span> goes through</span>
+          <span className="flex items-center gap-1">
+            <span style={{ display:'inline-block', width:18, borderTop:'2px dashed #cbd5e1' }} /> bypasses
+          </span>
+          <span className="flex items-center gap-1"><span className="text-emerald-600 font-bold">▸</span> starts</span>
+          <span className="flex items-center gap-1"><span className="text-slate-500 font-bold">✓</span> ends</span>
+        </div>
+      </div>
+
+      {/* Matrix */}
+      <div className="flex-1 overflow-auto" onClick={() => setPanel(null)}>
+        <div style={{ minWidth: 'max-content' }} className="pb-6">
+
+          {/* Step header row */}
+          <div className="flex sticky top-0 bg-slate-100 z-20 border-b border-slate-200">
+            <div className="shrink-0 px-3 py-2 sticky left-0 bg-slate-100 z-10 border-r border-slate-200"
+              style={{ width: 190 }}>
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Document</span>
+            </div>
+            {spine.map((n, i) => (
+              <div key={n.key} className="shrink-0 px-2 py-2 text-center" style={{ width: colW }}>
+                <div className="text-[10px] font-bold text-slate-300">{i + 1}</div>
+                <div className="text-xs font-bold text-slate-700 leading-tight break-words">{n.label}</div>
+              </div>
+            ))}
+          </div>
+
+          {/* One row per document */}
+          {docs.map(doc => {
+            const { cells, first, last, hiddenCount } = docTrack(doc, spine);
+            return (
+              <div key={doc.id} className="flex border-b border-slate-100 hover:bg-white/60 transition-colors">
+                {/* Document label */}
+                <div className="shrink-0 px-3 py-3 sticky left-0 bg-slate-100 z-10 border-r border-slate-200 flex items-start gap-2"
+                  style={{ width: 190 }}>
+                  <span className="mt-1 rounded-full shrink-0" style={{ width: 10, height: 10, background: doc.color }} />
+                  <div className="min-w-0">
+                    <div className="text-sm font-semibold text-slate-800 leading-tight break-words">{doc.name}</div>
+                    <div className="text-[10px] text-slate-400 mt-0.5">
+                      {first < 0 ? 'no steps in view' : `${cells.filter(c => c.length).length} of ${spine.length} steps`}
+                      {hiddenCount > 0 && ` · ${hiddenCount} hidden`}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Track cells */}
+                {spine.map((n, i) => {
+                  const steps = cells[i];
+                  const active = steps.length > 0;
+                  const inTrack = first >= 0 && i >= first && i <= last;
+                  const lineColor = active ? doc.color : '#cbd5e1';
+                  const lineStyle = active ? 'solid' : 'dashed';
+                  return (
+                    <div key={n.key} className="shrink-0 relative flex items-center justify-center px-2"
+                      style={{ width: colW, minHeight: FLOW_ROW_H }}>
+                      {/* connector: left half */}
+                      {inTrack && i > first && (
+                        <div style={{ position:'absolute', left:0, width:'50%', top:'50%',
+                          borderTop:`2px ${lineStyle} ${lineColor}` }} />
+                      )}
+                      {/* connector: right half */}
+                      {inTrack && i < last && (
+                        <div style={{ position:'absolute', right:0, width:'50%', top:'50%',
+                          borderTop:`2px ${lineStyle} ${lineColor}` }} />
+                      )}
+                      {active ? (
+                        <div className="relative py-3" style={{ width: anyDetail ? '100%' : 'auto' }}>
+                          {i === first && (
+                            <div className="absolute -top-0.5 left-1/2 -translate-x-1/2 text-[9px] font-bold text-emerald-600 whitespace-nowrap">▸ START</div>
+                          )}
+                          <FlowStepNode steps={steps} doc={doc} roles={roles} details={details} anyDetail={anyDetail} />
+                          {i === last && (
+                            <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 text-[9px] font-bold text-slate-400 whitespace-nowrap">✓ END</div>
+                          )}
+                        </div>
+                      ) : inTrack ? (
+                        <span className="absolute left-0 right-0 text-center text-[9px] font-medium text-slate-400 pointer-events-none"
+                          style={{ top: 'calc(50% - 15px)' }}>bypassed</span>
+                      ) : null}
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Print / PDF generator ──────────────────────────────────────────────────────
 function generatePrintHTML(projectType, roles, syncGroupMeta) {
   const numCols = projectType.documents.length;
@@ -1735,6 +2069,158 @@ window.onload = function() {
 </html>`;
 }
 
+// ── Step Flow print / PDF generator ────────────────────────────────────────────
+// The Step Flow view needs its own renderer, same as the document canvas —
+// the React components aren't reused for print.
+// NOTE: no optional chaining on computed members (?.[expr]) in here; the pinned
+// Babel standalone build chokes on it and blanks the page.
+function generateFlowPrintHTML(projectType, roles, prefs) {
+  const details = (prefs && prefs.details) || NO_DETAILS;
+  const hidden = new Set((prefs && prefs.hidden) || []);
+  const fullSpine = buildStepSpine(projectType);
+  const spine = fullSpine.filter(n => !hidden.has(n.key));
+  const docs = projectType.documents || [];
+  const anyDetail = FLOW_DETAILS.some(d => details[d.id]);
+
+  const colWidthMM = anyDetail ? 40 : 26;
+  const pageWidthMM = Math.max(180, spine.length * colWidthMM + 60);
+
+  const roleLabel = (ids) => (ids || [])
+    .map(id => { const r = roles.find(x => x.id === id); return r ? r.label : id; })
+    .join(', ');
+
+  const actionIcon = (type) => type === 'review' ? '🔍' : type === 'approval' ? '✅' : type === 'consultation' ? '💬' : type === 'prepared_by' ? '📝' : '▸';
+
+  const esc = (s) => String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+  const detailLines = (steps) => {
+    const out = [];
+    steps.forEach(step => {
+      if (details.trigger && triggerDisplay(step)) out.push(esc(triggerDisplay(step)));
+      if (details.actions) (step.actions || []).forEach(a => {
+        out.push(actionIcon(a.type) + ' ' + esc(a.type === 'custom' ? a.label : a.label + (a.person ? ' ' + a.person : '')));
+      });
+      if (details.presenters && (step.presenterIds || []).length) out.push('Presents: ' + esc(roleLabel(step.presenterIds)));
+      if (details.carriers && (step.carrierIds || []).length) out.push('Carries: ' + esc(roleLabel(step.carrierIds)));
+      if (details.storage && step.storageLocation) {
+        const op = step.fileOperation === 'copy' ? ' (copy)' : step.fileOperation === 'move' ? ' (move)' : '';
+        out.push('📁 ' + esc(step.storageLocation) + op);
+      }
+      if (details.notes && step.notes) out.push('📝 ' + esc(step.notes));
+    });
+    return out;
+  };
+
+  const headHTML = spine.map((n, i) =>
+    `<th><div class="idx">${i + 1}</div>${esc(n.label)}</th>`
+  ).join('');
+
+  const rowsHTML = docs.map(doc => {
+    const track = docTrack(doc, spine);
+    const cells = track.cells, first = track.first, last = track.last;
+
+    const cellsHTML = spine.map((n, i) => {
+      const steps = cells[i];
+      const active = steps.length > 0;
+      const inTrack = first >= 0 && i >= first && i <= last;
+
+      const leftLine  = inTrack && i > first ? `<span class="ln ln-l ${active ? 'solid' : 'dash'}" style="border-color:${active ? doc.color : '#cbd5e1'}"></span>` : '';
+      const rightLine = inTrack && i < last  ? `<span class="ln ln-r ${active ? 'solid' : 'dash'}" style="border-color:${active ? doc.color : '#cbd5e1'}"></span>` : '';
+
+      let inner = '';
+      if (active) {
+        const infoOnly = steps.every(s => s.informationOnly);
+        const multi = steps.length > 1 ? `<span class="mult">×${steps.length}</span>` : '';
+        const ret = steps.some(s => s.returnToStepId) ? '<span class="ret">↩</span>' : '';
+        const lines = detailLines(steps);
+        const body = lines.length ? `<div class="lines">${lines.map(l => `<div>${l}</div>`).join('')}</div>` : '';
+        const startTag = i === first ? '<div class="tag start">▸ START</div>' : '';
+        const endTag   = i === last  ? '<div class="tag end">✓ END</div>' : '';
+        inner = `${startTag}<div class="node" style="border-color:${doc.color};border-style:${infoOnly ? 'dashed' : 'solid'};background:${infoOnly ? '#fff' : 'linear-gradient(' + doc.color + '14,' + doc.color + '14),#fff'}">
+          <span class="dot" style="color:${doc.color}">${infoOnly ? 'ⓘ' : '●'}</span>${multi}${ret}${body}
+        </div>${endTag}`;
+      } else if (inTrack) {
+        inner = '<span class="bypass">bypassed</span>';
+      }
+      return `<td><div class="cell">${leftLine}${rightLine}${inner}</div></td>`;
+    }).join('');
+
+    const count = cells.filter(c => c.length).length;
+    return `<tr>
+      <th class="doc"><span class="swatch" style="background:${doc.color}"></span>
+        <span class="dname">${esc(doc.name)}</span>
+        <div class="dmeta">${first < 0 ? 'no steps in view' : count + ' of ' + spine.length + ' steps'}</div>
+      </th>${cellsHTML}</tr>`;
+  }).join('');
+
+  const shownDetails = FLOW_DETAILS.filter(d => details[d.id]).map(d => d.label).join(', ');
+  const hiddenNote = fullSpine.length !== spine.length
+    ? ` &nbsp;|&nbsp; ${fullSpine.length - spine.length} step(s) hidden` : '';
+  const detailNote = shownDetails ? ` &nbsp;|&nbsp; Showing: ${esc(shownDetails)}` : '';
+
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<style>
+  @page { size: ${pageWidthMM}mm auto; margin: 10mm; }
+  * { box-sizing: border-box; }
+  body { font-family: system-ui, sans-serif; font-size: 9px; margin: 0; }
+  h1 { font-size: 13px; font-weight: bold; margin: 0 0 2px; }
+  .subtitle { font-size: 8px; color: #64748b; margin: 0 0 10px; }
+  table { border-collapse: collapse; width: 100%; }
+  th, td { padding: 0; vertical-align: middle; }
+  thead th { font-size: 8.5px; font-weight: bold; color: #1e293b; padding: 3px 4px 5px;
+             border-bottom: 1.5px solid #cbd5e1; text-align: center; width: ${colWidthMM}mm; }
+  thead th .idx { font-size: 7px; color: #cbd5e1; }
+  thead th:first-child { width: 42mm; }
+  th.doc { text-align: left; padding: 6px 6px 6px 0; border-bottom: 1px solid #f1f5f9;
+           border-right: 1px solid #e2e8f0; font-size: 9.5px; color: #1e293b; }
+  .swatch { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 4px; }
+  .dname { font-weight: bold; }
+  .dmeta { font-size: 7px; color: #94a3b8; font-weight: normal; margin-top: 1px; padding-left: 11px; }
+  td { border-bottom: 1px solid #f1f5f9; }
+  .cell { position: relative; min-height: 34px; display: flex; align-items: center;
+          justify-content: center; padding: 12px 3px; }
+  .ln { position: absolute; top: 50%; width: 50%; border-top-width: 1.5px; }
+  .ln-l { left: 0; } .ln-r { right: 0; }
+  .solid { border-top-style: solid; } .dash { border-top-style: dashed; }
+  .node { position: relative; z-index: 2; border-width: 1.5px; border-radius: 4px;
+          padding: 2px 4px; text-align: center; min-width: 14px; }
+  .dot { font-size: 10px; line-height: 1; }
+  .mult { font-size: 7px; font-weight: bold; margin-left: 2px; }
+  .ret { font-size: 7px; color: #b45309; margin-left: 2px; }
+  .lines { margin-top: 2px; text-align: left; }
+  .lines div { font-size: 7px; color: #475569; line-height: 1.45; }
+  .tag { position: absolute; left: 0; right: 0; text-align: center; font-size: 6px; font-weight: bold; z-index: 3; }
+  .tag.start { top: 2px; color: #059669; }
+  .tag.end { bottom: 2px; color: #94a3b8; }
+  .bypass { position: absolute; left: 0; right: 0; top: calc(50% - 9px); text-align: center;
+            font-size: 6.5px; color: #94a3b8; }
+  .legend { margin-top: 8px; font-size: 7.5px; color: #94a3b8; }
+</style>
+</head>
+<body>
+  <h1>${esc(projectType.name)} — Step Flow</h1>
+  <div class="subtitle">Continuing Studies · Langara College &nbsp;|&nbsp; Generated ${new Date().toLocaleDateString('en-CA', { year:'numeric', month:'long', day:'numeric' })}${hiddenNote}${detailNote}</div>
+  <table><thead><tr><th>Document</th>${headHTML}</tr></thead><tbody>${rowsHTML}</tbody></table>
+  <div class="legend">● goes through &nbsp;·&nbsp; ⓘ information only &nbsp;·&nbsp; dashed line = bypasses this step &nbsp;·&nbsp; ▸ START = first step &nbsp;·&nbsp; ✓ END = last step &nbsp;·&nbsp; ↩ can return to an earlier step</div>
+<script>
+window.onload = function() {
+  var PX_MM = 0.264583;
+  var wMM = Math.ceil(document.body.scrollWidth * PX_MM * 1.03) + 25;
+  var hMM = Math.ceil(document.body.scrollHeight * PX_MM * 1.03) + 25;
+  var s = document.createElement('style');
+  s.textContent = '@page{size:' + wMM + 'mm ' + hMM + 'mm;margin:8mm;}';
+  document.head.appendChild(s);
+  window.print();
+};
+<\\/script>
+</body>
+</html>`;
+}
+
 // ── Presence ───────────────────────────────────────────────────────────────────
 function usePresence(authUser) {
   const [activeUsers, setActiveUsers] = useState([]);
@@ -1768,6 +2254,7 @@ function App({ authUser }) {
   const activeUsers = usePresence(authUser);
   const [modal, setModal] = useState(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [view, setView] = useState('documents'); // 'documents' | 'flow'
   const [sidebarWidth, setSidebarWidth] = useState(240);
   const sidebarDragRef = useRef(false);
 
@@ -1984,6 +2471,17 @@ function App({ authUser }) {
               <h1 className="font-bold text-slate-400">No project type selected</h1>
             )}
           </div>
+          {activePT && (
+            <div className="flex items-center bg-slate-100 rounded-lg p-0.5 shrink-0 no-print">
+              {[['documents', '▤ Documents'], ['flow', '🪜 Step Flow']].map(([id, label]) => (
+                <button key={id} onClick={() => setView(id)}
+                  className={`text-xs font-medium px-2.5 py-1 rounded-md transition-colors ${view === id ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                  title={id === 'documents' ? 'Full detail, one column per document' : 'At a glance: which steps each document goes through'}>
+                  {label}
+                </button>
+              ))}
+            </div>
+          )}
           <div className="flex items-center gap-1.5 shrink-0 no-print">
             {activeUsers.length > 0 && (
               <div className="flex items-center gap-1 mr-1">
@@ -2023,7 +2521,9 @@ function App({ authUser }) {
             <div className="flex items-center gap-2 shrink-0">
               <Btn variant="secondary" sm onClick={() => setModal('saveTemplate')}>☆ Save as Template</Btn>
               <Btn variant="secondary" sm onClick={() => {
-                const html = generatePrintHTML(activePT, store.roles, store.syncGroupMeta);
+                const html = view === 'flow'
+                  ? generateFlowPrintHTML(activePT, store.roles, loadFlowPrefs(activePT.id))
+                  : generatePrintHTML(activePT, store.roles, store.syncGroupMeta);
                 const iframe = document.createElement('iframe');
                 // Give real dimensions off-screen so flex layout renders before we measure
                 iframe.style.cssText = 'position:fixed;left:-9999px;top:-9999px;border:0;width:3000px;height:4000px;';
@@ -2040,7 +2540,9 @@ function App({ authUser }) {
 
         {/* Canvas */}
         <div className="flex-1 min-h-0 overflow-hidden">
-          {activePT ? (
+          {activePT ? (view === 'flow' ? (
+            <StepFlowView projectType={activePT} roles={store.roles} />
+          ) : (
             <ProjectTypeCanvas
               projectType={activePT}
               roles={store.roles}
@@ -2052,7 +2554,7 @@ function App({ authUser }) {
               onUpdateSyncGroupMeta={updateSyncGroupMeta}
               onDissolveGroup={dissolveGroup}
             />
-          ) : (
+          )) : (
             <div className="flex items-center justify-center h-full text-slate-400">
               <div className="text-center">
                 <div className="text-4xl mb-3">📋</div>
