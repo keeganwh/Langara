@@ -133,6 +133,11 @@ fallback is essential, not a nicety: on real data most identical stages are
 *not* sync-grouped, and keying on sync groups alone renders a staircase of
 one-card rows instead of a table.
 
+`RowLockedCanvas` must be passed the **real** `onUpdateSyncGroupMeta` and
+`onDissolveGroup` handlers. It was first wired with no-ops, which made
+renaming a sync group from a step opened in Row Lock silently discard itself —
+the panel updated from local state and the write went nowhere.
+
 Reordering is disabled while Row Lock is on — bands, not columns, decide
 vertical position, so drag would be meaningless. `StepCard` takes a `readOnly`
 prop for this: it hides the move/delete/copy/link controls and unsets
@@ -180,6 +185,11 @@ need a `normalizeStore` default.
   choked on it and produced a blank page. Keep it out of that function.
 - **Babel is pinned** to `@babel/standalone@7.23.10`. Do not bump casually;
   a previous unpinned upgrade broke the app.
+- **No hooks inside conditional IIFEs.** `StepForm` renders its sync-group
+  panel as `{form.syncGroupId && (() => { ... })()}`; two `useState` calls
+  once lived in there, so the hook count changed with whether the step was
+  grouped. Declare hooks at the top of the component. (Commit `d9297ef` fixed
+  the same class of bug in `ProjectTypeCanvas` — it blanks the page.)
 - **`normalizeStore` runs on every update**, not just on load. Any new step
   or store field needs a default added there, or existing Firebase data will
   come back with it `undefined`.

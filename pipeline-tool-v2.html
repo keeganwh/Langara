@@ -437,6 +437,10 @@ function StepForm({ step, docSteps, allSteps, roles, docColor, syncGroupMeta, on
   });
   const parsed = useMemo(() => parseStorageLocation(form.storageLocation), []);
   const [storagePreset, setStoragePreset] = useState(parsed.preset);
+  // Sync-group rename state. Declared here, not inside the conditional panel
+  // below — hooks inside that IIFE changed the hook count between renders.
+  const [editingName, setEditingName] = useState(false);
+  const [nameVal, setNameVal] = useState('');
   const [storageSubPath, setStorageSubPath] = useState(parsed.subPath);
 
   // Keep form.storageLocation in sync whenever preset/subpath changes
@@ -616,8 +620,6 @@ function StepForm({ step, docSteps, allSteps, roles, docColor, syncGroupMeta, on
       {form.syncGroupId && syncGroupMeta && (() => {
         const gid = form.syncGroupId;
         const meta = syncGroupMeta[gid] || { name: 'Sync Group', color: '#64748b' };
-        const [editingName, setEditingName] = useState(false);
-        const [nameVal, setNameVal] = useState(meta.name);
         const saveName = () => {
           onUpdateSyncGroupMeta && onUpdateSyncGroupMeta({ ...syncGroupMeta, [gid]: { ...meta, name: nameVal.trim() || meta.name } });
           setEditingName(false);
@@ -1232,7 +1234,7 @@ function DocumentColumn({ doc, docIndex, totalDocs, onMoveDoc, projectTypeId, ro
 // Sync-grouped steps share a band — that's the point of the mode. Reordering is
 // disabled here (the bands, not the columns, decide vertical position), so this
 // is a reading layout; editing a step still works.
-function RowLockedCanvas({ projectType, roles, details, syncGroupMeta, onUpdateProjectType }) {
+function RowLockedCanvas({ projectType, roles, details, syncGroupMeta, onUpdateProjectType, onUpdateSyncGroupMeta, onDissolveGroup }) {
   const [editStep, setEditStep] = React.useState(null);
   const docs = projectType.documents || [];
   const bands = React.useMemo(() => buildRowBands(projectType), [projectType]);
@@ -1331,7 +1333,7 @@ function RowLockedCanvas({ projectType, roles, details, syncGroupMeta, onUpdateP
       {editStep && editDoc && (
         <StepForm step={editStep} docSteps={editDoc.steps || []} allSteps={allSteps}
           roles={roles} docColor={editDoc.color} syncGroupMeta={syncGroupMeta || {}}
-          onUpdateSyncGroupMeta={() => {}} onDissolveGroup={() => {}}
+          onUpdateSyncGroupMeta={onUpdateSyncGroupMeta} onDissolveGroup={onDissolveGroup}
           onSave={saveStep} onClose={() => setEditStep(null)} />
       )}
     </div>
@@ -1555,6 +1557,8 @@ function ProjectTypeCanvas({ projectType, roles, onUpdateProjectType, allProject
           details={details}
           syncGroupMeta={syncGroupMeta || {}}
           onUpdateProjectType={onUpdateProjectType}
+          onUpdateSyncGroupMeta={onUpdateSyncGroupMeta}
+          onDissolveGroup={onDissolveGroup}
         />
       ) : (<>
 
