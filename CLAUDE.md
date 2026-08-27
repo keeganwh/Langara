@@ -138,11 +138,15 @@ one-card rows instead of a table.
 renaming a sync group from a step opened in Row Lock silently discard itself —
 the panel updated from local state and the write went nowhere.
 
-A document that skips a band renders a **pass-through track** — a dashed
-vertical line with a ↓ marker — but only between its own first and last
-occupied band. Empty cells before a document starts or after it ends stay
-blank, so "not involved yet" reads differently from "carries on past this
-step". Same distinction the Step Flow view draws horizontally.
+Every empty cell renders a dashed placeholder box. A document that skips a
+band gets a **↓ marker inside that box**, but only between its own first and
+last occupied band — before it starts or after it ends the box stays empty,
+so "not involved" reads differently from "passes through". Same distinction
+the Step Flow view draws horizontally.
+
+Cards in a band are **equal height**: the grid cell stretches, and `StepCard`'s
+`fillHeight` prop makes the card and its padding wrapper grow to fill it.
+Shorter cards gain whitespace rather than the row looking ragged.
 
 Reordering is disabled while Row Lock is on — bands, not columns, decide
 vertical position, so drag would be meaningless. `StepCard` takes a `readOnly`

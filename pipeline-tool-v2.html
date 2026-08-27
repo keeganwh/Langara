@@ -797,7 +797,7 @@ function saveDocPrefs(projectTypeId, prefs) {
 }
 
 // ── StepCard ───────────────────────────────────────────────────────────────────
-function StepCard({ step, stepIndex, totalSteps, docSteps, roles, docColor, onEdit, onDelete, onMove, onCopyTo, returnStepName, isDragging, onDragStart, onDragEnd, onDragOver, onDrop, linkingGroupId, onLinkStep, syncGroupColor, details = ALL_DOC_DETAILS, readOnly = false }) {
+function StepCard({ step, stepIndex, totalSteps, docSteps, roles, docColor, onEdit, onDelete, onMove, onCopyTo, returnStepName, isDragging, onDragStart, onDragEnd, onDragOver, onDrop, linkingGroupId, onLinkStep, syncGroupColor, details = ALL_DOC_DETAILS, readOnly = false, fillHeight = false }) {
   const [notesOpen, setNotesOpen] = useState(false);
   const [copyOpen, setCopyOpen] = useState(false);
   const roleName = (id) => {
@@ -812,7 +812,7 @@ function StepCard({ step, stepIndex, totalSteps, docSteps, roles, docColor, onEd
   const linkColor = syncGroupColor || '#64748b';
 
   return (
-    <div className="step-card relative bg-white rounded-xl overflow-hidden"
+    <div className={`step-card relative bg-white rounded-xl overflow-hidden${fillHeight ? ' flex-1 flex flex-col' : ''}`}
       data-step-id={step.id}
       style={{
         '--doc-color': docColor,
@@ -866,7 +866,7 @@ function StepCard({ step, stepIndex, totalSteps, docSteps, roles, docColor, onEd
         </>)}
       </div>
 
-      <div className="p-3">
+      <div className={`p-3${fillHeight ? ' flex-1' : ''}`}>
         {/* Sync group icon — always visible when in a group */}
         {syncGroupColor && (
           <div className="absolute top-2 left-2 w-5 h-5 rounded-full flex items-center justify-center z-10 text-white"
@@ -1304,38 +1304,22 @@ function RowLockedCanvas({ projectType, roles, details, syncGroupMeta, onUpdateP
               const inTrack = first >= 0 && bi >= first && bi <= last;
               const passing = inTrack && steps.length === 0;
               return (
-                <div key={`${band.key}-${doc.id}`} className="pb-3 relative"
+                <div key={`${band.key}-${doc.id}`} className="pb-3 flex flex-col"
                   style={{ gridColumn: 'auto', gridRow: bi + 2 }}>
-                  {/* Pass-through: the document skips this row but carries on below */}
-                  {passing && (
-                    <div className="absolute inset-0 flex items-center justify-center pointer-events-none"
-                      title={`${doc.name} passes this step`}>
-                      <div className="absolute" style={{
-                        left: '50%', top: 0, bottom: 0,
-                        borderLeft: '2px dashed #cbd5e1', transform: 'translateX(-1px)',
-                      }} />
-                      <span className="relative flex items-center justify-center rounded-full"
-                        style={{
-                          width: 20, height: 20, background: '#ffffff',
-                          color: '#64748b', fontSize: 13, lineHeight: 1,
-                          border: '1px solid #cbd5e1',
-                        }}>↓</span>
-                    </div>
-                  )}
-                  {/* Connector into the next row, so a column reads as one track */}
-                  {inTrack && steps.length > 0 && bi < last && (
-                    <div className="absolute pointer-events-none" style={{
-                      left: '50%', bottom: 0, height: 12,
-                      borderLeft: `2px solid ${doc.color}`, opacity: .45,
-                      transform: 'translateX(-1px)',
-                    }} />
-                  )}
                   {steps.length === 0 ? (
-                    <div className="h-full min-h-[2.5rem]" />
+                    // Empty cell. If the document carries on below this band it
+                    // gets a ↓ marker; before it starts or after it ends the box
+                    // stays blank, so "not involved" reads differently from
+                    // "passes through".
+                    <div className="flex-1 min-h-[2.5rem] rounded-xl border-2 border-dashed flex items-center justify-center"
+                      style={{ borderColor: meta ? meta.color + '40' : '#dfe3ea' }}
+                      title={passing ? `${doc.name} passes this step` : undefined}>
+                      {passing && <span style={{ color: '#94a3b8', fontSize: 18, lineHeight: 1 }}>↓</span>}
+                    </div>
                   ) : (
-                    <div className="space-y-2 relative">
+                    <div className="flex-1 flex flex-col gap-2">
                       {steps.map(step => (
-                        <StepCard key={step.id}
+                        <StepCard key={step.id} fillHeight
                           step={step} stepIndex={0} totalSteps={1}
                           docSteps={doc.steps || []} roles={roles} docColor={doc.color}
                           onEdit={() => setEditStep(step)}
