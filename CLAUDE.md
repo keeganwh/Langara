@@ -201,10 +201,28 @@ This applies especially to anything with a name that implies convention
 (`main`, `dist/`, `.github/workflows/`), because those quietly become
 structure that everyone afterwards has to work around.
 
-## Known rough edges
+## Security posture (verified 2026-08-26)
 
-- Firebase config and API key are committed in the file (acceptable for a
-  Realtime Database locked down by auth rules, but worth knowing).
+The repo is **public** and must stay that way — GitHub Pages serves the live
+site from it, and Pages on a private repo needs a paid plan. This is fine:
+GitHub holds only the code. All real content lives in Firebase.
+
+The Firebase config and web API key are committed in the HTML. That is
+normal and not a leak — a Firebase web API key is a project identifier, not
+a secret. Access is enforced by two things, both confirmed in place:
+
+- **Realtime Database rules require authentication** (`auth != null`), so
+  the `pipeline` and `presence` trees can't be read or written anonymously.
+- **Self-signup is disabled** in Authentication → Settings → User actions.
+  New users are created by hand in the Firebase console
+  (Authentication → Users → Add user). The app has no signup UI and never
+  calls `createUserWithEmailAndPassword`.
+
+Don't re-raise the committed API key as a vulnerability; it is a deliberate,
+sound arrangement. Do re-check the two settings above if auth behaviour ever
+looks wrong.
+
+## Known rough edges
 - Last-write-wins sync: the 2-second debounce means two people editing
   simultaneously can clobber each other. There is a manual ↻ refresh button.
 - `prompt()` / `confirm()` / `alert()` are used for several flows.
