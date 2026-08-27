@@ -761,8 +761,41 @@ function CopyDocModal({ doc, otherProjects, onCopy, onClose }) {
   );
 }
 
+// ── Documents view display preferences ─────────────────────────────────────────
+// Same idea as the Step Flow prefs: display-only, per project type, stored in
+// localStorage so toggling detail never writes to the shared Firebase store.
+// Unlike Step Flow, these default to ON — Documents is the full-detail view.
+const DOC_PREFS_KEY = 'cs_pipeline_doc_prefs_v1';
+const DOC_DETAILS = [
+  { id: 'actions',    label: 'Actions' },
+  { id: 'presenters', label: 'Prepares / Presents' },
+  { id: 'carriers',   label: 'Carries to next' },
+  { id: 'storage',    label: 'Where it lives' },
+  { id: 'trigger',    label: 'Trigger' },
+  { id: 'returns',    label: 'Return path' },
+  { id: 'notes',      label: 'Notes' },
+];
+const ALL_DOC_DETAILS = DOC_DETAILS.reduce((a, d) => { a[d.id] = true; return a; }, {});
+
+function loadDocPrefs(projectTypeId) {
+  try {
+    const all = JSON.parse(localStorage.getItem(DOC_PREFS_KEY) || '{}');
+    const p = all[projectTypeId] || {};
+    return { details: { ...ALL_DOC_DETAILS, ...(p.details || {}) } };
+  } catch (e) {
+    return { details: { ...ALL_DOC_DETAILS } };
+  }
+}
+function saveDocPrefs(projectTypeId, prefs) {
+  try {
+    const all = JSON.parse(localStorage.getItem(DOC_PREFS_KEY) || '{}');
+    all[projectTypeId] = prefs;
+    localStorage.setItem(DOC_PREFS_KEY, JSON.stringify(all));
+  } catch (e) { /* display preference only — safe to lose */ }
+}
+
 // ── StepCard ───────────────────────────────────────────────────────────────────
-function StepCard({ step, stepIndex, totalSteps, docSteps, roles, docColor, onEdit, onDelete, onMove, onCopyTo, returnStepName, isDragging, onDragStart, onDragEnd, onDragOver, onDrop, linkingGroupId, onLinkStep, syncGroupColor }) {
+function StepCard({ step, stepIndex, totalSteps, docSteps, roles, docColor, onEdit, onDelete, onMove, onCopyTo, returnStepName, isDragging, onDragStart, onDragEnd, onDragOver, onDrop, linkingGroupId, onLinkStep, syncGroupColor, details = ALL_DOC_DETAILS }) {
   const [notesOpen, setNotesOpen] = useState(false);
   const [copyOpen, setCopyOpen] = useState(false);
   const roleName = (id) => {
@@ -840,7 +873,7 @@ function StepCard({ step, stepIndex, totalSteps, docSteps, roles, docColor, onEd
         )}
 
         {/* Actions */}
-        {step.actions.length > 0 && (
+        {details.actions && step.actions.length > 0 && (
           <div className="mb-2 space-y-1">
             {step.actions.map(a => (
               <div key={a.id} className="flex items-start gap-1.5 text-xs text-slate-700">
@@ -857,21 +890,21 @@ function StepCard({ step, stepIndex, totalSteps, docSteps, roles, docColor, onEd
         )}
 
         {/* Responsible parties + storage */}
-        {(step.presenterIds.length > 0 || step.carrierIds.length > 0 || step.storageLocation || step.fileOperation) && (
+        {((details.presenters && step.presenterIds.length > 0) || (details.carriers && step.carrierIds.length > 0) || (details.storage && (step.storageLocation || step.fileOperation))) && (
           <div className="border-t border-slate-100 pt-2 mt-2 space-y-1">
-            {step.presenterIds.length > 0 && (
+            {details.presenters && step.presenterIds.length > 0 && (
               <div className="text-xs text-slate-500">
                 <span className="font-semibold text-indigo-600">Prepares/Presents: </span>
                 {step.presenterIds.map(roleName).join(', ')}
               </div>
             )}
-            {step.carrierIds.length > 0 && (
+            {details.carriers && step.carrierIds.length > 0 && (
               <div className="text-xs text-slate-500">
                 <span className="font-semibold text-emerald-600">Carries to next: </span>
                 {step.carrierIds.map(roleName).join(', ')}
               </div>
             )}
-            {step.storageLocation && (
+            {details.storage && step.storageLocation && (
               <div className="text-xs text-teal-700">
                 <span className="font-semibold">📁 </span>{step.storageLocation}
               </div>
@@ -880,7 +913,7 @@ function StepCard({ step, stepIndex, totalSteps, docSteps, roles, docColor, onEd
         )}
 
         {/* Return path */}
-        {step.returnToStepId && returnStepName && (
+        {details.returns && step.returnToStepId && returnStepName && (
           <div className="mt-2 pt-2 border-t border-dashed border-amber-300 text-xs text-amber-700 flex items-start gap-1">
             <span className="shrink-0">↩</span>
             <span><span className="font-semibold">If rejected:</span> returns to "{returnStepName}"</span>
@@ -888,7 +921,7 @@ function StepCard({ step, stepIndex, totalSteps, docSteps, roles, docColor, onEd
         )}
 
         {/* Notes toggle */}
-        {step.notes && (
+        {details.notes && step.notes && (
           <div className="mt-2 pt-2 border-t border-slate-100">
             <button onClick={() => setNotesOpen(o => !o)}
               className="text-xs text-slate-400 hover:text-slate-600 flex items-center gap-1">
@@ -914,7 +947,7 @@ function StepCard({ step, stepIndex, totalSteps, docSteps, roles, docColor, onEd
 }
 
 // ── DocumentColumn ─────────────────────────────────────────────────────────────
-function DocumentColumn({ doc, docIndex, totalDocs, onMoveDoc, projectTypeId, roles, store, onUpdateDoc, onDeleteDoc, otherDocs, otherProjects, onCopyStepToDoc, onCopyStepToProject, onCopyDocToProject, dragRef, dropTarget, setDropTarget, onMoveStepDrop, linkingGroupId, onLinkStep, syncGroupMeta, onUpdateSyncGroupMeta, onDissolveGroup, renderMode = 'body' }) {
+function DocumentColumn({ doc, docIndex, totalDocs, onMoveDoc, projectTypeId, roles, store, onUpdateDoc, onDeleteDoc, otherDocs, otherProjects, onCopyStepToDoc, onCopyStepToProject, onCopyDocToProject, dragRef, dropTarget, setDropTarget, onMoveStepDrop, linkingGroupId, onLinkStep, syncGroupMeta, onUpdateSyncGroupMeta, onDissolveGroup, renderMode = 'body', details = ALL_DOC_DETAILS }) {
   const [addingStep, setAddingStep] = useState(false);
   const [editStep, setEditStep] = useState(null);
   const [editDocName, setEditDocName] = useState(false);
@@ -1058,7 +1091,7 @@ function DocumentColumn({ doc, docIndex, totalDocs, onMoveDoc, projectTypeId, ro
               <div className="h-1 rounded mx-1 my-0.5" style={{ background: doc.color }} />
             )}
             {/* Trigger mini-card */}
-            {step.triggerType && (
+            {details.trigger && step.triggerType && (
               <div onClick={() => setEditStep(step)}
                 className="group/trigger mx-1 mb-1 px-3 py-1 rounded-lg border border-dashed border-amber-300 bg-amber-50 flex items-center justify-between text-xs text-amber-700 cursor-pointer hover:bg-amber-100 transition-colors no-print">
                 <span>{triggerDisplay(step)}</span>
@@ -1090,6 +1123,7 @@ function DocumentColumn({ doc, docIndex, totalDocs, onMoveDoc, projectTypeId, ro
               linkingGroupId={linkingGroupId}
               onLinkStep={onLinkStep ? () => onLinkStep(step) : null}
               syncGroupColor={step.syncGroupId && syncGroupMeta ? syncGroupMeta[step.syncGroupId]?.color : null}
+              details={details}
             />
             {/* Arrow between steps */}
             {i < doc.steps.length - 1 && (() => {
@@ -1098,7 +1132,7 @@ function DocumentColumn({ doc, docIndex, totalDocs, onMoveDoc, projectTypeId, ro
               const opLabel = s.fileOperation === 'copy' ? 'Document Copied'
                             : s.fileOperation === 'move' ? 'Document Moved' : null;
               const dlLabel = s.deliveryMethod === 'download_email' ? 'Emailed as Attachment' : null;
-              const arrowLabel = [opLabel, dlLabel].filter(Boolean).join(' · ');
+              const arrowLabel = details.storage ? [opLabel, dlLabel].filter(Boolean).join(' · ') : '';
               const showPicker = inlineTriggerFor === nextStep.id;
               return (
                 <div className="group/arrow flex flex-col items-center py-1 no-print">
@@ -1193,6 +1227,14 @@ function ProjectTypeCanvas({ projectType, roles, onUpdateProjectType, allProject
   const canvasRef = React.useRef(null);
   const [linkingGroupId, setLinkingGroupId] = React.useState(null);
   const headerScrollRef = React.useRef(null);
+  const [docPrefs, setDocPrefs] = React.useState(() => loadDocPrefs(projectType.id));
+  const [panelOpen, setPanelOpen] = React.useState(false);
+
+  React.useEffect(() => { setDocPrefs(loadDocPrefs(projectType.id)); }, [projectType.id]);
+
+  const setAndSaveDocPrefs = (next) => { setDocPrefs(next); saveDocPrefs(projectType.id, next); };
+  const details = docPrefs.details;
+  const hiddenDetailCount = DOC_DETAILS.filter(d => !details[d.id]).length;
 
   // Exit linking mode on Escape
   React.useEffect(() => {
@@ -1341,13 +1383,43 @@ function ProjectTypeCanvas({ projectType, roles, onUpdateProjectType, allProject
     roles,
     onUpdateDoc: updateDoc,
     onDeleteDoc: deleteDoc,
+    details,
   });
 
   return (
     <div className="flex flex-col h-full overflow-hidden relative" id="canvas-print-area">
 
+      {/* Display toolbar */}
+      <div className="shrink-0 flex items-center gap-2 px-4 py-2 border-b border-slate-200 bg-white no-print relative z-30">
+        <div className="relative">
+          <Btn variant="secondary" sm onClick={() => setPanelOpen(o => !o)}>
+            ⚙ Details {hiddenDetailCount > 0 && <span className="text-indigo-600 font-bold">({DOC_DETAILS.length - hiddenDetailCount}/{DOC_DETAILS.length})</span>}
+          </Btn>
+          {panelOpen && (
+            <div className="absolute left-0 top-full mt-1 w-64 bg-white border border-slate-200 rounded-xl shadow-xl p-2 fade-in">
+              <div className="text-xs text-slate-400 px-2 py-1">Hide detail to scan the shape of the process. Doesn't change the data.</div>
+              {DOC_DETAILS.map(d => (
+                <label key={d.id} className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-slate-50 cursor-pointer">
+                  <input type="checkbox" checked={!!details[d.id]}
+                    onChange={() => setAndSaveDocPrefs({ ...docPrefs, details: { ...details, [d.id]: !details[d.id] } })} />
+                  <span className="text-sm text-slate-700">{d.label}</span>
+                </label>
+              ))}
+              <div className="flex gap-1 mt-1">
+                <button onClick={() => setAndSaveDocPrefs({ ...docPrefs, details: { ...ALL_DOC_DETAILS } })}
+                  className="flex-1 text-xs text-indigo-600 hover:bg-indigo-50 rounded-lg py-1.5">Show all</button>
+                <button onClick={() => setAndSaveDocPrefs({ ...docPrefs, details: DOC_DETAILS.reduce((a, d) => { a[d.id] = false; return a; }, {}) })}
+                  className="flex-1 text-xs text-slate-500 hover:bg-slate-100 rounded-lg py-1.5">Hide all</button>
+              </div>
+            </div>
+          )}
+        </div>
+        <div className="flex-1" />
+        <span className="text-[11px] text-slate-400">{projectType.documents.length} document{projectType.documents.length !== 1 ? 's' : ''}</span>
+      </div>
+
       {/* Fixed header row — never scrolls vertically */}
-      <div className="shrink-0 overflow-hidden relative z-20 no-print" ref={headerScrollRef}>
+      <div className="shrink-0 overflow-hidden relative z-20 no-print" ref={headerScrollRef} onClick={() => setPanelOpen(false)}>
         <div className="flex gap-4 px-4 pt-4 pb-0" style={{ minWidth: 'max-content' }}>
           {projectType.documents.map((doc, docIdx) => (
             <DocumentColumn key={`hdr-${doc.id}`} renderMode="header" {...colProps(doc, docIdx)} />
@@ -1855,8 +1927,8 @@ function StepFlowView({ projectType, roles }) {
         <div style={{ minWidth: 'max-content' }} className="pb-6">
 
           {/* Step header row */}
-          <div className="flex sticky top-0 bg-slate-100 z-20 border-b border-slate-200">
-            <div className="shrink-0 px-3 py-2 sticky left-0 bg-slate-100 z-10 border-r border-slate-200"
+          <div className="flex sticky top-0 bg-slate-100 z-30 border-b border-slate-200">
+            <div className="shrink-0 px-3 py-2 sticky left-0 bg-slate-100 z-40 border-r border-slate-200"
               style={{ width: 190 }}>
               <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Document</span>
             </div>
@@ -1874,7 +1946,7 @@ function StepFlowView({ projectType, roles }) {
             return (
               <div key={doc.id} className="flex border-b border-slate-100 hover:bg-white/60 transition-colors">
                 {/* Document label */}
-                <div className="shrink-0 px-3 py-3 sticky left-0 bg-slate-100 z-10 border-r border-slate-200 flex items-start gap-2"
+                <div className="shrink-0 px-3 py-3 sticky left-0 bg-slate-100 z-20 border-r border-slate-200 flex items-start gap-2"
                   style={{ width: 190 }}>
                   <span className="mt-1 rounded-full shrink-0" style={{ width: 10, height: 10, background: doc.color }} />
                   <div className="min-w-0">

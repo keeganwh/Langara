@@ -119,6 +119,25 @@ contributes ordering constraints, and a topological sort merges them into one
 canonical pipeline. Documents that disagree, or a genuine return loop, fall
 back to earliest-position-wins — the sort is cycle-safe and always terminates.
 
+### Display preferences (both views)
+
+Each view has a `⚙ Details` toolbar popover that toggles which fields render.
+Both are **display-only preferences in `localStorage`**, keyed by project type
+id, deliberately *not* in the Firebase store — toggling what you look at never
+writes to the shared document or triggers a sync.
+
+| View | Key | Fields | Default |
+|---|---|---|---|
+| Documents | `cs_pipeline_doc_prefs_v1` | actions, presenters, carriers, storage, trigger, returns, notes | all **on** |
+| Step Flow | `cs_pipeline_flow_prefs_v1` | same, plus per-step column visibility | all **off** |
+
+The defaults differ on purpose: Documents is the full-detail view, Step Flow
+is the at-a-glance one. `storage` also gates the "Document Copied/Moved"
+label on the arrows between steps in the Documents view.
+
+If these should ever become shared team settings, they move into `store` and
+need a `normalizeStore` default.
+
 ### Step Flow view preferences
 
 Per-step visibility and per-detail toggles are **view preferences, stored in
