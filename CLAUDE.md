@@ -138,6 +138,12 @@ one-card rows instead of a table.
 renaming a sync group from a step opened in Row Lock silently discard itself —
 the panel updated from local state and the write went nowhere.
 
+A document that skips a band renders a **pass-through track** — a dashed
+vertical line with a ↓ marker — but only between its own first and last
+occupied band. Empty cells before a document starts or after it ends stay
+blank, so "not involved yet" reads differently from "carries on past this
+step". Same distinction the Step Flow view draws horizontally.
+
 Reordering is disabled while Row Lock is on — bands, not columns, decide
 vertical position, so drag would be meaningless. `StepCard` takes a `readOnly`
 prop for this: it hides the move/delete/copy/link controls and unsets

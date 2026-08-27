@@ -1239,6 +1239,21 @@ function RowLockedCanvas({ projectType, roles, details, syncGroupMeta, onUpdateP
   const docs = projectType.documents || [];
   const bands = React.useMemo(() => buildRowBands(projectType), [projectType]);
 
+  // Where each document's track starts and ends, by band index. Empty cells
+  // between the two are steps the document passes over; empty cells outside
+  // are simply before it starts or after it ends, and stay blank.
+  const trackRange = React.useMemo(() => {
+    const range = {};
+    docs.forEach(doc => {
+      let first = -1, last = -1;
+      bands.forEach((b, i) => {
+        if ((b.cells[doc.id] || []).length) { if (first < 0) first = i; last = i; }
+      });
+      range[doc.id] = { first, last };
+    });
+    return range;
+  }, [bands, docs]);
+
   const saveStep = (stepData) => {
     onUpdateProjectType({
       ...projectType,
@@ -1285,14 +1300,40 @@ function RowLockedCanvas({ projectType, roles, details, syncGroupMeta, onUpdateP
             const meta = band.syncGroupId && syncGroupMeta ? syncGroupMeta[band.syncGroupId] : null;
             return docs.map(doc => {
               const steps = band.cells[doc.id] || [];
+              const { first, last } = trackRange[doc.id] || { first: -1, last: -1 };
+              const inTrack = first >= 0 && bi >= first && bi <= last;
+              const passing = inTrack && steps.length === 0;
               return (
-                <div key={`${band.key}-${doc.id}`} className="pb-3"
+                <div key={`${band.key}-${doc.id}`} className="pb-3 relative"
                   style={{ gridColumn: 'auto', gridRow: bi + 2 }}>
+                  {/* Pass-through: the document skips this row but carries on below */}
+                  {passing && (
+                    <div className="absolute inset-0 flex items-center justify-center pointer-events-none"
+                      title={`${doc.name} passes this step`}>
+                      <div className="absolute" style={{
+                        left: '50%', top: 0, bottom: 0,
+                        borderLeft: '2px dashed #cbd5e1', transform: 'translateX(-1px)',
+                      }} />
+                      <span className="relative flex items-center justify-center rounded-full"
+                        style={{
+                          width: 20, height: 20, background: '#ffffff',
+                          color: '#64748b', fontSize: 13, lineHeight: 1,
+                          border: '1px solid #cbd5e1',
+                        }}>↓</span>
+                    </div>
+                  )}
+                  {/* Connector into the next row, so a column reads as one track */}
+                  {inTrack && steps.length > 0 && bi < last && (
+                    <div className="absolute pointer-events-none" style={{
+                      left: '50%', bottom: 0, height: 12,
+                      borderLeft: `2px solid ${doc.color}`, opacity: .45,
+                      transform: 'translateX(-1px)',
+                    }} />
+                  )}
                   {steps.length === 0 ? (
-                    <div className="h-full min-h-[2.5rem] rounded-xl border-2 border-dashed"
-                      style={{ borderColor: meta ? meta.color + '30' : '#e2e8f0', opacity: .5 }} />
+                    <div className="h-full min-h-[2.5rem]" />
                   ) : (
-                    <div className="space-y-2">
+                    <div className="space-y-2 relative">
                       {steps.map(step => (
                         <StepCard key={step.id}
                           step={step} stepIndex={0} totalSteps={1}
