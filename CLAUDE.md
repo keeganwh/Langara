@@ -119,6 +119,25 @@ contributes ordering constraints, and a topological sort merges them into one
 canonical pipeline. Documents that disagree, or a genuine return loop, fall
 back to earliest-position-wins — the sort is cycle-safe and always terminates.
 
+### Row Lock (Documents view)
+
+A toolbar toggle that swaps the Documents canvas from independent flex columns
+to **one CSS grid**, so a row band's height is set by its tallest card and
+every document lines up on it (`RowLockedCanvas`). Display-only — it writes
+nothing to the store.
+
+Bands come from `buildRowBands()`, which keys each step by **sync group if it
+has one, otherwise by normalized step name**, then merges the documents'
+sequences with the same `topoMerge()` the Step Flow spine uses. The name
+fallback is essential, not a nicety: on real data most identical stages are
+*not* sync-grouped, and keying on sync groups alone renders a staircase of
+one-card rows instead of a table.
+
+Reordering is disabled while Row Lock is on — bands, not columns, decide
+vertical position, so drag would be meaningless. `StepCard` takes a `readOnly`
+prop for this: it hides the move/delete/copy/link controls and unsets
+`draggable`, but editing a step still works.
+
 ### Display preferences (both views)
 
 Each view has a `⚙ Details` toolbar popover that toggles which fields render.
@@ -128,7 +147,7 @@ writes to the shared document or triggers a sync.
 
 | View | Key | Fields | Default |
 |---|---|---|---|
-| Documents | `cs_pipeline_doc_prefs_v1` | actions, presenters, carriers, storage, trigger, returns, notes | all **on** |
+| Documents | `cs_pipeline_doc_prefs_v1` | actions, presenters, carriers, storage, trigger, returns, notes (plus the `rowLock` flag) | all **on**, Row Lock off |
 | Step Flow | `cs_pipeline_flow_prefs_v1` | same, plus per-step column visibility | all **off** |
 
 The defaults differ on purpose: Documents is the full-detail view, Step Flow
