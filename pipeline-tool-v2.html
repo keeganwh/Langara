@@ -63,12 +63,14 @@
                     border-bottom:.06cqw solid #eef0f3; white-space:nowrap; }
     .pub-mx td.c { border-bottom:.06cqw solid #eef0f3; position:relative; height:2.3cqw; }
     .pub-mx .sw { display:inline-block; width:.68cqw; height:.68cqw; border-radius:50%;
-                  margin-right:.45cqw; vertical-align:middle; }
+                  margin-right:.45cqw; vertical-align:middle;
+                  border:.34cqw solid; box-sizing:border-box; }
     .pub-mx .ln { position:absolute; top:50%; height:0; border-top:.14cqw solid; }
     .pub-mx .ln.l { left:0; width:50%; } .pub-mx .ln.r { right:0; width:50%; }
     .pub-mx .dsh { border-top-style:dashed; border-color:#ccd1d9 !important; }
     .pub-mx .nd { position:absolute; left:50%; top:50%; transform:translate(-50%,-50%);
-                  width:1.2cqw; height:1.2cqw; border-radius:50%; z-index:2; }
+                  width:1.2cqw; height:1.2cqw; border-radius:50%; z-index:2;
+                  border:.6cqw solid; box-sizing:border-box; }
     .pub-mx .cap { position:absolute; left:0; right:0; text-align:center; z-index:3;
                    font-family:ui-monospace,monospace; font-size:.64cqw; font-weight:700; }
     .pub-mx .cap.s { top:-.15cqw; color:#1a7f52; } .pub-mx .cap.e { bottom:-.15cqw; color:#9aa1ad; }
@@ -76,7 +78,8 @@
     /* document sections */
     .pub-doc-h { display:flex; align-items:center; gap:.6cqw; border-bottom:.16cqw solid;
                  padding-bottom:.5cqw; margin-bottom:1.2cqw; }
-    .pub-doc-h .sw { width:.8cqw; height:.8cqw; border-radius:50%; display:inline-block; }
+    .pub-doc-h .sw { width:.8cqw; height:.8cqw; border-radius:50%; display:inline-block;
+                     border:.4cqw solid; box-sizing:border-box; }
     .pub-doc-n { font-size:1.35cqw; font-weight:700; }
     .pub-doc-c { margin-left:auto; font-size:.85cqw; color:#9aa1ad; font-weight:600; }
 
@@ -89,8 +92,11 @@
     .pub-slot { flex:1 1 0; min-width:0; display:flex; }
     .pub-card { border:.11cqw solid; border-radius:.4cqw; padding:.55cqw .7cqw; background:#fff;
                 position:relative; width:100%; }
+    /* outlined, not filled: white-on-colour would print as white-on-white
+       when the browser is not printing background colours */
     .pub-num { position:absolute; top:-.7cqw; left:.5cqw; font-family:ui-monospace,monospace;
-               font-size:.72cqw; font-weight:700; color:#fff; border-radius:.5cqw; padding:.05cqw .42cqw; }
+               font-size:.72cqw; font-weight:700; background:#fff; border:.1cqw solid;
+               border-radius:.5cqw; padding:.02cqw .4cqw; }
     .pub-ct { font-size:.98cqw; font-weight:700; line-height:1.2; margin:.25cqw 0 .3cqw; }
     .pub-ca { font-size:.76cqw; color:#3f4652; line-height:1.4; margin-bottom:.28cqw; }
     .pub-cm { font-size:.74cqw; color:#6b7280; line-height:1.38; border-top:.06cqw solid #eef0f3;
@@ -103,8 +109,8 @@
 
     .pub-conn { flex:0 0 2.9cqw; align-self:center; position:relative; height:1cqw; }
     .pub-conn.spacer { visibility:hidden; }
-    .pub-conn i { position:absolute; top:50%; transform:translateY(-50%); height:.15cqw;
-                  background:var(--flow,#aeb6c4); }
+    .pub-conn i { position:absolute; top:50%; transform:translateY(-50%); height:0;
+                  border-top:.15cqw solid var(--flow,#aeb6c4); }
     .pub-conn b { position:absolute; top:50%; transform:translateY(-50%); width:0; height:0;
                   border-top:.42cqw solid transparent; border-bottom:.42cqw solid transparent; }
     .pub-conn.right i { left:.35cqw; right:.85cqw; }
@@ -117,21 +123,21 @@
     .pub-turn .pub-slot { position:relative; }
     .pub-down { position:absolute; left:50%; transform:translateX(-50%); top:.15cqw; bottom:.1cqw; width:1cqw; }
     .pub-down i { position:absolute; left:50%; transform:translateX(-50%); top:0; bottom:.62cqw;
-                  width:.15cqw; background:var(--flow,#aeb6c4); }
+                  width:0; border-left:.15cqw solid var(--flow,#aeb6c4); }
     .pub-down b { position:absolute; left:50%; transform:translateX(-50%); bottom:0; width:0; height:0;
                   border-left:.42cqw solid transparent; border-right:.42cqw solid transparent;
                   border-top:.7cqw solid var(--flow,#aeb6c4); }
 
     /* left-to-right return sweep: out of the last card, back across, into the first */
     .pub-sweep { position:relative; height:2.8cqw; }
-    .pub-sweep .stub-out { position:absolute; right:11.5%; top:.15cqw; height:1.25cqw; width:.15cqw;
-                           background:var(--flow,#aeb6c4); }
-    .pub-sweep .run { position:absolute; left:11.5%; right:11.5%; top:1.4cqw; height:.15cqw;
-                      background:var(--flow,#aeb6c4); }
+    .pub-sweep .stub-out { position:absolute; right:11.5%; top:.15cqw; height:1.25cqw; width:0;
+                           border-left:.15cqw solid var(--flow,#aeb6c4); }
+    .pub-sweep .run { position:absolute; left:11.5%; right:11.5%; top:1.4cqw; height:0;
+                      border-top:.15cqw solid var(--flow,#aeb6c4); }
     .pub-sweep .stub-in { position:absolute; left:11.5%; top:1.4cqw; bottom:.1cqw; width:1cqw;
                           transform:translateX(-50%); }
     .pub-sweep .stub-in i { position:absolute; left:50%; transform:translateX(-50%); top:0; bottom:.62cqw;
-                            width:.15cqw; background:var(--flow,#aeb6c4); }
+                            width:0; border-left:.15cqw solid var(--flow,#aeb6c4); }
     .pub-sweep .stub-in b { position:absolute; left:50%; transform:translateX(-50%); bottom:0;
                             width:0; height:0; border-left:.42cqw solid transparent;
                             border-right:.42cqw solid transparent; border-top:.7cqw solid var(--flow,#aeb6c4); }
@@ -144,6 +150,7 @@
          min-h-screen forces a full page of it — so the unused space on the
          last page printed as a solid grey block. */
       html, body { background:#fff !important; min-height:0 !important; }
+      .pub-page, .pub-page * { -webkit-print-color-adjust:exact; print-color-adjust:exact; }
       .pub-root { background:#fff !important; padding:0; min-height:0; }
       .pub-page { max-width:none; width:10.3in; margin:0; padding:0; box-shadow:none; border-radius:0; }
       /* keep a document's cards together where they fit, and never split a row
@@ -2593,7 +2600,7 @@ function PubCard({ step, index, roles, color }) {
     : '';
   return (
     <div className="pub-card" style={{ borderColor: color }}>
-      <span className="pub-num" style={{ background: color }}>{String(index + 1).padStart(2, '0')}</span>
+      <span className="pub-num" style={{ color, borderColor: color }}>{String(index + 1).padStart(2, '0')}</span>
       <div className="pub-ct">
         {step.stageName}
         {step.informationOnly && <span className="pub-badge io">ⓘ</span>}
@@ -2688,7 +2695,7 @@ function PubMatrix({ projectType, spine }) {
           const t = docTrack(d, spine);
           return (
             <tr key={d.id}>
-              <td className="dn"><span className="sw" style={{ background: d.color }} />{d.name}</td>
+              <td className="dn"><span className="sw" style={{ borderColor: d.color }} />{d.name}</td>
               {spine.map((n, i) => {
                 const on = t.cells[i].length > 0;
                 const inTrack = t.first >= 0 && i >= t.first && i <= t.last;
@@ -2698,7 +2705,7 @@ function PubMatrix({ projectType, spine }) {
                     {inTrack && i > t.first && <span className={'ln l' + (on ? '' : ' dsh')} style={{ borderColor: col }} />}
                     {inTrack && i < t.last && <span className={'ln r' + (on ? '' : ' dsh')} style={{ borderColor: col }} />}
                     {on && i === t.first && <span className="cap s">START</span>}
-                    {on && <span className="nd" style={{ background: col }} />}
+                    {on && <span className="nd" style={{ borderColor: col }} />}
                     {on && i === t.last && <span className="cap e">END</span>}
                   </td>
                 );
@@ -2720,6 +2727,14 @@ function PublishedView({ slug }) {
       .then(pub => setState({ loading: false, pub, error: pub ? '' : 'notfound' }))
       .catch(() => setState({ loading: false, pub: null, error: 'denied' }));
   }, [slug]);
+
+  // The tab, the bookmark and the PDF's default filename all come from this,
+  // so it should name the workflow, not the tool.
+  useEffect(() => {
+    const name = state.pub && state.pub.snapshot && state.pub.snapshot.projectType
+      ? state.pub.snapshot.projectType.name : (state.pub ? state.pub.name : '');
+    if (name) document.title = name;
+  }, [state.pub]);
 
   if (state.loading) return (
     <div className="flex items-center justify-center h-screen text-slate-400 text-sm">Loading…</div>
@@ -2773,7 +2788,7 @@ function PublishedView({ slug }) {
         {docs.map(d => (
           <section className="pub-block pub-doc" key={d.id}>
             <div className="pub-doc-h" style={{ borderColor: d.color }}>
-              <span className="sw" style={{ background: d.color }} />
+              <span className="sw" style={{ borderColor: d.color }} />
               <span className="pub-doc-n">{d.name}</span>
               <span className="pub-doc-c">{(d.steps || []).length} of {spine.length} steps</span>
             </div>

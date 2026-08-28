@@ -257,6 +257,18 @@ Card flow layout is chosen at publish time and stored on the publication:
   at the far left of the next row, so a down arrow would point at the wrong
   card; those ends get `↴` / `↳` wrap markers instead.
 
+**Marks that carry meaning are drawn with borders, not backgrounds.** Chrome
+does not print background colours unless the viewer ticks "Background
+graphics", so the matrix step dots, the colour swatches and the connector
+rules are all `border`-based (a filled circle is `width:height:1.2cqw` with a
+`.6cqw` border and `box-sizing:border-box`). The step-number badge is outlined
+rather than filled for the same reason — white-on-colour would print as
+white-on-white. `print-color-adjust: exact` is set on the page as a
+belt-and-braces, but nothing load-bearing depends on it.
+
+The published page also sets `document.title` to the project name, since that
+becomes the tab label, the bookmark, and the PDF's default filename.
+
 Connectors take the document's colour: `PubFlow` sets `--flow` inline and the
 connector CSS reads `var(--flow)`, softened with `opacity: .62`.
 
