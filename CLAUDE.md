@@ -138,6 +138,11 @@ one-card rows instead of a table.
 renaming a sync group from a step opened in Row Lock silently discard itself —
 the panel updated from local state and the write went nowhere.
 
+A **narrow left gutter** carries each sync group's name, rotated vertically
+(`writing-mode: vertical-rl`) so the column stays 26px wide, tinted with the
+group colour and spanning the band. A sync group always collapses to exactly
+one band, so the label never needs to span rows.
+
 Every empty cell renders a dashed placeholder box. A document that skips a
 band gets a **↓ marker inside that box**, but only between its own first and
 last occupied band — before it starts or after it ends the box stays empty,
