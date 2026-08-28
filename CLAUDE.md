@@ -188,6 +188,66 @@ to **off**; the bare view shows only presence/absence, which is the point.
 If these should ever become shared team settings, they move into `store` and
 need a `normalizeStore` default.
 
+## Publishing (read-only pages)
+
+`?p=<slug>` renders `PublishedView` instead of the app — **no auth gate**, so
+the branch lives at the `ReactDOM.render` call, not inside `Root` (an early
+return before `Root`'s hooks would be the same Rules of Hooks bug as `d9297ef`).
+
+A publication is a **snapshot**, not a live mirror: pressing Publish copies
+`{ projectType, roles, syncGroupMeta }` to `published/<slug>` and never updates
+itself. Republishing writes the same slug, so links already sent keep working.
+
+### Staleness detection
+
+`contentHash()` hashes the snapshot with `stableStringify` (keys sorted —
+Firebase key order is not stable, and unsorted keys would produce a different
+hash on every load). The hash at publish time is kept in
+`store.publications[projectTypeId]`; `publicationStatus()` compares it against
+a hash of the live project type and returns `none | current | stale`, which
+drives the chip in the top bar.
+
+Because the hash covers only store content, **display preferences never mark a
+page stale** — toggling Row Lock or hiding details leaves the chip green. That
+is deliberate and is covered by a test.
+
+### Required database rules
+
+Public reads of the snapshot subtree only; everything else still needs auth:
+
+```json
+{
+  "rules": {
+    ".read": "auth != null",
+    ".write": "auth != null",
+    "published": { ".read": true }
+  }
+}
+```
+
+Without the `published` rule the app publishes fine but the link shows
+"could not be loaded".
+
+### The printed sheet
+
+One page per document: the step matrix on top (that document's row tinted),
+its cards below. `@page { size: 11in 8.5in }` landscape; `.pub-sheet` is
+`10.4 × 7.9in` with `page-break-after: always`. Sizing inside the sheet is in
+`cqw`, so the same markup scales on screen and at print size.
+
+Card flow layout is chosen at publish time and stored on the publication:
+
+- `serpentine` — rows alternate direction, so a wrap is a short hop to the card
+  directly below, and a **down arrow is literal**.
+- `ltr` — every row reads left to right. Here the next card after a row end is
+  at the far left of the next row, so a down arrow would point at the wrong
+  card; those ends get `↴` / `↳` wrap markers instead.
+
+Arrows are CSS triangles sized in `cqw` from the cell, not SVG markers. An SVG
+`marker` is sized in stroke-width units and will happily draw longer than the
+segment it terminates — at narrow widths the head overhangs backwards past the
+start of the line and reads as an arrow pointing the wrong way.
+
 ## Conventions to follow
 
 - **Match the existing style.** Tailwind utility classes inline; occasional

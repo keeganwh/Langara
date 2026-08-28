@@ -29,6 +29,91 @@
     .doc-col { min-width: 260px; max-width: 260px; }
     .notes-expand { max-height: 0; overflow: hidden; transition: max-height 0.2s ease; }
     .notes-expand.open { max-height: 200px; }
+
+    /* ── Published read-only page ─────────────────────────────────────────── */
+    .pub-root { background:#eef1f5; min-height:100vh; padding:0 0 40px; }
+    .pub-bar { position:sticky; top:0; z-index:10; background:#fff; border-bottom:1px solid #e2e8f0;
+               padding:10px 20px; display:flex; align-items:center; gap:16px; }
+    .pub-bar-t { font-weight:700; color:#1e293b; font-size:15px; }
+    .pub-bar-s { font-size:12px; color:#94a3b8; }
+    .pub-print { margin-left:auto; background:#4f46e5; color:#fff; border:0; border-radius:8px;
+                 padding:8px 14px; font-size:13px; font-weight:600; cursor:pointer; }
+    .pub-print:hover { background:#4338ca; }
+    .pub-hint { max-width:1100px; margin:14px auto 0; padding:0 20px; font-size:12px; color:#94a3b8; }
+    .pub-sheets { max-width:1100px; margin:0 auto; padding:14px 20px; display:flex;
+                  flex-direction:column; gap:22px; }
+    .pub-sheet { background:#fff; box-shadow:0 1px 3px rgba(15,23,42,.1), 0 8px 24px rgba(15,23,42,.07);
+                 border-radius:3px; aspect-ratio:11/8.5; container-type:inline-size; color:#16181d; }
+    .pub-pad { padding:3.1cqw; height:100%; display:flex; flex-direction:column; }
+    .pub-h1 { font-size:1.95cqw; font-weight:700; margin:0 0 .25cqw; }
+    .pub-sub { font-size:1.05cqw; color:#6b7280; margin:0 0 1.9cqw; }
+    .pub-sect { font-size:.9cqw; letter-spacing:.1em; text-transform:uppercase; color:#8a919d;
+                font-weight:700; margin:0 0 .85cqw; }
+    .pub-sect.mt { margin-top:1.7cqw; }
+    /* matrix */
+    .pub-mx { width:100%; border-collapse:collapse; }
+    .pub-mx thead th { font-size:.88cqw; font-weight:600; text-align:center; padding:0 .2cqw .65cqw;
+                       border-bottom:.11cqw solid #cbd0d8; vertical-align:bottom; line-height:1.15; }
+    .pub-mx thead th .n { display:block; font-family:ui-monospace,monospace; font-size:.76cqw;
+                          color:#b6bcc6; font-weight:500; }
+    .pub-mx thead th.dh { text-align:left; width:15%; }
+    .pub-mx td.dn { text-align:left; font-size:1cqw; font-weight:600; padding:.7cqw .5cqw .7cqw 0;
+                    border-bottom:.06cqw solid #eef0f3; white-space:nowrap; }
+    .pub-mx tr.me td { background:#f8fafc; }
+    .pub-mx tr.me td.dn { font-weight:700; }
+    .pub-mx td.c { border-bottom:.06cqw solid #eef0f3; position:relative; height:2.3cqw; }
+    .pub-mx .sw { display:inline-block; width:.68cqw; height:.68cqw; border-radius:50%;
+                  margin-right:.45cqw; vertical-align:middle; }
+    .pub-mx .ln { position:absolute; top:50%; height:0; border-top:.14cqw solid; }
+    .pub-mx .ln.l { left:0; width:50%; } .pub-mx .ln.r { right:0; width:50%; }
+    .pub-mx .dsh { border-top-style:dashed; border-color:#ccd1d9 !important; }
+    .pub-mx .nd { position:absolute; left:50%; top:50%; transform:translate(-50%,-50%);
+                  width:1.2cqw; height:1.2cqw; border-radius:50%; z-index:2; }
+    .pub-mx .cap { position:absolute; left:0; right:0; text-align:center; z-index:3;
+                   font-family:ui-monospace,monospace; font-size:.64cqw; font-weight:700; }
+    .pub-mx .cap.s { top:-.15cqw; color:#1a7f52; } .pub-mx .cap.e { bottom:-.15cqw; color:#9aa1ad; }
+    /* cards */
+    .pub-cards { display:grid; gap:2.4cqw 2.6cqw; }
+    .pub-cell { position:relative; }
+    .pub-card { border:.11cqw solid; border-radius:.4cqw; padding:.55cqw .7cqw; background:#fff;
+                position:relative; height:100%; }
+    .pub-num { position:absolute; top:-.7cqw; left:.5cqw; font-family:ui-monospace,monospace;
+               font-size:.72cqw; font-weight:700; color:#fff; border-radius:.5cqw; padding:.05cqw .42cqw; }
+    .pub-ct { font-size:.98cqw; font-weight:700; line-height:1.2; margin:.25cqw 0 .3cqw; }
+    .pub-ca { font-size:.76cqw; color:#3f4652; line-height:1.4; margin-bottom:.28cqw; }
+    .pub-cm { font-size:.74cqw; color:#6b7280; line-height:1.38; border-top:.06cqw solid #eef0f3;
+              padding-top:.24cqw; }
+    .pub-cm b { color:#3f4652; }
+    .pub-badge { display:inline-block; font-size:.66cqw; font-weight:700; border-radius:.25cqw;
+                 padding:0 .3cqw; margin-left:.25cqw; vertical-align:middle; }
+    .pub-badge.io { color:#0369a1; background:#e0f2fe; }
+    .pub-badge.rt { color:#a16207; background:#fef3c7; }
+    /* one arrowhead size everywhere, drawn from the cell so it never overhangs */
+    .pub-arrow { position:absolute; width:0; height:0; }
+    .pub-arrow.right { right:-1.75cqw; top:50%; transform:translateY(-50%);
+                       border-top:.5cqw solid transparent; border-bottom:.5cqw solid transparent;
+                       border-left:.72cqw solid #b9c0cc; }
+    .pub-arrow.left  { left:-1.75cqw; top:50%; transform:translateY(-50%);
+                       border-top:.5cqw solid transparent; border-bottom:.5cqw solid transparent;
+                       border-right:.72cqw solid #b9c0cc; }
+    .pub-arrow.down  { bottom:-1.6cqw; left:50%; transform:translateX(-50%);
+                       border-left:.5cqw solid transparent; border-right:.5cqw solid transparent;
+                       border-top:.72cqw solid #b9c0cc; }
+    .pub-wrap { position:absolute; font-size:1.15cqw; line-height:1; color:#94a3b8; font-weight:700; }
+    .pub-wrap.out { right:-1.5cqw; bottom:-1.4cqw; }
+    .pub-wrap.in  { left:-1.5cqw; top:-1.1cqw; }
+    .pub-legend { margin-top:auto; padding-top:1.1cqw; font-size:.8cqw; color:#9aa1ad;
+                  border-top:.06cqw solid #eef0f3; }
+
+    @media print {
+      @page { size: 11in 8.5in; margin: 0.3in; }
+      .pub-root { background:#fff; padding:0; }
+      .pub-sheets { max-width:none; margin:0; padding:0; gap:0; display:block; }
+      .pub-sheet { width:10.4in; height:7.9in; box-shadow:none; border-radius:0; aspect-ratio:auto;
+                   page-break-after:always; break-after:page; overflow:hidden; }
+      .pub-sheet:last-child { page-break-after:auto; break-after:auto; }
+    }
+
   </style>
 </head>
 <body class="bg-slate-100 min-h-screen">
@@ -79,6 +164,7 @@ function normalizeStore(store) {
   if (!store) return store;
   return { ...store,
     roles: store.roles || [], templates: store.templates || [], syncGroupMeta: store.syncGroupMeta || {},
+    publications: store.publications || {},
     projectTypes: (store.projectTypes || []).map(pt => ({
       ...pt,
       documents: (pt.documents || []).map(d => ({ ...d, steps: (d.steps || []).map(normalizeStep), orderLabel: d.orderLabel || '' })),
@@ -2549,6 +2635,358 @@ window.onload = function() {
 </html>`;
 }
 
+// ── Publishing ─────────────────────────────────────────────────────────────────
+// A publication is a *snapshot*: the project type as it stood when you pressed
+// publish, copied to `published/<slug>` where it can be read without signing in.
+// It never tracks later edits — that's the point — so the app compares a hash of
+// the live project type against the hash stored at publish time and says so when
+// they diverge.
+const PUB_PATH = 'published';
+const FLOW_LAYOUTS = [
+  { id: 'serpentine', label: 'Serpentine', hint: 'Rows alternate direction; the wrap is a short hop down.' },
+  { id: 'ltr',        label: 'Always left to right', hint: 'Every row starts at the left, like text.' },
+];
+
+// Key order from Firebase isn't stable, so sort before hashing or the same
+// content would produce different hashes on different loads.
+function stableStringify(v) {
+  if (v === null || typeof v !== 'object') return JSON.stringify(v);
+  if (Array.isArray(v)) return '[' + v.map(stableStringify).join(',') + ']';
+  return '{' + Object.keys(v).sort().map(k => JSON.stringify(k) + ':' + stableStringify(v[k])).join(',') + '}';
+}
+function contentHash(obj) {
+  const s = stableStringify(obj);
+  let h = 5381;
+  for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0;
+  return (h >>> 0).toString(36);
+}
+function snapshotOf(projectType, roles, syncGroupMeta) {
+  return { projectType, roles: roles || [], syncGroupMeta: syncGroupMeta || {} };
+}
+function slugify(name) {
+  const base = (name || 'workflow').toLowerCase().replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '').slice(0, 40) || 'workflow';
+  return base + '-' + Math.random().toString(36).slice(2, 6);
+}
+
+// none | current | stale — drives the chip in the top bar.
+function publicationStatus(store, projectType) {
+  if (!store || !projectType) return { state: 'none', pub: null };
+  const pubs = store.publications || {};
+  const pub = pubs[projectType.id];
+  if (!pub) return { state: 'none', pub: null };
+  const live = contentHash(snapshotOf(projectType, store.roles, store.syncGroupMeta));
+  return { state: live === pub.hash ? 'current' : 'stale', pub, liveHash: live };
+}
+
+async function writePublication(slug, payload) {
+  await getFbDb().ref(PUB_PATH + '/' + slug).set(payload);
+}
+async function readPublication(slug) {
+  const snap = await getFbDb().ref(PUB_PATH + '/' + slug).get();
+  return snap.exists() ? snap.val() : null;
+}
+
+function PublishModal({ store, projectType, authUser, onUpdateStore, onClose }) {
+  const status = publicationStatus(store, projectType);
+  const existing = status.pub;
+  const [layout, setLayout] = useState(existing ? existing.flowLayout || 'serpentine' : 'serpentine');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+  const [done, setDone] = useState(false);
+
+  const slug = existing ? existing.slug : slugify(projectType.name);
+  const url = location.origin + location.pathname + '?p=' + slug;
+
+  const publish = async () => {
+    setBusy(true); setErr('');
+    const snapshot = snapshotOf(projectType, store.roles, store.syncGroupMeta);
+    const payload = {
+      slug, projectTypeId: projectType.id, name: projectType.name,
+      snapshot, flowLayout: layout,
+      hash: contentHash(snapshot),
+      publishedAt: new Date().toISOString(),
+      publishedBy: authUser && authUser.email ? authUser.email : '',
+    };
+    try {
+      await writePublication(slug, payload);
+      onUpdateStore(s => ({
+        ...s,
+        publications: { ...(s.publications || {}), [projectType.id]: {
+          slug, hash: payload.hash, publishedAt: payload.publishedAt,
+          publishedBy: payload.publishedBy, flowLayout: layout,
+        } },
+      }));
+      setDone(true);
+    } catch (e) {
+      setErr('Could not publish. If this is the first time, the database rules may not allow writes to "published" yet — see the note below.');
+    }
+    setBusy(false);
+  };
+
+  return (
+    <Modal title={existing ? 'Republish read-only page' : 'Publish read-only page'} onClose={onClose} wide>
+      <p className="text-sm text-slate-600 mb-4">
+        Publishes <span className="font-semibold text-slate-800">{projectType.name}</span> as a snapshot anyone
+        with the link can read — no sign-in. It does not update itself; republish when you want the page to
+        catch up.
+      </p>
+
+      {existing && (
+        <div className={`mb-4 rounded-xl border p-3 text-sm ${status.state === 'stale'
+          ? 'border-amber-300 bg-amber-50 text-amber-800' : 'border-emerald-200 bg-emerald-50 text-emerald-800'}`}>
+          {status.state === 'stale'
+            ? <><span className="font-semibold">The published page is out of date.</span> It still shows the version published {new Date(existing.publishedAt).toLocaleString()}.</>
+            : <><span className="font-semibold">The published page matches what's here.</span> Last published {new Date(existing.publishedAt).toLocaleString()}.</>}
+        </div>
+      )}
+
+      <Field label="Card flow layout" hint="How the step cards run across the printed sheet.">
+        <div className="space-y-2">
+          {FLOW_LAYOUTS.map(l => (
+            <label key={l.id}
+              className={`flex items-start gap-2 p-2.5 rounded-xl border cursor-pointer transition-colors ${
+                layout === l.id ? 'border-indigo-400 bg-indigo-50' : 'border-slate-200 hover:bg-slate-50'}`}>
+              <input type="radio" name="flowlayout" className="mt-1" checked={layout === l.id}
+                onChange={() => setLayout(l.id)} />
+              <span>
+                <span className="block text-sm font-semibold text-slate-800">{l.label}</span>
+                <span className="block text-xs text-slate-500">{l.hint}</span>
+              </span>
+            </label>
+          ))}
+        </div>
+      </Field>
+
+      <Field label="Link" hint="Same link every time you republish, so anything you've already sent keeps working.">
+        <input readOnly className={inputCls} value={url} onFocus={e => e.target.select()} />
+      </Field>
+
+      {err && <p className="text-xs text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2 mb-3">{err}</p>}
+      {done && <p className="text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2 mb-3">Published. The link above is live.</p>}
+
+      <div className="flex justify-end gap-2">
+        <Btn variant="secondary" onClick={onClose}>{done ? 'Close' : 'Cancel'}</Btn>
+        {existing && <Btn variant="secondary" onClick={() => window.open(url, '_blank')}>Open page</Btn>}
+        <Btn onClick={publish} disabled={busy}>{busy ? 'Publishing…' : existing ? 'Republish' : 'Publish'}</Btn>
+      </div>
+    </Modal>
+  );
+}
+
+// ── Published read-only page ───────────────────────────────────────────────────
+// Rendered when the URL carries ?p=<slug>. Reads the snapshot straight from
+// `published/<slug>`, which the database rules allow without authentication, so
+// there is no sign-in gate here. One sheet per document: the step matrix on top,
+// that document's cards below. Sized for 11 × 8.5 in landscape at print time.
+
+// Serpentine reverses every second row, so a wrap is a hop to the card directly
+// below rather than a sweep back across the sheet.
+function orderCards(steps, perRow, layout) {
+  if (layout !== 'serpentine') return steps.map((s, i) => ({ s, i, col: i % perRow, row: Math.floor(i / perRow) }));
+  const out = [];
+  for (let r = 0; r * perRow < steps.length; r++) {
+    const row = steps.slice(r * perRow, r * perRow + perRow).map((s, j) => ({ s, i: r * perRow + j }));
+    (r % 2 ? row.reverse() : row).forEach((x, col) => out.push({ ...x, col, row: r }));
+  }
+  return out;
+}
+
+function PubCard({ step, index, roles, color, perRow, total, layout, row, col }) {
+  const roleName = (id) => { const r = roles.find(x => x.id === id); return r ? r.label : id; };
+  const actionIcon = (t) => t === 'review' ? '🔍' : t === 'approval' ? '✅' : t === 'consultation' ? '💬' : t === 'prepared_by' ? '📝' : '▸';
+  const isLast = index === total - 1;
+  const rowEnd = layout === 'serpentine'
+    ? (col === (row % 2 ? 0 : perRow - 1))
+    : (col === perRow - 1);
+  // Direction the next card lies in: right, left, or straight down at a turn.
+  // In serpentine the next card really is directly below at a row end, so a
+  // down arrow is literal. In left-to-right it is at the far left of the next
+  // row, so a down arrow would point at the wrong card — mark the wrap instead.
+  const goesDown = !isLast && rowEnd && layout === 'serpentine';
+  const wrapsOut = !isLast && rowEnd && layout !== 'serpentine';
+  const wrapsIn  = layout !== 'serpentine' && col === 0 && row > 0;
+  const goesLeft = !isLast && !rowEnd && layout === 'serpentine' && row % 2 === 1;
+
+  const parties = [];
+  if ((step.presenterIds || []).length) parties.push(step.presenterIds.map(roleName).join(', '));
+  const storage = step.storageLocation
+    ? step.storageLocation + (step.fileOperation === 'copy' ? ' · copy' : step.fileOperation === 'move' ? ' · move' : '')
+    : '';
+
+  return (
+    <div className="pub-cell">
+      <div className="pub-card" style={{ borderColor: color }}>
+        <span className="pub-num" style={{ background: color }}>{String(index + 1).padStart(2, '0')}</span>
+        <div className="pub-ct">
+          {step.stageName}
+          {step.informationOnly && <span className="pub-badge io">ⓘ</span>}
+          {step.returnToStepId && <span className="pub-badge rt">↩</span>}
+        </div>
+        {(step.actions || []).length > 0 && (
+          <div className="pub-ca">
+            {step.actions.map(a => (
+              <div key={a.id}>{actionIcon(a.type)} {a.type === 'custom' ? a.label : a.label + (a.person ? ' ' + a.person : '')}</div>
+            ))}
+          </div>
+        )}
+        {(parties.length > 0 || storage) && (
+          <div className="pub-cm">
+            {parties.length > 0 && <div><b>{parties.join(', ')}</b></div>}
+            {storage && <div>📁 {storage}</div>}
+          </div>
+        )}
+      </div>
+      {wrapsIn && <span className="pub-wrap in" aria-hidden="true">↳</span>}
+      {!isLast && (
+        goesDown  ? <span className="pub-arrow down" aria-hidden="true" />
+      : wrapsOut  ? <span className="pub-wrap out" aria-hidden="true">↴</span>
+      :             <span className={'pub-arrow ' + (goesLeft ? 'left' : 'right')} aria-hidden="true" />
+      )}
+    </div>
+  );
+}
+
+function PubSheet({ snapshot, doc, spine, layout }) {
+  const { projectType, roles } = snapshot;
+  const docs = projectType.documents || [];
+  const steps = doc.steps || [];
+  const perRow = 4;
+  const ordered = orderCards(steps, perRow, layout);
+
+  return (
+    <div className="pub-sheet">
+      <div className="pub-pad">
+        <div className="pub-h1">{projectType.name} — {doc.name}</div>
+        <div className="pub-sub">
+          Continuing Studies · Langara College — {steps.length} of {spine.length} steps
+        </div>
+
+        <div className="pub-sect">Where every document goes</div>
+        <table className="pub-mx">
+          <thead>
+            <tr>
+              <th className="dh">Document</th>
+              {spine.map((n, i) => <th key={n.key}><span className="n">{i + 1}</span>{n.label}</th>)}
+            </tr>
+          </thead>
+          <tbody>
+            {docs.map(d => {
+              const t = docTrack(d, spine);
+              const isThis = d.id === doc.id;
+              return (
+                <tr key={d.id} className={isThis ? 'me' : ''}>
+                  <td className="dn"><span className="sw" style={{ background: d.color }} />{d.name}</td>
+                  {spine.map((n, i) => {
+                    const on = t.cells[i].length > 0;
+                    const inTrack = t.first >= 0 && i >= t.first && i <= t.last;
+                    const col = on ? d.color : '#ccd1d9';
+                    return (
+                      <td key={n.key} className="c">
+                        {inTrack && i > t.first && <span className={'ln l' + (on ? '' : ' dsh')} style={{ borderColor: col }} />}
+                        {inTrack && i < t.last && <span className={'ln r' + (on ? '' : ' dsh')} style={{ borderColor: col }} />}
+                        {on && i === t.first && <span className="cap s">START</span>}
+                        {on && <span className="nd" style={{ background: col }} />}
+                        {on && i === t.last && <span className="cap e">END</span>}
+                      </td>
+                    );
+                  })}
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+
+        <div className="pub-sect mt">{doc.name} — step by step</div>
+        <div className="pub-cards" style={{ gridTemplateColumns: `repeat(${perRow}, 1fr)` }}>
+          {ordered.map(x => (
+            <PubCard key={x.s.id} step={x.s} index={x.i} roles={roles} color={doc.color}
+              perRow={perRow} total={steps.length} layout={layout} row={x.row} col={x.col} />
+          ))}
+        </div>
+
+        <div className="pub-legend">
+          Numbered badges follow this document's own order
+          {layout === 'serpentine' ? ' · rows alternate direction' : ' · every row reads left to right'}
+          {' '}· ⓘ information only · ↩ can return to an earlier step
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PublishedView({ slug }) {
+  const [state, setState] = useState({ loading: true, pub: null, error: '' });
+
+  useEffect(() => {
+    getFbApp();
+    readPublication(slug)
+      .then(pub => setState({ loading: false, pub, error: pub ? '' : 'notfound' }))
+      .catch(() => setState({ loading: false, pub: null, error: 'denied' }));
+  }, [slug]);
+
+  if (state.loading) return (
+    <div className="flex items-center justify-center h-screen text-slate-400 text-sm">Loading…</div>
+  );
+  if (!state.pub) return (
+    <div className="flex items-center justify-center h-screen bg-slate-100">
+      <div className="text-center text-slate-500 max-w-md px-6">
+        <div className="text-4xl mb-3">🔍</div>
+        <p className="text-sm font-medium mb-1">
+          {state.error === 'denied' ? 'This page could not be loaded.' : 'No published page at this link.'}
+        </p>
+        <p className="text-xs text-slate-400">
+          {state.error === 'denied'
+            ? 'The link may be correct but the database is not allowing public reads yet.'
+            : 'It may have been removed, or the link may be mistyped.'}
+        </p>
+      </div>
+    </div>
+  );
+
+  const pub = state.pub;
+  const snapshot = normalizeSnapshot(pub.snapshot);
+  const spine = buildStepSpine(snapshot.projectType);
+  const docs = (snapshot.projectType.documents || []).filter(d => (d.steps || []).length > 0);
+
+  return (
+    <div className="pub-root">
+      <header className="pub-bar no-print">
+        <div>
+          <div className="pub-bar-t">{snapshot.projectType.name}</div>
+          <div className="pub-bar-s">
+            Read-only · published {new Date(pub.publishedAt).toLocaleDateString()}
+            {pub.publishedBy ? ' by ' + pub.publishedBy : ''} · {docs.length} document{docs.length !== 1 ? 's' : ''}
+          </div>
+        </div>
+        <button className="pub-print" onClick={() => window.print()}>🖨 Print / Save as PDF</button>
+      </header>
+      <div className="pub-hint no-print">
+        One page per document, sized for 11 × 8.5 in landscape. Choose <b>Landscape</b> and
+        set margins to <b>Default</b> in the print dialog.
+      </div>
+      <div className="pub-sheets">
+        {docs.map(d => <PubSheet key={d.id} snapshot={snapshot} doc={d} spine={spine} layout={pub.flowLayout || 'serpentine'} />)}
+      </div>
+    </div>
+  );
+}
+
+// Snapshots go through the same defaulting as the live store — Firebase drops
+// empty arrays, so an old snapshot can come back with fields undefined.
+function normalizeSnapshot(snap) {
+  const s = snap || {};
+  const pt = s.projectType || { name: '', documents: [] };
+  return {
+    roles: s.roles || [],
+    syncGroupMeta: s.syncGroupMeta || {},
+    projectType: {
+      ...pt,
+      documents: (pt.documents || []).map(d => ({ ...d, steps: (d.steps || []).map(normalizeStep) })),
+    },
+  };
+}
+
 // ── Presence ───────────────────────────────────────────────────────────────────
 function usePresence(authUser) {
   const [activeUsers, setActiveUsers] = useState([]);
@@ -2847,6 +3285,25 @@ function App({ authUser }) {
           </div>
           {activePT && (
             <div className="flex items-center gap-2 shrink-0">
+              {(() => {
+                const st = publicationStatus(store, activePT);
+                const cls = st.state === 'current' ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                          : st.state === 'stale'   ? 'bg-amber-50 text-amber-700 border-amber-300'
+                          :                          'bg-white text-slate-600 border-slate-300';
+                const label = st.state === 'current' ? '● Published · current'
+                            : st.state === 'stale'   ? '● Published · out of date'
+                            :                          '↗ Publish';
+                return (
+                  <button onClick={() => setModal('publish')}
+                    title={st.state === 'stale'
+                      ? 'The published page still shows an older version. Republish to bring it up to date.'
+                      : st.state === 'current' ? 'The published page matches what you see here.'
+                      : 'Publish a read-only link to this project type'}
+                    className={`inline-flex items-center gap-1.5 font-medium rounded-lg text-xs px-2.5 py-1.5 border transition-colors hover:brightness-95 ${cls}`}>
+                    {label}
+                  </button>
+                );
+              })()}
               <Btn variant="secondary" sm onClick={() => setModal('saveTemplate')}>☆ Save as Template</Btn>
               <Btn variant="secondary" sm onClick={() => {
                 const html = view === 'flow'
@@ -2898,6 +3355,8 @@ function App({ authUser }) {
       {modal === 'manageTypes' && <ProjectTypeEditor store={store} onUpdateStore={s => updateStore(s)} onClose={() => setModal(null)} />}
       {modal === 'roles' && <RolesEditor store={store} onUpdateStore={s => updateStore(s)} onClose={() => setModal(null)} />}
       {modal === 'backup' && <BackupModal store={store} onRestore={data => updateStore(data)} onClose={() => setModal(null)} />}
+      {modal === 'publish' && activePT && <PublishModal store={store} projectType={activePT}
+        authUser={authUser} onUpdateStore={updateStore} onClose={() => setModal(null)} />}
       {modal === 'saveTemplate' && activePT && <TemplateSaveModal projectType={activePT} onSave={saveTemplate} onClose={() => setModal(null)} />}
     </div>
   );
@@ -2918,7 +3377,12 @@ function Root() {
   return <App authUser={authUser} />;
 }
 
-ReactDOM.createRoot(document.getElementById('root')).render(<Root />);
+// A published page is public — no auth gate, no store, just the snapshot. The
+// branch lives here rather than inside Root so no hook is skipped by an early
+// return (see the Rules of Hooks note in CLAUDE.md).
+const PUB_SLUG = new URLSearchParams(location.search).get('p');
+ReactDOM.createRoot(document.getElementById('root'))
+  .render(PUB_SLUG ? <PublishedView slug={PUB_SLUG} /> : <Root />);
 </script>
 </body>
 </html>
