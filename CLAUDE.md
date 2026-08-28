@@ -228,12 +228,20 @@ Public reads of the snapshot subtree only; everything else still needs auth:
 Without the `published` rule the app publishes fine but the link shows
 "could not be loaded".
 
-### The printed sheet
+### The page
 
-One page per document: the step matrix on top (that document's row tinted),
-its cards below. `@page { size: 11in 8.5in }` landscape; `.pub-sheet` is
-`10.4 × 7.9in` with `page-break-after: always`. Sizing inside the sheet is in
-`cqw`, so the same markup scales on screen and at print size.
+**One continuous document**, not a deck: title, the step matrix **once**, then
+a section per document with its cards. Sizing is in `cqw` against
+`.pub-page`, so the same markup scales on screen and at print width.
+
+Printing (11 × 8.5 in landscape) packs as many document sections onto a page
+as fit. `break-inside: avoid` on `.pub-doc` keeps a section whole, and on
+`.pub-row` keeps a row of cards whole; `break-after: avoid` on the heading
+stops it being orphaned. On the sample data that is 5 documents over 3 pages
+with no section split.
+
+There is no print/export in the app itself any more — printing happens from
+the published page.
 
 Card flow layout is chosen at publish time and stored on the publication:
 
@@ -243,10 +251,17 @@ Card flow layout is chosen at publish time and stored on the publication:
   at the far left of the next row, so a down arrow would point at the wrong
   card; those ends get `↴` / `↳` wrap markers instead.
 
-Arrows are CSS triangles sized in `cqw` from the cell, not SVG markers. An SVG
-`marker` is sized in stroke-width units and will happily draw longer than the
-segment it terminates — at narrow widths the head overhangs backwards past the
-start of the line and reads as an arrow pointing the wrong way.
+**Connectors are a rule plus a head**, built from flex/absolute elements
+(`.pub-conn`, `.pub-down`, `.pub-sweep`) — never a bare arrowhead. A version
+that drew only the triangle read far weaker than the design, because an
+arrowhead alone in a wide gap does not say "movement". The serpentine turn
+mirrors the row's slot layout so it lands in the right column; the
+left-to-right sweep is drawn as stub-out / run-across / stub-in-with-head.
+
+Avoid SVG `marker` elements for this: a marker is sized in stroke-width units
+and will happily draw longer than the segment it terminates, overhanging
+backwards past the start of the line and reading as an arrow pointing the
+wrong way at narrow widths.
 
 ## Conventions to follow
 

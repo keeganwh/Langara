@@ -31,7 +31,7 @@
     .notes-expand.open { max-height: 200px; }
 
     /* ── Published read-only page ─────────────────────────────────────────── */
-    .pub-root { background:#eef1f5; min-height:100vh; padding:0 0 40px; }
+    .pub-root { background:#eef1f5; min-height:100vh; padding:0 0 48px; }
     .pub-bar { position:sticky; top:0; z-index:10; background:#fff; border-bottom:1px solid #e2e8f0;
                padding:10px 20px; display:flex; align-items:center; gap:16px; }
     .pub-bar-t { font-weight:700; color:#1e293b; font-size:15px; }
@@ -39,17 +39,19 @@
     .pub-print { margin-left:auto; background:#4f46e5; color:#fff; border:0; border-radius:8px;
                  padding:8px 14px; font-size:13px; font-weight:600; cursor:pointer; }
     .pub-print:hover { background:#4338ca; }
-    .pub-hint { max-width:1100px; margin:14px auto 0; padding:0 20px; font-size:12px; color:#94a3b8; }
-    .pub-sheets { max-width:1100px; margin:0 auto; padding:14px 20px; display:flex;
-                  flex-direction:column; gap:22px; }
-    .pub-sheet { background:#fff; box-shadow:0 1px 3px rgba(15,23,42,.1), 0 8px 24px rgba(15,23,42,.07);
-                 border-radius:3px; aspect-ratio:11/8.5; container-type:inline-size; color:#16181d; }
-    .pub-pad { padding:3.1cqw; height:100%; display:flex; flex-direction:column; }
-    .pub-h1 { font-size:1.95cqw; font-weight:700; margin:0 0 .25cqw; }
-    .pub-sub { font-size:1.05cqw; color:#6b7280; margin:0 0 1.9cqw; }
+
+    /* One continuous page. cqw sizing means the same markup scales on screen
+       and at print width without a second set of rules. */
+    .pub-page { max-width:1080px; margin:22px auto; background:#fff; border-radius:4px;
+                box-shadow:0 1px 3px rgba(15,23,42,.1), 0 8px 24px rgba(15,23,42,.06);
+                padding:3.2cqw 3.2cqw 2.4cqw; container-type:inline-size; color:#16181d; }
+    .pub-title-block { border-bottom:.16cqw solid #16181d; padding-bottom:1.1cqw; margin-bottom:1.8cqw; }
+    .pub-h1 { font-size:2.1cqw; font-weight:700; margin:0 0 .25cqw; letter-spacing:-.01em; }
+    .pub-sub { font-size:1.05cqw; color:#6b7280; }
+    .pub-block { margin-bottom:2.4cqw; }
     .pub-sect { font-size:.9cqw; letter-spacing:.1em; text-transform:uppercase; color:#8a919d;
-                font-weight:700; margin:0 0 .85cqw; }
-    .pub-sect.mt { margin-top:1.7cqw; }
+                font-weight:700; margin:0 0 .9cqw; }
+
     /* matrix */
     .pub-mx { width:100%; border-collapse:collapse; }
     .pub-mx thead th { font-size:.88cqw; font-weight:600; text-align:center; padding:0 .2cqw .65cqw;
@@ -59,8 +61,6 @@
     .pub-mx thead th.dh { text-align:left; width:15%; }
     .pub-mx td.dn { text-align:left; font-size:1cqw; font-weight:600; padding:.7cqw .5cqw .7cqw 0;
                     border-bottom:.06cqw solid #eef0f3; white-space:nowrap; }
-    .pub-mx tr.me td { background:#f8fafc; }
-    .pub-mx tr.me td.dn { font-weight:700; }
     .pub-mx td.c { border-bottom:.06cqw solid #eef0f3; position:relative; height:2.3cqw; }
     .pub-mx .sw { display:inline-block; width:.68cqw; height:.68cqw; border-radius:50%;
                   margin-right:.45cqw; vertical-align:middle; }
@@ -72,11 +72,20 @@
     .pub-mx .cap { position:absolute; left:0; right:0; text-align:center; z-index:3;
                    font-family:ui-monospace,monospace; font-size:.64cqw; font-weight:700; }
     .pub-mx .cap.s { top:-.15cqw; color:#1a7f52; } .pub-mx .cap.e { bottom:-.15cqw; color:#9aa1ad; }
-    /* cards */
-    .pub-cards { display:grid; gap:2.4cqw 2.6cqw; }
-    .pub-cell { position:relative; }
+
+    /* document sections */
+    .pub-doc-h { display:flex; align-items:center; gap:.6cqw; border-bottom:.16cqw solid;
+                 padding-bottom:.5cqw; margin-bottom:1.2cqw; }
+    .pub-doc-h .sw { width:.8cqw; height:.8cqw; border-radius:50%; display:inline-block; }
+    .pub-doc-n { font-size:1.35cqw; font-weight:700; }
+    .pub-doc-c { margin-left:auto; font-size:.85cqw; color:#9aa1ad; font-weight:600; }
+
+    /* cards + connectors: a rule and a head, so movement actually reads */
+    .pub-flow { display:flex; flex-direction:column; }
+    .pub-row { display:flex; align-items:stretch; }
+    .pub-slot { flex:1 1 0; min-width:0; display:flex; }
     .pub-card { border:.11cqw solid; border-radius:.4cqw; padding:.55cqw .7cqw; background:#fff;
-                position:relative; height:100%; }
+                position:relative; width:100%; }
     .pub-num { position:absolute; top:-.7cqw; left:.5cqw; font-family:ui-monospace,monospace;
                font-size:.72cqw; font-weight:700; color:#fff; border-radius:.5cqw; padding:.05cqw .42cqw; }
     .pub-ct { font-size:.98cqw; font-weight:700; line-height:1.2; margin:.25cqw 0 .3cqw; }
@@ -88,32 +97,56 @@
                  padding:0 .3cqw; margin-left:.25cqw; vertical-align:middle; }
     .pub-badge.io { color:#0369a1; background:#e0f2fe; }
     .pub-badge.rt { color:#a16207; background:#fef3c7; }
-    /* one arrowhead size everywhere, drawn from the cell so it never overhangs */
-    .pub-arrow { position:absolute; width:0; height:0; }
-    .pub-arrow.right { right:-1.75cqw; top:50%; transform:translateY(-50%);
-                       border-top:.5cqw solid transparent; border-bottom:.5cqw solid transparent;
-                       border-left:.72cqw solid #b9c0cc; }
-    .pub-arrow.left  { left:-1.75cqw; top:50%; transform:translateY(-50%);
-                       border-top:.5cqw solid transparent; border-bottom:.5cqw solid transparent;
-                       border-right:.72cqw solid #b9c0cc; }
-    .pub-arrow.down  { bottom:-1.6cqw; left:50%; transform:translateX(-50%);
-                       border-left:.5cqw solid transparent; border-right:.5cqw solid transparent;
-                       border-top:.72cqw solid #b9c0cc; }
-    .pub-wrap { position:absolute; font-size:1.15cqw; line-height:1; color:#94a3b8; font-weight:700; }
-    .pub-wrap.out { right:-1.5cqw; bottom:-1.4cqw; }
-    .pub-wrap.in  { left:-1.5cqw; top:-1.1cqw; }
-    .pub-legend { margin-top:auto; padding-top:1.1cqw; font-size:.8cqw; color:#9aa1ad;
-                  border-top:.06cqw solid #eef0f3; }
+
+    .pub-conn { flex:0 0 2.9cqw; align-self:center; position:relative; height:1cqw; }
+    .pub-conn.spacer { visibility:hidden; }
+    .pub-conn i { position:absolute; top:50%; transform:translateY(-50%); height:.15cqw;
+                  background:#aeb6c4; }
+    .pub-conn b { position:absolute; top:50%; transform:translateY(-50%); width:0; height:0;
+                  border-top:.42cqw solid transparent; border-bottom:.42cqw solid transparent; }
+    .pub-conn.right i { left:.35cqw; right:.85cqw; }
+    .pub-conn.right b { right:.15cqw; border-left:.7cqw solid #aeb6c4; }
+    .pub-conn.left  i { right:.35cqw; left:.85cqw; }
+    .pub-conn.left  b { left:.15cqw; border-right:.7cqw solid #aeb6c4; }
+
+    /* serpentine row turn: mirrors the row's slots so it lands in the right column */
+    .pub-turn { display:flex; align-items:stretch; height:2.6cqw; }
+    .pub-turn .pub-slot { position:relative; }
+    .pub-down { position:absolute; left:50%; transform:translateX(-50%); top:.15cqw; bottom:.1cqw; width:1cqw; }
+    .pub-down i { position:absolute; left:50%; transform:translateX(-50%); top:0; bottom:.62cqw;
+                  width:.15cqw; background:#aeb6c4; }
+    .pub-down b { position:absolute; left:50%; transform:translateX(-50%); bottom:0; width:0; height:0;
+                  border-left:.42cqw solid transparent; border-right:.42cqw solid transparent;
+                  border-top:.7cqw solid #aeb6c4; }
+
+    /* left-to-right return sweep: out of the last card, back across, into the first */
+    .pub-sweep { position:relative; height:2.8cqw; }
+    .pub-sweep .stub-out { position:absolute; right:11.5%; top:.15cqw; height:1.25cqw; width:.15cqw;
+                           background:#aeb6c4; }
+    .pub-sweep .run { position:absolute; left:11.5%; right:11.5%; top:1.4cqw; height:.15cqw;
+                      background:#aeb6c4; }
+    .pub-sweep .stub-in { position:absolute; left:11.5%; top:1.4cqw; bottom:.1cqw; width:1cqw;
+                          transform:translateX(-50%); }
+    .pub-sweep .stub-in i { position:absolute; left:50%; transform:translateX(-50%); top:0; bottom:.62cqw;
+                            width:.15cqw; background:#aeb6c4; }
+    .pub-sweep .stub-in b { position:absolute; left:50%; transform:translateX(-50%); bottom:0;
+                            width:0; height:0; border-left:.42cqw solid transparent;
+                            border-right:.42cqw solid transparent; border-top:.7cqw solid #aeb6c4; }
+
+    .pub-legend { padding-top:1.1cqw; font-size:.8cqw; color:#9aa1ad; border-top:.06cqw solid #eef0f3; }
 
     @media print {
-      @page { size: 11in 8.5in; margin: 0.3in; }
+      @page { size: 11in 8.5in; margin: 0.35in; }
       .pub-root { background:#fff; padding:0; }
-      .pub-sheets { max-width:none; margin:0; padding:0; gap:0; display:block; }
-      .pub-sheet { width:10.4in; height:7.9in; box-shadow:none; border-radius:0; aspect-ratio:auto;
-                   page-break-after:always; break-after:page; overflow:hidden; }
-      .pub-sheet:last-child { page-break-after:auto; break-after:auto; }
+      .pub-page { max-width:none; width:10.3in; margin:0; padding:0; box-shadow:none; border-radius:0; }
+      /* keep a document's cards together where they fit, and never split a row
+         of cards or orphan a heading from its first row */
+      .pub-doc { break-inside:avoid; page-break-inside:avoid; }
+      .pub-doc-h { break-after:avoid; page-break-after:avoid; }
+      .pub-row, .pub-turn, .pub-sweep { break-inside:avoid; page-break-inside:avoid; }
+      .pub-block { margin-bottom:0.22in; }
+      .pub-legend { break-inside:avoid; }
     }
-
   </style>
 </head>
 <body class="bg-slate-100 min-h-screen">
@@ -2346,294 +2379,7 @@ function StepFlowView({ projectType, roles }) {
   );
 }
 
-// ── Print / PDF generator ──────────────────────────────────────────────────────
-function generatePrintHTML(projectType, roles, syncGroupMeta) {
-  const numCols = projectType.documents.length;
-  // Page width: ~62mm per column + 20mm margins; height auto
-  const pageWidthMM = Math.max(150, numCols * 65 + 20);
 
-  const roleLabel = (ids) =>
-    (ids || []).map(id => roles.find(r => r.id === id)?.label ?? id).join(', ');
-
-  const actionIcon = (type) => type === 'review' ? '🔍' : type === 'approval' ? '✅' : type === 'consultation' ? '💬' : type === 'prepared_by' ? '📝' : '▸';
-
-  const fileOpLabel = (op) => {
-    if (op === 'copy') return '⎘ Document Copied';
-    if (op === 'move') return '→ Document Moved';
-    if (op === 'download_email') return '📧 Emailed as Attachment';
-    return '';
-  };
-
-  const deliveryLabel = (method) => {
-    if (method === 'download_email') return '📧 Emailed as Attachment';
-    if (method === 'in_person') return '🤝 Delivered In Person';
-    if (method === 'shared_folder') return '📂 Via Shared Folder';
-    return '';
-  };
-
-  const stepHTML = (step, color) => {
-    const actions = (step.actions || []).map(a =>
-      `<div class="action">${actionIcon(a.type)} ${a.type === 'custom' ? a.label : `<b>${a.label}</b>${a.person ? ' ' + a.person : ''}`}</div>`
-    ).join('');
-
-    const parties = [];
-    if (step.presenterIds?.length) parties.push(`<span class="lbl-indigo">Prepares/Presents:</span> ${roleLabel(step.presenterIds)}`);
-    if (step.carrierIds?.length) parties.push(`<span class="lbl-green">Carries to next:</span> ${roleLabel(step.carrierIds)}`);
-
-    const storage = [];
-    if (step.storageLocation) storage.push(`📁 ${step.storageLocation}`);
-    if (step.fileOperation) storage.push(fileOpLabel(step.fileOperation));
-
-    const delivery = step.deliveryMethod ? deliveryLabel(step.deliveryMethod) : '';
-
-    const triggerBadge = (step.triggerType && step.triggerLabel)
-      ? `<div class="trigger">⚡ ${step.triggerLabel}</div>` : '';
-
-    const infoBadge = step.informationOnly
-      ? '<span class="info-only">ⓘ Information Only</span>' : '';
-
-    const syncMeta = step.syncGroupId && syncGroupMeta && syncGroupMeta[step.syncGroupId];
-    const syncBadge = syncMeta
-      ? `<div class="sync-badge" style="border-color:${syncMeta.color};color:${syncMeta.color}">🔗 ${syncMeta.name}</div>` : '';
-
-    const rejection = step.returnToStepId ? '<div class="rejection">↩ If rejected, returns to an earlier step</div>' : '';
-    const notes = step.notes ? `<div class="notes">📝 ${step.notes}</div>` : '';
-
-    const borderStyle = syncMeta
-      ? `border:2px solid ${syncMeta.color};border-top-color:${color};border-top-width:3px`
-      : `border:1px solid #e2e8f0;border-top:2px solid ${color}`;
-
-    return `
-      <div class="step" style="${borderStyle}">
-        <div class="step-name">${infoBadge}${step.stageName || '(unnamed)'}</div>
-        ${triggerBadge}
-        ${actions ? `<div class="actions">${actions}</div>` : ''}
-        ${parties.length ? `<div class="parties">${parties.join('<br>')}</div>` : ''}
-        ${(storage.length || delivery) ? `<div class="storage">${[...storage, delivery].filter(Boolean).join(' &nbsp;·&nbsp; ')}</div>` : ''}
-        ${syncBadge}
-        ${rejection}
-        ${notes}
-      </div>`;
-  };
-
-  const colsHTML = projectType.documents.map(doc => {
-    const orderLabel = doc.orderLabel ? `<span class="order-lbl">#${doc.orderLabel}</span> ` : '';
-    return `
-    <div class="col">
-      <div class="col-header" style="background:${doc.color}18;color:${doc.color};border-bottom:2px solid ${doc.color}">${orderLabel}${doc.name}</div>
-      ${doc.steps.length === 0
-        ? '<div class="empty">No steps defined</div>'
-        : doc.steps.map((s, i) =>
-            stepHTML(s, doc.color) + (i < doc.steps.length - 1 ? `<div class="arrow" style="color:${doc.color}">↓</div>` : '')
-          ).join('')
-      }
-      <div class="complete" style="color:${doc.color};border-color:${doc.color}20;background:${doc.color}10">✓ Complete</div>
-    </div>`;
-  }).join('');
-
-  return `<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8"/>
-<style>
-  @page { size: ${pageWidthMM}mm auto; margin: 10mm; }
-  * { box-sizing: border-box; }
-  body { font-family: system-ui, sans-serif; font-size: 9px; margin: 0; }
-  h1 { font-size: 13px; font-weight: bold; margin: 0 0 2px; }
-  .subtitle { font-size: 8px; color: #64748b; margin: 0 0 10px; }
-  .columns { display: flex; gap: 8px; align-items: flex-start; }
-  .col { flex: 1; min-width: 0; }
-  .col-header { font-weight: bold; font-size: 9.5px; padding: 4px 6px; border-radius: 4px 4px 0 0; margin-bottom: 5px; }
-  .order-lbl { font-weight: bold; opacity: 0.7; }
-  .step { border-radius: 5px; padding: 5px 6px; margin-bottom: 2px; background: #fff; }
-  .step-name { font-weight: bold; font-size: 9px; margin-bottom: 2px; color: #1e293b; }
-  .info-only { font-size: 7px; font-weight: bold; color: #0284c7; background: #e0f2fe; border-radius: 3px; padding: 1px 3px; margin-right: 3px; vertical-align: middle; }
-  .trigger { font-size: 7.5px; color: #92400e; background: #fef3c7; border: 1px solid #fcd34d; border-radius: 3px; padding: 1px 4px; margin-bottom: 3px; display: inline-block; }
-  .actions { margin-bottom: 3px; }
-  .action { font-size: 8px; color: #374151; line-height: 1.5; }
-  .action b { color: #1e293b; }
-  .parties { font-size: 7.5px; color: #64748b; border-top: 1px solid #f1f5f9; padding-top: 2px; margin-top: 2px; line-height: 1.6; }
-  .lbl-indigo { font-weight: bold; color: #4f46e5; }
-  .lbl-green  { font-weight: bold; color: #059669; }
-  .storage { font-size: 7.5px; color: #0d9488; margin-top: 2px; border-top: 1px solid #f0fdfa; padding-top: 2px; }
-  .sync-badge { font-size: 7px; font-weight: bold; border: 1px solid; border-radius: 3px; padding: 1px 4px; margin-top: 2px; display: inline-block; }
-  .rejection { font-size: 7.5px; color: #b45309; margin-top: 2px; border-top: 1px dashed #fcd34d; padding-top: 2px; }
-  .notes { font-size: 7.5px; color: #78716c; background: #fefce8; border: 1px solid #fef08a; border-radius: 3px; padding: 2px 4px; margin-top: 2px; }
-  .arrow { text-align: center; font-size: 11px; line-height: 1.2; margin: 1px 0; }
-  .complete { text-align: center; font-size: 8px; font-weight: bold; padding: 3px; border-radius: 4px; border: 1px solid; margin-top: 4px; }
-  .empty { font-size: 8px; color: #94a3b8; font-style: italic; padding: 8px; text-align: center; }
-</style>
-</head>
-<body>
-  <h1>${projectType.name} — Program Development Pipeline</h1>
-  <div class="subtitle">Continuing Studies · Langara College &nbsp;|&nbsp; Generated ${new Date().toLocaleDateString('en-CA', { year:'numeric', month:'long', day:'numeric' })}</div>
-  <div class="columns">${colsHTML}</div>
-<script>
-window.onload = function() {
-  var PX_MM = 0.264583;
-  var wMM = Math.ceil(document.body.scrollWidth * PX_MM * 1.03) + 25;
-  var hMM = Math.ceil(document.body.scrollHeight * PX_MM * 1.03) + 25;
-  var s = document.createElement('style');
-  s.textContent = '@page{size:' + wMM + 'mm ' + hMM + 'mm;margin:8mm;}';
-  document.head.appendChild(s);
-  window.print();
-};
-<\/script>
-</body>
-</html>`;
-}
-
-// ── Step Flow print / PDF generator ────────────────────────────────────────────
-// The Step Flow view needs its own renderer, same as the document canvas —
-// the React components aren't reused for print.
-// NOTE: no optional chaining on computed members (?.[expr]) in here; the pinned
-// Babel standalone build chokes on it and blanks the page.
-function generateFlowPrintHTML(projectType, roles, prefs) {
-  const details = (prefs && prefs.details) || NO_DETAILS;
-  const hidden = new Set((prefs && prefs.hidden) || []);
-  const fullSpine = buildStepSpine(projectType);
-  const spine = fullSpine.filter(n => !hidden.has(n.key));
-  const docs = projectType.documents || [];
-  const anyDetail = FLOW_DETAILS.some(d => details[d.id]);
-
-  const colWidthMM = anyDetail ? 40 : 26;
-  const pageWidthMM = Math.max(180, spine.length * colWidthMM + 60);
-
-  const roleLabel = (ids) => (ids || [])
-    .map(id => { const r = roles.find(x => x.id === id); return r ? r.label : id; })
-    .join(', ');
-
-  const actionIcon = (type) => type === 'review' ? '🔍' : type === 'approval' ? '✅' : type === 'consultation' ? '💬' : type === 'prepared_by' ? '📝' : '▸';
-
-  const esc = (s) => String(s == null ? '' : s)
-    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-
-  const detailLines = (steps) => {
-    const out = [];
-    steps.forEach(step => {
-      if (details.trigger && triggerDisplay(step)) out.push(esc(triggerDisplay(step)));
-      if (details.actions) (step.actions || []).forEach(a => {
-        out.push(actionIcon(a.type) + ' ' + esc(a.type === 'custom' ? a.label : a.label + (a.person ? ' ' + a.person : '')));
-      });
-      if (details.presenters && (step.presenterIds || []).length) out.push('Presents: ' + esc(roleLabel(step.presenterIds)));
-      if (details.carriers && (step.carrierIds || []).length) out.push('Carries: ' + esc(roleLabel(step.carrierIds)));
-      if (details.storage && step.storageLocation) {
-        const op = step.fileOperation === 'copy' ? ' (copy)' : step.fileOperation === 'move' ? ' (move)' : '';
-        out.push('📁 ' + esc(step.storageLocation) + op);
-      }
-      if (details.notes && step.notes) out.push('📝 ' + esc(step.notes));
-    });
-    return out;
-  };
-
-  const headHTML = spine.map((n, i) =>
-    `<th><div class="idx">${i + 1}</div>${esc(n.label)}</th>`
-  ).join('');
-
-  const rowsHTML = docs.map(doc => {
-    const track = docTrack(doc, spine);
-    const cells = track.cells, first = track.first, last = track.last;
-
-    const cellsHTML = spine.map((n, i) => {
-      const steps = cells[i];
-      const active = steps.length > 0;
-      const inTrack = first >= 0 && i >= first && i <= last;
-
-      const leftLine  = inTrack && i > first ? `<span class="ln ln-l ${active ? 'solid' : 'dash'}" style="border-color:${active ? doc.color : '#cbd5e1'}"></span>` : '';
-      const rightLine = inTrack && i < last  ? `<span class="ln ln-r ${active ? 'solid' : 'dash'}" style="border-color:${active ? doc.color : '#cbd5e1'}"></span>` : '';
-
-      let inner = '';
-      if (active) {
-        const infoOnly = steps.every(s => s.informationOnly);
-        const multi = steps.length > 1 ? `<span class="mult">×${steps.length}</span>` : '';
-        const ret = steps.some(s => s.returnToStepId) ? '<span class="ret">↩</span>' : '';
-        const lines = detailLines(steps);
-        const body = lines.length ? `<div class="lines">${lines.map(l => `<div>${l}</div>`).join('')}</div>` : '';
-        const startTag = i === first ? '<div class="tag start">▸ START</div>' : '';
-        const endTag   = i === last  ? '<div class="tag end">✓ END</div>' : '';
-        inner = `${startTag}<div class="node" style="border-color:${doc.color};border-style:${infoOnly ? 'dashed' : 'solid'};background:${infoOnly ? '#fff' : 'linear-gradient(' + doc.color + '14,' + doc.color + '14),#fff'}">
-          <span class="dot" style="color:${doc.color}">${infoOnly ? 'ⓘ' : '●'}</span>${multi}${ret}${body}
-        </div>${endTag}`;
-      } else if (inTrack) {
-        inner = '<span class="bypass">bypassed</span>';
-      }
-      return `<td><div class="cell">${leftLine}${rightLine}${inner}</div></td>`;
-    }).join('');
-
-    const count = cells.filter(c => c.length).length;
-    return `<tr>
-      <th class="doc"><span class="swatch" style="background:${doc.color}"></span>
-        <span class="dname">${esc(doc.name)}</span>
-        <div class="dmeta">${first < 0 ? 'no steps in view' : count + ' of ' + spine.length + ' steps'}</div>
-      </th>${cellsHTML}</tr>`;
-  }).join('');
-
-  const shownDetails = FLOW_DETAILS.filter(d => details[d.id]).map(d => d.label).join(', ');
-  const hiddenNote = fullSpine.length !== spine.length
-    ? ` &nbsp;|&nbsp; ${fullSpine.length - spine.length} step(s) hidden` : '';
-  const detailNote = shownDetails ? ` &nbsp;|&nbsp; Showing: ${esc(shownDetails)}` : '';
-
-  return `<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8"/>
-<style>
-  @page { size: ${pageWidthMM}mm auto; margin: 10mm; }
-  * { box-sizing: border-box; }
-  body { font-family: system-ui, sans-serif; font-size: 9px; margin: 0; }
-  h1 { font-size: 13px; font-weight: bold; margin: 0 0 2px; }
-  .subtitle { font-size: 8px; color: #64748b; margin: 0 0 10px; }
-  table { border-collapse: collapse; width: 100%; }
-  th, td { padding: 0; vertical-align: middle; }
-  thead th { font-size: 8.5px; font-weight: bold; color: #1e293b; padding: 3px 4px 5px;
-             border-bottom: 1.5px solid #cbd5e1; text-align: center; width: ${colWidthMM}mm; }
-  thead th .idx { font-size: 7px; color: #cbd5e1; }
-  thead th:first-child { width: 42mm; }
-  th.doc { text-align: left; padding: 6px 6px 6px 0; border-bottom: 1px solid #f1f5f9;
-           border-right: 1px solid #e2e8f0; font-size: 9.5px; color: #1e293b; }
-  .swatch { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 4px; }
-  .dname { font-weight: bold; }
-  .dmeta { font-size: 7px; color: #94a3b8; font-weight: normal; margin-top: 1px; padding-left: 11px; }
-  td { border-bottom: 1px solid #f1f5f9; }
-  .cell { position: relative; min-height: 34px; display: flex; align-items: center;
-          justify-content: center; padding: 12px 3px; }
-  .ln { position: absolute; top: 50%; width: 50%; border-top-width: 1.5px; }
-  .ln-l { left: 0; } .ln-r { right: 0; }
-  .solid { border-top-style: solid; } .dash { border-top-style: dashed; }
-  .node { position: relative; z-index: 2; border-width: 1.5px; border-radius: 4px;
-          padding: 2px 4px; text-align: center; min-width: 14px; }
-  .dot { font-size: 10px; line-height: 1; }
-  .mult { font-size: 7px; font-weight: bold; margin-left: 2px; }
-  .ret { font-size: 7px; color: #b45309; margin-left: 2px; }
-  .lines { margin-top: 2px; text-align: left; }
-  .lines div { font-size: 7px; color: #475569; line-height: 1.45; }
-  .tag { position: absolute; left: 0; right: 0; text-align: center; font-size: 6px; font-weight: bold; z-index: 3; }
-  .tag.start { top: 2px; color: #059669; }
-  .tag.end { bottom: 2px; color: #94a3b8; }
-  .bypass { position: absolute; left: 0; right: 0; top: calc(50% - 9px); text-align: center;
-            font-size: 6.5px; color: #94a3b8; }
-  .legend { margin-top: 8px; font-size: 7.5px; color: #94a3b8; }
-</style>
-</head>
-<body>
-  <h1>${esc(projectType.name)} — Step Flow</h1>
-  <div class="subtitle">Continuing Studies · Langara College &nbsp;|&nbsp; Generated ${new Date().toLocaleDateString('en-CA', { year:'numeric', month:'long', day:'numeric' })}${hiddenNote}${detailNote}</div>
-  <table><thead><tr><th>Document</th>${headHTML}</tr></thead><tbody>${rowsHTML}</tbody></table>
-  <div class="legend">● goes through &nbsp;·&nbsp; ⓘ information only &nbsp;·&nbsp; dashed line = bypasses this step &nbsp;·&nbsp; ▸ START = first step &nbsp;·&nbsp; ✓ END = last step &nbsp;·&nbsp; ↩ can return to an earlier step</div>
-<script>
-window.onload = function() {
-  var PX_MM = 0.264583;
-  var wMM = Math.ceil(document.body.scrollWidth * PX_MM * 1.03) + 25;
-  var hMM = Math.ceil(document.body.scrollHeight * PX_MM * 1.03) + 25;
-  var s = document.createElement('style');
-  s.textContent = '@page{size:' + wMM + 'mm ' + hMM + 'mm;margin:8mm;}';
-  document.head.appendChild(s);
-  window.print();
-};
-<\\/script>
-</body>
-</html>`;
-}
 
 // ── Publishing ─────────────────────────────────────────────────────────────────
 // A publication is a *snapshot*: the project type as it stood when you pressed
@@ -2694,6 +2440,7 @@ function PublishModal({ store, projectType, authUser, onUpdateStore, onClose }) 
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
   const [done, setDone] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   const slug = existing ? existing.slug : slugify(projectType.name);
   const url = location.origin + location.pathname + '?p=' + slug;
@@ -2722,6 +2469,37 @@ function PublishModal({ store, projectType, authUser, onUpdateStore, onClose }) 
       setErr('Could not publish. If this is the first time, the database rules may not allow writes to "published" yet — see the note below.');
     }
     setBusy(false);
+  };
+
+  const copyLink = async () => {
+    try {
+      await navigator.clipboard.writeText(url);
+    } catch (e) {
+      // clipboard API needs a secure context; fall back to a selection copy
+      const el = document.createElement('textarea');
+      el.value = url; document.body.appendChild(el); el.select();
+      try { document.execCommand('copy'); } catch (e2) { /* nothing else to try */ }
+      document.body.removeChild(el);
+    }
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1800);
+  };
+
+  const unpublish = async () => {
+    if (!confirm('Take the published page down? The link will stop working for everyone.')) return;
+    setBusy(true); setErr('');
+    try {
+      await getFbDb().ref(PUB_PATH + '/' + slug).remove();
+      onUpdateStore(s => {
+        const next = { ...(s.publications || {}) };
+        delete next[projectType.id];
+        return { ...s, publications: next };
+      });
+      onClose();
+    } catch (e) {
+      setErr('Could not take the page down. Check your connection and try again.');
+      setBusy(false);
+    }
   };
 
   return (
@@ -2759,13 +2537,22 @@ function PublishModal({ store, projectType, authUser, onUpdateStore, onClose }) 
       </Field>
 
       <Field label="Link" hint="Same link every time you republish, so anything you've already sent keeps working.">
-        <input readOnly className={inputCls} value={url} onFocus={e => e.target.select()} />
+        <div className="flex gap-2">
+          <input readOnly className={inputCls} value={url} onFocus={e => e.target.select()} />
+          <Btn variant="secondary" onClick={copyLink} className="shrink-0">
+            {copied ? '✓ Copied' : '⧉ Copy link'}
+          </Btn>
+        </div>
       </Field>
 
       {err && <p className="text-xs text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2 mb-3">{err}</p>}
       {done && <p className="text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2 mb-3">Published. The link above is live.</p>}
 
-      <div className="flex justify-end gap-2">
+      <div className="flex items-center gap-2">
+        {existing && (
+          <Btn variant="danger" onClick={unpublish} disabled={busy}>Unpublish</Btn>
+        )}
+        <div className="flex-1" />
         <Btn variant="secondary" onClick={onClose}>{done ? 'Close' : 'Cancel'}</Btn>
         {existing && <Btn variant="secondary" onClick={() => window.open(url, '_blank')}>Open page</Btn>}
         <Btn onClick={publish} disabled={busy}>{busy ? 'Publishing…' : existing ? 'Republish' : 'Publish'}</Btn>
@@ -2780,138 +2567,140 @@ function PublishModal({ store, projectType, authUser, onUpdateStore, onClose }) 
 // there is no sign-in gate here. One sheet per document: the step matrix on top,
 // that document's cards below. Sized for 11 × 8.5 in landscape at print time.
 
-// Serpentine reverses every second row, so a wrap is a hop to the card directly
-// below rather than a sweep back across the sheet.
-function orderCards(steps, perRow, layout) {
-  if (layout !== 'serpentine') return steps.map((s, i) => ({ s, i, col: i % perRow, row: Math.floor(i / perRow) }));
-  const out = [];
-  for (let r = 0; r * perRow < steps.length; r++) {
-    const row = steps.slice(r * perRow, r * perRow + perRow).map((s, j) => ({ s, i: r * perRow + j }));
-    (r % 2 ? row.reverse() : row).forEach((x, col) => out.push({ ...x, col, row: r }));
+const PER_ROW = 4;
+
+function chunkRows(steps, perRow) {
+  const rows = [];
+  for (let i = 0; i < steps.length; i += perRow) {
+    rows.push(steps.slice(i, i + perRow).map((s, j) => ({ s, i: i + j })));
   }
-  return out;
+  return rows;
 }
 
-function PubCard({ step, index, roles, color, perRow, total, layout, row, col }) {
+function PubCard({ step, index, roles, color }) {
   const roleName = (id) => { const r = roles.find(x => x.id === id); return r ? r.label : id; };
   const actionIcon = (t) => t === 'review' ? '🔍' : t === 'approval' ? '✅' : t === 'consultation' ? '💬' : t === 'prepared_by' ? '📝' : '▸';
-  const isLast = index === total - 1;
-  const rowEnd = layout === 'serpentine'
-    ? (col === (row % 2 ? 0 : perRow - 1))
-    : (col === perRow - 1);
-  // Direction the next card lies in: right, left, or straight down at a turn.
-  // In serpentine the next card really is directly below at a row end, so a
-  // down arrow is literal. In left-to-right it is at the far left of the next
-  // row, so a down arrow would point at the wrong card — mark the wrap instead.
-  const goesDown = !isLast && rowEnd && layout === 'serpentine';
-  const wrapsOut = !isLast && rowEnd && layout !== 'serpentine';
-  const wrapsIn  = layout !== 'serpentine' && col === 0 && row > 0;
-  const goesLeft = !isLast && !rowEnd && layout === 'serpentine' && row % 2 === 1;
-
-  const parties = [];
-  if ((step.presenterIds || []).length) parties.push(step.presenterIds.map(roleName).join(', '));
+  const who = (step.presenterIds || []).map(roleName).join(', ');
   const storage = step.storageLocation
     ? step.storageLocation + (step.fileOperation === 'copy' ? ' · copy' : step.fileOperation === 'move' ? ' · move' : '')
     : '';
-
   return (
-    <div className="pub-cell">
-      <div className="pub-card" style={{ borderColor: color }}>
-        <span className="pub-num" style={{ background: color }}>{String(index + 1).padStart(2, '0')}</span>
-        <div className="pub-ct">
-          {step.stageName}
-          {step.informationOnly && <span className="pub-badge io">ⓘ</span>}
-          {step.returnToStepId && <span className="pub-badge rt">↩</span>}
-        </div>
-        {(step.actions || []).length > 0 && (
-          <div className="pub-ca">
-            {step.actions.map(a => (
-              <div key={a.id}>{actionIcon(a.type)} {a.type === 'custom' ? a.label : a.label + (a.person ? ' ' + a.person : '')}</div>
-            ))}
-          </div>
-        )}
-        {(parties.length > 0 || storage) && (
-          <div className="pub-cm">
-            {parties.length > 0 && <div><b>{parties.join(', ')}</b></div>}
-            {storage && <div>📁 {storage}</div>}
-          </div>
-        )}
+    <div className="pub-card" style={{ borderColor: color }}>
+      <span className="pub-num" style={{ background: color }}>{String(index + 1).padStart(2, '0')}</span>
+      <div className="pub-ct">
+        {step.stageName}
+        {step.informationOnly && <span className="pub-badge io">ⓘ</span>}
+        {step.returnToStepId && <span className="pub-badge rt">↩</span>}
       </div>
-      {wrapsIn && <span className="pub-wrap in" aria-hidden="true">↳</span>}
-      {!isLast && (
-        goesDown  ? <span className="pub-arrow down" aria-hidden="true" />
-      : wrapsOut  ? <span className="pub-wrap out" aria-hidden="true">↴</span>
-      :             <span className={'pub-arrow ' + (goesLeft ? 'left' : 'right')} aria-hidden="true" />
+      {(step.actions || []).length > 0 && (
+        <div className="pub-ca">
+          {step.actions.map(a => (
+            <div key={a.id}>{actionIcon(a.type)} {a.type === 'custom' ? a.label : a.label + (a.person ? ' ' + a.person : '')}</div>
+          ))}
+        </div>
+      )}
+      {(who || storage) && (
+        <div className="pub-cm">
+          {who && <div><b>{who}</b></div>}
+          {storage && <div>📁 {storage}</div>}
+        </div>
       )}
     </div>
   );
 }
 
-function PubSheet({ snapshot, doc, spine, layout }) {
-  const { projectType, roles } = snapshot;
-  const docs = projectType.documents || [];
-  const steps = doc.steps || [];
-  const perRow = 4;
-  const ordered = orderCards(steps, perRow, layout);
-
+// Cards laid out row by row. Connectors are real elements — a rule plus a head —
+// not a bare arrowhead floating in the gap, which is what made an earlier
+// version read so much weaker than the drawings.
+function PubFlow({ steps, roles, color, layout }) {
+  const rows = chunkRows(steps, PER_ROW);
   return (
-    <div className="pub-sheet">
-      <div className="pub-pad">
-        <div className="pub-h1">{projectType.name} — {doc.name}</div>
-        <div className="pub-sub">
-          Continuing Studies · Langara College — {steps.length} of {spine.length} steps
-        </div>
-
-        <div className="pub-sect">Where every document goes</div>
-        <table className="pub-mx">
-          <thead>
-            <tr>
-              <th className="dh">Document</th>
-              {spine.map((n, i) => <th key={n.key}><span className="n">{i + 1}</span>{n.label}</th>)}
-            </tr>
-          </thead>
-          <tbody>
-            {docs.map(d => {
-              const t = docTrack(d, spine);
-              const isThis = d.id === doc.id;
-              return (
-                <tr key={d.id} className={isThis ? 'me' : ''}>
-                  <td className="dn"><span className="sw" style={{ background: d.color }} />{d.name}</td>
-                  {spine.map((n, i) => {
-                    const on = t.cells[i].length > 0;
-                    const inTrack = t.first >= 0 && i >= t.first && i <= t.last;
-                    const col = on ? d.color : '#ccd1d9';
-                    return (
-                      <td key={n.key} className="c">
-                        {inTrack && i > t.first && <span className={'ln l' + (on ? '' : ' dsh')} style={{ borderColor: col }} />}
-                        {inTrack && i < t.last && <span className={'ln r' + (on ? '' : ' dsh')} style={{ borderColor: col }} />}
-                        {on && i === t.first && <span className="cap s">START</span>}
-                        {on && <span className="nd" style={{ background: col }} />}
-                        {on && i === t.last && <span className="cap e">END</span>}
-                      </td>
-                    );
-                  })}
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-
-        <div className="pub-sect mt">{doc.name} — step by step</div>
-        <div className="pub-cards" style={{ gridTemplateColumns: `repeat(${perRow}, 1fr)` }}>
-          {ordered.map(x => (
-            <PubCard key={x.s.id} step={x.s} index={x.i} roles={roles} color={doc.color}
-              perRow={perRow} total={steps.length} layout={layout} row={x.row} col={x.col} />
-          ))}
-        </div>
-
-        <div className="pub-legend">
-          Numbered badges follow this document's own order
-          {layout === 'serpentine' ? ' · rows alternate direction' : ' · every row reads left to right'}
-          {' '}· ⓘ information only · ↩ can return to an earlier step
-        </div>
-      </div>
+    <div className="pub-flow">
+      {rows.map((row, r) => {
+        const reversed = layout === 'serpentine' && r % 2 === 1;
+        const disp = reversed ? row.slice().reverse() : row;
+        const pad = PER_ROW - disp.length;
+        return (
+          <React.Fragment key={r}>
+            <div className="pub-row">
+              {disp.map((x, i) => (
+                <React.Fragment key={x.s.id}>
+                  <div className="pub-slot"><PubCard step={x.s} index={x.i} roles={roles} color={color} /></div>
+                  {i < disp.length - 1 &&
+                    <span className={'pub-conn ' + (reversed ? 'left' : 'right')} aria-hidden="true"><i /><b /></span>}
+                </React.Fragment>
+              ))}
+              {pad > 0 && Array.from({ length: pad }).map((_, k) => (
+                <React.Fragment key={'p' + k}>
+                  <span className="pub-conn spacer" aria-hidden="true" />
+                  <div className="pub-slot" />
+                </React.Fragment>
+              ))}
+            </div>
+            {r < rows.length - 1 && (
+              layout === 'serpentine'
+                // The next card sits directly below, so the turn is a short
+                // vertical arrow in that column — mirror the row's slot layout
+                // so it lines up exactly.
+                ? <div className="pub-turn" aria-hidden="true">
+                    {Array.from({ length: PER_ROW }).map((_, k) => (
+                      <React.Fragment key={k}>
+                        {k > 0 && <span className="pub-conn spacer" />}
+                        <div className="pub-slot">
+                          {k === (r % 2 === 0 ? PER_ROW - 1 : 0) && <span className="pub-down"><i /><b /></span>}
+                        </div>
+                      </React.Fragment>
+                    ))}
+                  </div>
+                // Left-to-right restarts at the far left, so draw the return
+                // sweep: down out of the last card, back across, down into the
+                // first card of the next row.
+                : <div className="pub-sweep" aria-hidden="true">
+                    <span className="stub-out" /><span className="run" /><span className="stub-in"><i /><b /></span>
+                  </div>
+            )}
+          </React.Fragment>
+        );
+      })}
     </div>
+  );
+}
+
+function PubMatrix({ projectType, spine }) {
+  const docs = projectType.documents || [];
+  return (
+    <table className="pub-mx">
+      <thead>
+        <tr>
+          <th className="dh">Document</th>
+          {spine.map((n, i) => <th key={n.key}><span className="n">{i + 1}</span>{n.label}</th>)}
+        </tr>
+      </thead>
+      <tbody>
+        {docs.map(d => {
+          const t = docTrack(d, spine);
+          return (
+            <tr key={d.id}>
+              <td className="dn"><span className="sw" style={{ background: d.color }} />{d.name}</td>
+              {spine.map((n, i) => {
+                const on = t.cells[i].length > 0;
+                const inTrack = t.first >= 0 && i >= t.first && i <= t.last;
+                const col = on ? d.color : '#ccd1d9';
+                return (
+                  <td key={n.key} className="c">
+                    {inTrack && i > t.first && <span className={'ln l' + (on ? '' : ' dsh')} style={{ borderColor: col }} />}
+                    {inTrack && i < t.last && <span className={'ln r' + (on ? '' : ' dsh')} style={{ borderColor: col }} />}
+                    {on && i === t.first && <span className="cap s">START</span>}
+                    {on && <span className="nd" style={{ background: col }} />}
+                    {on && i === t.last && <span className="cap e">END</span>}
+                  </td>
+                );
+              })}
+            </tr>
+          );
+        })}
+      </tbody>
+    </table>
   );
 }
 
@@ -2948,6 +2737,7 @@ function PublishedView({ slug }) {
   const snapshot = normalizeSnapshot(pub.snapshot);
   const spine = buildStepSpine(snapshot.projectType);
   const docs = (snapshot.projectType.documents || []).filter(d => (d.steps || []).length > 0);
+  const layout = pub.flowLayout || 'serpentine';
 
   return (
     <div className="pub-root">
@@ -2961,12 +2751,34 @@ function PublishedView({ slug }) {
         </div>
         <button className="pub-print" onClick={() => window.print()}>🖨 Print / Save as PDF</button>
       </header>
-      <div className="pub-hint no-print">
-        One page per document, sized for 11 × 8.5 in landscape. Choose <b>Landscape</b> and
-        set margins to <b>Default</b> in the print dialog.
-      </div>
-      <div className="pub-sheets">
-        {docs.map(d => <PubSheet key={d.id} snapshot={snapshot} doc={d} spine={spine} layout={pub.flowLayout || 'serpentine'} />)}
+
+      <div className="pub-page">
+        <div className="pub-title-block">
+          <h1 className="pub-h1">{snapshot.projectType.name}</h1>
+          <div className="pub-sub">Continuing Studies · Langara College — {docs.length} documents, {spine.length} steps</div>
+        </div>
+
+        <section className="pub-block">
+          <div className="pub-sect">Where every document goes</div>
+          <PubMatrix projectType={snapshot.projectType} spine={spine} />
+        </section>
+
+        {docs.map(d => (
+          <section className="pub-block pub-doc" key={d.id}>
+            <div className="pub-doc-h" style={{ borderColor: d.color }}>
+              <span className="sw" style={{ background: d.color }} />
+              <span className="pub-doc-n">{d.name}</span>
+              <span className="pub-doc-c">{(d.steps || []).length} of {spine.length} steps</span>
+            </div>
+            <PubFlow steps={d.steps || []} roles={snapshot.roles} color={d.color} layout={layout} />
+          </section>
+        ))}
+
+        <div className="pub-legend">
+          Numbered badges follow each document's own order
+          {layout === 'serpentine' ? ' · rows alternate direction' : ' · every row reads left to right'}
+          {' '}· ⓘ information only · ↩ can return to an earlier step
+        </div>
       </div>
     </div>
   );
@@ -3305,20 +3117,6 @@ function App({ authUser }) {
                 );
               })()}
               <Btn variant="secondary" sm onClick={() => setModal('saveTemplate')}>☆ Save as Template</Btn>
-              <Btn variant="secondary" sm onClick={() => {
-                const html = view === 'flow'
-                  ? generateFlowPrintHTML(activePT, store.roles, loadFlowPrefs(activePT.id))
-                  : generatePrintHTML(activePT, store.roles, store.syncGroupMeta);
-                const iframe = document.createElement('iframe');
-                // Give real dimensions off-screen so flex layout renders before we measure
-                iframe.style.cssText = 'position:fixed;left:-9999px;top:-9999px;border:0;width:3000px;height:4000px;';
-                document.body.appendChild(iframe);
-                iframe.contentDocument.open();
-                iframe.contentDocument.write(html);
-                iframe.contentDocument.close();
-                iframe.contentWindow.focus();
-                setTimeout(() => document.body.removeChild(iframe), 5000);
-              }}>🖨 Print / Export PDF</Btn>
             </div>
           )}
         </header>
