@@ -82,6 +82,9 @@
 
     /* cards + connectors: a rule and a head, so movement actually reads */
     .pub-flow { display:flex; flex-direction:column; }
+    /* connectors inherit the document's colour, softened so they guide the
+       eye without competing with the cards */
+    .pub-conn, .pub-down, .pub-sweep { opacity:.62; }
     .pub-row { display:flex; align-items:stretch; }
     .pub-slot { flex:1 1 0; min-width:0; display:flex; }
     .pub-card { border:.11cqw solid; border-radius:.4cqw; padding:.55cqw .7cqw; background:#fff;
@@ -101,43 +104,47 @@
     .pub-conn { flex:0 0 2.9cqw; align-self:center; position:relative; height:1cqw; }
     .pub-conn.spacer { visibility:hidden; }
     .pub-conn i { position:absolute; top:50%; transform:translateY(-50%); height:.15cqw;
-                  background:#aeb6c4; }
+                  background:var(--flow,#aeb6c4); }
     .pub-conn b { position:absolute; top:50%; transform:translateY(-50%); width:0; height:0;
                   border-top:.42cqw solid transparent; border-bottom:.42cqw solid transparent; }
     .pub-conn.right i { left:.35cqw; right:.85cqw; }
-    .pub-conn.right b { right:.15cqw; border-left:.7cqw solid #aeb6c4; }
+    .pub-conn.right b { right:.15cqw; border-left:.7cqw solid var(--flow,#aeb6c4); }
     .pub-conn.left  i { right:.35cqw; left:.85cqw; }
-    .pub-conn.left  b { left:.15cqw; border-right:.7cqw solid #aeb6c4; }
+    .pub-conn.left  b { left:.15cqw; border-right:.7cqw solid var(--flow,#aeb6c4); }
 
     /* serpentine row turn: mirrors the row's slots so it lands in the right column */
     .pub-turn { display:flex; align-items:stretch; height:2.6cqw; }
     .pub-turn .pub-slot { position:relative; }
     .pub-down { position:absolute; left:50%; transform:translateX(-50%); top:.15cqw; bottom:.1cqw; width:1cqw; }
     .pub-down i { position:absolute; left:50%; transform:translateX(-50%); top:0; bottom:.62cqw;
-                  width:.15cqw; background:#aeb6c4; }
+                  width:.15cqw; background:var(--flow,#aeb6c4); }
     .pub-down b { position:absolute; left:50%; transform:translateX(-50%); bottom:0; width:0; height:0;
                   border-left:.42cqw solid transparent; border-right:.42cqw solid transparent;
-                  border-top:.7cqw solid #aeb6c4; }
+                  border-top:.7cqw solid var(--flow,#aeb6c4); }
 
     /* left-to-right return sweep: out of the last card, back across, into the first */
     .pub-sweep { position:relative; height:2.8cqw; }
     .pub-sweep .stub-out { position:absolute; right:11.5%; top:.15cqw; height:1.25cqw; width:.15cqw;
-                           background:#aeb6c4; }
+                           background:var(--flow,#aeb6c4); }
     .pub-sweep .run { position:absolute; left:11.5%; right:11.5%; top:1.4cqw; height:.15cqw;
-                      background:#aeb6c4; }
+                      background:var(--flow,#aeb6c4); }
     .pub-sweep .stub-in { position:absolute; left:11.5%; top:1.4cqw; bottom:.1cqw; width:1cqw;
                           transform:translateX(-50%); }
     .pub-sweep .stub-in i { position:absolute; left:50%; transform:translateX(-50%); top:0; bottom:.62cqw;
-                            width:.15cqw; background:#aeb6c4; }
+                            width:.15cqw; background:var(--flow,#aeb6c4); }
     .pub-sweep .stub-in b { position:absolute; left:50%; transform:translateX(-50%); bottom:0;
                             width:0; height:0; border-left:.42cqw solid transparent;
-                            border-right:.42cqw solid transparent; border-top:.7cqw solid #aeb6c4; }
+                            border-right:.42cqw solid transparent; border-top:.7cqw solid var(--flow,#aeb6c4); }
 
     .pub-legend { padding-top:1.1cqw; font-size:.8cqw; color:#9aa1ad; border-top:.06cqw solid #eef0f3; }
 
     @media print {
       @page { size: 11in 8.5in; margin: 0.35in; }
-      .pub-root { background:#fff; padding:0; }
+      /* Tailwind's bg-slate-100 on <body> outranks a bare `body` rule, and
+         min-h-screen forces a full page of it — so the unused space on the
+         last page printed as a solid grey block. */
+      html, body { background:#fff !important; min-height:0 !important; }
+      .pub-root { background:#fff !important; padding:0; min-height:0; }
       .pub-page { max-width:none; width:10.3in; margin:0; padding:0; box-shadow:none; border-radius:0; }
       /* keep a document's cards together where they fit, and never split a row
          of cards or orphan a heading from its first row */
@@ -2615,7 +2622,7 @@ function PubCard({ step, index, roles, color }) {
 function PubFlow({ steps, roles, color, layout }) {
   const rows = chunkRows(steps, PER_ROW);
   return (
-    <div className="pub-flow">
+    <div className="pub-flow" style={{ '--flow': color }}>
       {rows.map((row, r) => {
         const reversed = layout === 'serpentine' && r % 2 === 1;
         const disp = reversed ? row.slice().reverse() : row;

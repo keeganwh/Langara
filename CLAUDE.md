@@ -243,6 +243,12 @@ with no section split.
 There is no print/export in the app itself any more — printing happens from
 the published page.
 
+The print block must force `html, body { background:#fff !important;
+min-height:0 !important }`. The app's `<body>` carries Tailwind's
+`bg-slate-100 min-h-screen`, which outranks a bare `body { background: white }`
+rule and stretches the page past its content — that printed as a solid grey
+block filling the unused part of the last page.
+
 Card flow layout is chosen at publish time and stored on the publication:
 
 - `serpentine` — rows alternate direction, so a wrap is a short hop to the card
@@ -250,6 +256,9 @@ Card flow layout is chosen at publish time and stored on the publication:
 - `ltr` — every row reads left to right. Here the next card after a row end is
   at the far left of the next row, so a down arrow would point at the wrong
   card; those ends get `↴` / `↳` wrap markers instead.
+
+Connectors take the document's colour: `PubFlow` sets `--flow` inline and the
+connector CSS reads `var(--flow)`, softened with `opacity: .62`.
 
 **Connectors are a rule plus a head**, built from flex/absolute elements
 (`.pub-conn`, `.pub-down`, `.pub-sweep`) — never a bare arrowhead. A version
