@@ -1,1 +1,10 @@
 .claude/
+
+# dev tools — see dev/README.md
+dev/node_modules/
+dev/.out/
+dev/package-lock.json
+
+# your own Backup & Restore export, used by the local preview.
+# deliberately NOT committed: this repository is public.
+dev/sample-data.json

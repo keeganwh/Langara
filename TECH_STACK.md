@@ -92,9 +92,19 @@ external store library.
   print. It does not reuse the React components — so **any new view that
   should be printable needs its own code path there.**
 
+## Local checking tools (`dev/`)
+
+Not part of the app and never deployed — GitHub Pages serves only the HTML
+file. `dev/` contains a small Node harness that builds an offline copy of the
+app (local React/Tailwind, stubbed Firebase, optional real backup data) and
+drives it in headless Chromium via Playwright, with a set of regression checks
+and a screenshot command. See `dev/README.md`. It exists because the app needs
+both the internet and a Firebase login to run normally, which an agent session
+usually lacks.
+
 ## What's absent (and worth knowing before proposing changes)
 
-- No tests, no linting, no type checking.
+- No unit tests, no linting, no type checking (though see `dev/` above).
 - No routing — view switching would be React state.
 - No component library or icon set; icons are emoji.
 - No accessibility layer: several flows use `prompt()`, `confirm()`, and

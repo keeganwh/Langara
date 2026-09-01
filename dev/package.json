@@ -1,0 +1,18 @@
+{
+  "name": "cs-pipeline-dev",
+  "private": true,
+  "description": "Local checking tools for pipeline-tool-v2.html. Not part of the app.",
+  "scripts": {
+    "build": "node build.js",
+    "preview": "node preview.js",
+    "check": "node build.js && node preview.js && node checks.js",
+    "shot": "node screenshot.js"
+  },
+  "dependencies": {
+    "@babel/standalone": "7.23.10",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "tailwindcss": "3.4.17",
+    "playwright": "^1.48.0"
+  }
+}

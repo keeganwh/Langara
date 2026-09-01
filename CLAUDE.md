@@ -316,9 +316,35 @@ wrong way at narrow widths.
 
 ## Testing
 
-There is no test suite. Verify changes by opening the file in a browser and
-exercising the affected flow. A blank page almost always means a syntax or
-Babel-transform error — check the browser console first.
+There is no unit-test suite, but `dev/` holds a local harness — read
+`dev/README.md`. It builds an offline, self-contained copy of the app (local
+libraries, stubbed Firebase, Tailwind compiled from the app's own markup) and
+drives it in headless Chromium.
+
+```
+cd dev && npm install && npm run check      # 21 checks
+cd dev && npm run shot flow                 # screenshot a view
+```
+
+Drop a Backup & Restore export at `dev/sample-data.json` (gitignored — this
+repo is public) so the preview runs on real content rather than the tidier
+seed data.
+
+Use it. Every check in `checks.js` exists because that thing broke once, and
+several bugs reached the live site only because the harness of the day was not
+faithful enough:
+
+- it must use the app's **real `<style>` block**, not a copied subset — a
+  hand-copied subset once left the published page entirely unstyled while the
+  preview looked right;
+- it must apply the app's **real `<body>` classes** — a bare `<body>` hid
+  Tailwind's `bg-slate-100` printing a grey block on every last page;
+- assertions read **`innerText`, not `textContent`** — the app's source is
+  inlined in the page, so `textContent` contains the whole program and matches
+  almost anything.
+
+A blank page almost always means a syntax or Babel-transform error —
+`npm run build` catches it, or check the browser console.
 
 ## Deployment — read this before pushing
 
