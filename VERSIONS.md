@@ -42,7 +42,29 @@ about to do something risky, take both.
 
 ## Released versions
 
-### v2.1 — Step Flow view (current)
+### v2.2 — visual clarity pass (current)
+Archive branch: `archive/v2.2-pre-visual-clarity` · branch `visual-clarity-pass`
+
+A legibility and layout pass over the **Documents** view, plus the surgical
+feature work that came with it.
+
+- Emoji replaced by one Lucide icon set (`ICON_PATHS`), used across Documents,
+  Step Flow and the published page. See the icon table in CLAUDE.md.
+- Columns flex to share the canvas instead of a fixed 260px, down to a
+  Compact/Standard/Wide minimum; the canvas shows when it can scroll.
+- Card hierarchy reworked: quiet aligned metadata keys, role pills, a filed
+  chip with an optional link (`step.storageUrl`), document-coloured stage
+  names, and sync-group / information-only as badges sharing a corner.
+- "Project type" is now "workflow" throughout the UI. **Store keys unchanged.**
+- Sidebar reorders by dragging; workflow notes panel (`projectType.notes`),
+  shown on the published page; Step Flow cells open read-only detail.
+- Step Flow's Details panel no longer hides behind the sticky matrix header.
+
+Two new store fields (`projectType.notes`, `step.storageUrl`) with
+`normalizeStore` defaults. Existing data loads unchanged. The harness went from
+21 to 36 checks.
+
+### v2.1 — Step Flow view
 Archive branch: `archive/v2.1-step-flow` · commit `de1d811`
 
 Adds a second, read-only **Step Flow** view: documents as rows, steps as
@@ -67,8 +89,8 @@ This is the fallback if anything in v2.1 misbehaves.
 
 ## Conventions
 
-- `claude/sharp-mayer-090866` is the trunk **and the GitHub Pages deploy
-  branch** — pushing to it publishes the live site. See CLAUDE.md.
+- `main` is the trunk **and the GitHub Pages deploy branch** — pushing to it
+  publishes the live site. See CLAUDE.md.
 - Before a change big enough to be worth naming, cut
   `archive/vX.Y-<short-name>` at the current tip of `main` and push it.
 - Annotated git tags would be tidier, but tag pushes are currently blocked

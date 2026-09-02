@@ -63,6 +63,55 @@ Key concepts:
 - **Return step** (`returnToStepId`) — models a loop back to an earlier step.
 - **Trigger** (`triggerType`) — what causes the step to start: immediate,
   scheduled meeting, manual request, task assigned, or custom.
+- **Workflow notes** (`projectType.notes`) — free text about the whole
+  workflow. Shared content, so it lives in the store, appears on the published
+  page, and counts toward the publication hash (editing it marks a page stale).
+- **Storage link** (`step.storageUrl`) — optional URL for the filed location,
+  which makes the folder chip clickable on the card and the published page.
+
+## Vocabulary
+
+The UI says **workflow**; the data model says `projectTypes`. That mismatch is
+deliberate. Every record in Firebase is keyed on `projectTypes` /
+`activeProjectTypeId`, and the localStorage preference keys embed the same
+names, so renaming the fields would orphan existing data for no user-visible
+gain. **Change display copy freely; do not rename the keys.**
+
+## Icon language
+
+One glyph per meaning, defined once in `ICON_PATHS` (Lucide 1.39 geometry, ISC)
+and rendered by the `Icon` component at 24×24 with `currentColor`, so an icon
+takes whatever colour its context sets. `iconSvg()` returns the same glyph as a
+string for renderers that cannot use JSX.
+
+| Meaning | Lucide name | Meaning | Lucide name |
+|---|---|---|---|
+| Review | `search` | Trigger: immediate | `corner-down-right` |
+| Approval | `thumbs-up` | Trigger: meeting | `calendar-clock` |
+| Consultation | `message-circle-question-mark` | Trigger: manual | `hand` |
+| Prepared by | `file-pen` | Trigger: task | `clipboard-check` |
+| Custom action | `circle-chevron-right` | Trigger: custom | `bell` |
+| Storage / filed | `folder-symlink` | Sync group | `link` |
+| Return path | `rotate-ccw` | Notes | `notebook-pen` |
+| Information only | `info` | | |
+
+**Use these everywhere** — Documents, Step Flow, the published page, and
+anything added later. Emoji were replaced because they rendered at
+inconsistent optical sizes and baselines and carried their own colours, which
+fought the palette. Do not reintroduce them; `checks.js` asserts they are gone
+from card content.
+
+## Column sizing
+
+`.doc-col` was once `min-width` **and** `max-width: 260px`, so five columns
+could not fit a 1440px display. Columns are now a CSS grid (`.doc-grid`) that
+shares the canvas evenly down to `--doc-min`, below which they stop shrinking
+and the canvas scrolls. The minimum is a display preference (Compact 215 /
+Standard 250 / Wide 300) in `localStorage`, not the store. The Add Document
+column sits **outside** the grid so it does not take an equal share.
+
+Because the canvas can scroll, it says so: an edge fade and a nudge button on
+whichever side has more content, plus a scrollbar wide enough to see.
 
 Everything is keyed by random `uid()` strings. Copying a step or document
 always regenerates ids (and clears `returnToStepId`) — see `copyStepToDoc`,
@@ -167,7 +216,7 @@ writes to the shared document or triggers a sync.
 
 | View | Key | Fields | Default |
 |---|---|---|---|
-| Documents | `cs_pipeline_doc_prefs_v1` | actions, presenters, carriers, storage, trigger, returns, notes (plus the `rowLock` flag) | all **on**, Row Lock off |
+| Documents | `cs_pipeline_doc_prefs_v1` | actions, presenters, carriers, storage, trigger, returns, notes (plus `rowLock` and `width`) | all **on**, Row Lock off, Standard width |
 | Step Flow | `cs_pipeline_flow_prefs_v1` | same, plus per-step column visibility | all **off** |
 
 The defaults differ on purpose: Documents is the full-detail view, Step Flow
@@ -301,6 +350,12 @@ wrong way at narrow widths.
   once lived in there, so the hook count changed with whether the step was
   grouped. Declare hooks at the top of the component. (Commit `d9297ef` fixed
   the same class of bug in `ProjectTypeCanvas` — it blanks the page.)
+- **No hooks below an early return either.** `ProjectTypeCanvas` returns early
+  when a workflow has no documents, and `App` returns early on `if (!store)`.
+  A hook added after those points runs on some renders and not others — React
+  error #310, a blank page. Both bit during the visual clarity pass. Every
+  `useState`, `useRef`, `useCallback` and `useEffect` goes above the first
+  `return`.
 - **`normalizeStore` runs on every update**, not just on load. Any new step
   or store field needs a default added there, or existing Firebase data will
   come back with it `undefined`.
@@ -322,7 +377,7 @@ libraries, stubbed Firebase, Tailwind compiled from the app's own markup) and
 drives it in headless Chromium.
 
 ```
-cd dev && npm install && npm run check      # 21 checks
+cd dev && npm install && npm run check      # 36 checks
 cd dev && npm run shot flow                 # screenshot a view
 ```
 
@@ -349,22 +404,27 @@ A blank page almost always means a syntax or Babel-transform error —
 ## Deployment — read this before pushing
 
 The live app is served by **GitHub Pages** at
-<https://keeganwh.github.io/Langara/pipeline-tool-v2.html>, deployed from
-the **`claude/sharp-mayer-090866`** branch (odd name, but it is the trunk
-and the repo's GitHub default). Pages is configured as *deploy from a
-branch*, so **pushing to `claude/sharp-mayer-090866` publishes to the live
+<https://keeganwh.github.io/Langara/pipeline-tool-v2.html>, configured as
+*deploy from a branch*, so **a push to the deploy branch publishes to the live
 URL within about a minute.** There is no review gate.
+
+The deploy branch is **`main`** (fast-forwarded to the old trunk on
+2026-09-02). `claude/sharp-mayer-090866` was the trunk before that; if it still
+exists it is a dead pointer.
+
+The bare URL <https://keeganwh.github.io/Langara/> 404s, because there is no
+`index.html` at the repo root — only `pipeline-tool-v2.html`. That is expected,
+not a deploy fault.
 
 Consequences:
 
 - Work committed to any other branch is **not live**, however finished it is.
 - A push to the trunk is a production deploy. Verify in a browser first.
-- `main` exists (created 2026-08-26) but is **not** what Pages serves.
-  Don't assume the usual `main` convention here.
+- Work on a feature branch; merge to `main` only when it is ready to be live.
 
 ## Git
 
-Trunk is `claude/sharp-mayer-090866` — see above. Commit with descriptive
+Trunk is `main` — see above. Commit with descriptive
 messages. Never commit `.claude/` (gitignored).
 
 Before a change big enough to be worth naming, cut an

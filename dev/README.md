@@ -22,7 +22,7 @@ That's how changes get checked before you see them.
 ```
 cd dev
 npm install          # first time only
-npm run check        # build, make the preview, run all the checks
+npm run check        # build, make the preview, run all 36 checks
 ```
 
 Other commands:
@@ -78,6 +78,18 @@ Each check in `checks.js` exists because that thing actually broke once:
 - connectors draw a rule, not just an arrowhead
 - **step dots keep their colour when background printing is off**, and the
   print background is white
+- no emoji survive in the card content, and every action row carries an SVG
+- columns are a grid that shares the canvas, and the width preference moves it
+- the sidebar says Workflows and reorders by dragging, with no up/down buttons
+- the workflow notes panel opens, flags that notes exist, and closes again
+- the Step Flow Details panel outranks the sticky matrix header
+- a Step Flow cell opens read-only detail that cannot save
+
+Two habits worth copying if you add more: click through the DOM
+(`el.click()` inside `page.evaluate`) rather than Playwright's hit-testing,
+because by that point in the run the canvas is scrolled and the top bar is out
+of view; and assert on a grid *definition* rather than a measured box, because
+widths are still settling while Tailwind's CDN build and Babel finish.
 
 A note on one trap: the checks read `innerText`, not `textContent`. The app's
 source is inlined in the page, so `textContent` contains the entire program and
