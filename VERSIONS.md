@@ -50,8 +50,8 @@ feature work that came with it.
 
 - Emoji replaced by one Lucide icon set (`ICON_PATHS`), used across Documents,
   Step Flow and the published page. See the icon table in CLAUDE.md.
-- Columns flex to share the canvas instead of a fixed 260px, down to a
-  Compact/Standard/Wide minimum; the canvas shows when it can scroll.
+- Columns flex to share the canvas instead of a fixed 260px, down to a 250px
+  minimum; the canvas shows when it can scroll.
 - Card hierarchy reworked: quiet aligned metadata keys, role pills, a filed
   chip with an optional link (`step.storageUrl`), document-coloured stage
   names, and sync-group / information-only as badges sharing a corner.
@@ -62,7 +62,7 @@ feature work that came with it.
 
 Two new store fields (`projectType.notes`, `step.storageUrl`) with
 `normalizeStore` defaults. Existing data loads unchanged. The harness went from
-21 to 36 checks.
+21 to 37 checks.
 
 ### v2.1 — Step Flow view
 Archive branch: `archive/v2.1-step-flow` · commit `de1d811`

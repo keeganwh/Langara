@@ -159,18 +159,22 @@ const text = p => p.evaluate(() => document.body.innerText);   // innerText, not
   const t1 = await tracks();
   ok('columns are a grid that shares the canvas, not fixed 260px columns',
     /px/.test(t1) && t1.split(' ').length > 1 && !/260px/.test(t1), t1);
-  await p.evaluate(() => {
-    const b = [...document.querySelectorAll('button')].find(x => x.textContent.trim() === 'Wide');
-    if (b) b.click();
-  });
-  await p.waitForTimeout(400);
-  const t2 = await tracks();
-  ok('the width preference changes the column minimum', t2 !== t1, `${t1} -> ${t2}`);
-  await p.evaluate(() => {
-    const b = [...document.querySelectorAll('button')].find(x => x.textContent.trim() === 'Standard');
-    if (b) b.click();
-  });
-  await p.waitForTimeout(300);
+  ok('badges are not clipped by the card', await p.evaluate(() => {
+    const b = document.querySelector('.card-badges');
+    if (!b) return false;
+    const card = b.closest('.step-card');
+    return getComputedStyle(card).overflow !== 'hidden'
+      && b.getBoundingClientRect().top < card.getBoundingClientRect().top;
+  }));
+  ok('the trigger chip is merged into the connector, not its own slab',
+    await p.evaluate(() => {
+      const t = document.querySelector('[class*="group/trigger"]');
+      if (!t) return false;
+      const cs = getComputedStyle(t);
+      // Tailwind's preflight sets border-style: solid at 0 width, so measure the
+      // width, not the style.
+      return cs.borderTopWidth === '0px' && cs.backgroundColor === 'rgba(0, 0, 0, 0)';
+    }));
 
   console.log('\nWorkflows rename');
   // Scoped to the sidebar: textContent is safe here because the inlined program

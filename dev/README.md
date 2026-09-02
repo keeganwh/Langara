@@ -22,7 +22,7 @@ That's how changes get checked before you see them.
 ```
 cd dev
 npm install          # first time only
-npm run check        # build, make the preview, run all 36 checks
+npm run check        # build, make the preview, run all 37 checks
 ```
 
 Other commands:
@@ -79,7 +79,9 @@ Each check in `checks.js` exists because that thing actually broke once:
 - **step dots keep their colour when background printing is off**, and the
   print background is white
 - no emoji survive in the card content, and every action row carries an SVG
-- columns are a grid that shares the canvas, and the width preference moves it
+- columns are a grid that shares the canvas
+- the badges overhang the card top edge without being clipped
+- the trigger chip is merged into the connector, not a bordered slab
 - the sidebar says Workflows and reorders by dragging, with no up/down buttons
 - the workflow notes panel opens, flags that notes exist, and closes again
 - the Step Flow Details panel outranks the sticky matrix header

@@ -105,10 +105,11 @@ from card content.
 
 `.doc-col` was once `min-width` **and** `max-width: 260px`, so five columns
 could not fit a 1440px display. Columns are now a CSS grid (`.doc-grid`) that
-shares the canvas evenly down to `--doc-min`, below which they stop shrinking
-and the canvas scrolls. The minimum is a display preference (Compact 215 /
-Standard 250 / Wide 300) in `localStorage`, not the store. The Add Document
-column sits **outside** the grid so it does not take an equal share.
+shares the canvas evenly down to `DOC_MIN_WIDTH` (250px), below which they stop
+shrinking and the canvas scrolls. That is one constant, not a preference — the
+flexing is what adapts to the display, so a Compact/Standard/Wide picker was
+tried and removed as redundant. The Add Document column sits **outside** the
+grid so it does not take an equal share.
 
 Because the canvas can scroll, it says so: an edge fade and a nudge button on
 whichever side has more content, plus a scrollbar wide enough to see.
@@ -216,7 +217,7 @@ writes to the shared document or triggers a sync.
 
 | View | Key | Fields | Default |
 |---|---|---|---|
-| Documents | `cs_pipeline_doc_prefs_v1` | actions, presenters, carriers, storage, trigger, returns, notes (plus `rowLock` and `width`) | all **on**, Row Lock off, Standard width |
+| Documents | `cs_pipeline_doc_prefs_v1` | actions, presenters, carriers, storage, trigger, returns, notes (plus the `rowLock` flag) | all **on**, Row Lock off |
 | Step Flow | `cs_pipeline_flow_prefs_v1` | same, plus per-step column visibility | all **off** |
 
 The defaults differ on purpose: Documents is the full-detail view, Step Flow
@@ -377,7 +378,7 @@ libraries, stubbed Firebase, Tailwind compiled from the app's own markup) and
 drives it in headless Chromium.
 
 ```
-cd dev && npm install && npm run check      # 36 checks
+cd dev && npm install && npm run check      # 37 checks
 cd dev && npm run shot flow                 # screenshot a view
 ```
 
