@@ -96,6 +96,9 @@
     .pub-h1 { font-size:2.1cqw; font-weight:700; margin:0 0 .25cqw; letter-spacing:-.01em; }
     .pub-sub { font-size:1.05cqw; color:#6b7280; }
     .pub-block { margin-bottom:2.4cqw; }
+    .pub-notes { margin-top:.9cqw; padding:.55cqw 0 .55cqw .9cqw; border-left:.22cqw solid #cbd5e1;
+                 font-size:.95cqw; line-height:1.5; color:#3f4652; white-space:pre-wrap;
+                 max-width:62ch; }
     .pub-sect { font-size:.9cqw; letter-spacing:.1em; text-transform:uppercase; color:#8a919d;
                 font-weight:700; margin:0 0 .9cqw; }
 
@@ -189,6 +192,10 @@
                             width:0; height:0; border-left:.42cqw solid transparent;
                             border-right:.42cqw solid transparent; border-top:.7cqw solid var(--flow,#aeb6c4); }
 
+    .pub-line { display:flex; align-items:flex-start; gap:.32cqw; }
+    .pub-line > svg { flex:0 0 auto; margin-top:.18cqw; }
+    .pub-line > span, .pub-line > a { min-width:0; overflow-wrap:anywhere; }
+    .pub-legend svg { vertical-align:-.12cqw; }
     .pub-legend { padding-top:1.1cqw; font-size:.8cqw; color:#9aa1ad; border-top:.06cqw solid #eef0f3; }
 
     @media print {
@@ -927,7 +934,7 @@ function CopyToModal({ step, otherDocs, onCopy, otherProjects, onCopyToProject, 
       </p>
       {hasLocal && (
         <>
-          <div className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-1.5">This Project Type</div>
+          <div className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-1.5">This Workflow</div>
           <div className="space-y-1.5 mb-3">
             {otherDocs.map(doc => (
               <button key={doc.id} onClick={() => { onCopy(doc.id); onClose(); }}
@@ -945,7 +952,7 @@ function CopyToModal({ step, otherDocs, onCopy, otherProjects, onCopyToProject, 
           <button onClick={() => setRemoteOpen(o => !o)}
             className="flex items-center gap-2 text-xs font-bold text-slate-400 uppercase tracking-widest mb-1.5 hover:text-slate-600 transition-colors">
             <span>{remoteOpen ? '▾' : '▸'}</span>
-            <span>Other Project Types</span>
+            <span>Other Workflows</span>
           </button>
           {remoteOpen && (
             <div className="space-y-3 mb-2">
@@ -985,10 +992,10 @@ function CopyDocModal({ doc, otherProjects, onCopy, onClose }) {
   return (
     <Modal title={`Copy "${doc.name}" to…`} onClose={onClose}>
       <p className="text-xs text-slate-500 mb-3">
-        Select a project type to copy this entire document flow (all {doc.steps.length} steps) into.
+        Select a workflow to copy this entire document flow (all {doc.steps.length} steps) into.
       </p>
       {otherProjects.length === 0
-        ? <p className="text-sm text-slate-400 italic">No other project types available.</p>
+        ? <p className="text-sm text-slate-400 italic">No other workflows available.</p>
         : <div className="space-y-1.5">
             {otherProjects.map(proj => (
               <button key={proj.id} onClick={() => { onCopy(proj.id); onClose(); }}
@@ -1111,7 +1118,7 @@ function StepCard({ step, stepIndex, totalSteps, docSteps, roles, docColor, onEd
                   ? { background: linkColor + '20', color: linkColor, opacity: 1 }
                   : { background: '#f1f5f9', color: '#64748b' }}
             title={inActiveGroup ? 'Remove from sync group' : inDifferentGroup ? 'Already in a different group' : step.syncGroupId ? 'Edit sync group' : 'Add to sync group'}>
-            🔗
+            <Icon name="sync" size={12} />
           </button>
         )}
         <button onClick={onDelete}
@@ -1336,7 +1343,7 @@ function DocumentColumn({ doc, docIndex, totalDocs, onMoveDoc, projectTypeId, ro
           className="w-5 h-5 rounded cursor-pointer border-0 p-0 bg-transparent" title="Change color" />
         {otherProjects && otherProjects.length > 0 && (
           <button onClick={() => setCopyDocOpen(true)}
-            className="w-5 h-5 rounded text-xs flex items-center justify-center hover:bg-white/60 transition-colors" style={{ color: doc.color }} title="Copy document to another project type">⎘</button>
+            className="w-5 h-5 rounded text-xs flex items-center justify-center hover:bg-white/60 transition-colors" style={{ color: doc.color }} title="Copy document to another workflow">⎘</button>
         )}
         <button onClick={() => { if (confirm(`Delete "${doc.name}" and all its steps?`)) onDeleteDoc(doc.id); }}
           className="w-5 h-5 rounded text-xs flex items-center justify-center hover:bg-red-100 text-red-400 transition-colors" title="Delete document">✕</button>
@@ -1688,6 +1695,31 @@ function ProjectTypeCanvas({ projectType, roles, onUpdateProjectType, allProject
   const headerScrollRef = React.useRef(null);
   const [docPrefs, setDocPrefs] = React.useState(() => loadDocPrefs(projectType.id));
   const [panelOpen, setPanelOpen] = React.useState(false);
+  const [notesOpen, setNotesOpen] = React.useState(false);
+  const hasWorkflowNotes = !!(projectType.notes || '').trim();
+
+  const [scrollState, setScrollState] = useState({ l: false, r: false });
+  const syncScrollState = React.useCallback(() => {
+    const el = canvasRef.current;
+    if (!el) return;
+    const over = el.scrollWidth - el.clientWidth > 4;
+    setScrollState({
+      l: el.scrollLeft > 4,
+      r: over && el.scrollLeft < el.scrollWidth - el.clientWidth - 4,
+    });
+  }, []);
+  const onStepsScroll = (e) => {
+    if (headerScrollRef.current) headerScrollRef.current.scrollLeft = e.currentTarget.scrollLeft;
+    syncScrollState();
+  };
+  const nudge = (dir) => {
+    if (canvasRef.current) canvasRef.current.scrollBy({ left: dir * 360, behavior: 'smooth' });
+  };
+  React.useEffect(() => {
+    syncScrollState();
+    window.addEventListener('resize', syncScrollState);
+    return () => window.removeEventListener('resize', syncScrollState);
+  }, [syncScrollState, projectType.documents.length, docPrefs.width, docPrefs.rowLock]);
 
   React.useEffect(() => { setDocPrefs(loadDocPrefs(projectType.id)); }, [projectType.id]);
 
@@ -1768,7 +1800,7 @@ function ProjectTypeCanvas({ projectType, roles, onUpdateProjectType, allProject
     return (
       <div className="flex flex-col items-center justify-center h-64 text-slate-400">
         <div className="text-4xl mb-3">📄</div>
-        <p className="text-sm mb-3">No documents defined for this project type.</p>
+        <p className="text-sm mb-3">No documents defined for this workflow.</p>
         <Btn onClick={addDocument}>+ Add Document Type</Btn>
       </div>
     );
@@ -1824,28 +1856,6 @@ function ProjectTypeCanvas({ projectType, roles, onUpdateProjectType, allProject
     dragRef.current = null;
   };
 
-  const [scrollState, setScrollState] = useState({ l: false, r: false });
-  const syncScrollState = React.useCallback(() => {
-    const el = canvasRef.current;
-    if (!el) return;
-    const over = el.scrollWidth - el.clientWidth > 4;
-    setScrollState({
-      l: el.scrollLeft > 4,
-      r: over && el.scrollLeft < el.scrollWidth - el.clientWidth - 4,
-    });
-  }, []);
-  const onStepsScroll = (e) => {
-    if (headerScrollRef.current) headerScrollRef.current.scrollLeft = e.currentTarget.scrollLeft;
-    syncScrollState();
-  };
-  const nudge = (dir) => {
-    if (canvasRef.current) canvasRef.current.scrollBy({ left: dir * 360, behavior: 'smooth' });
-  };
-  React.useEffect(() => {
-    syncScrollState();
-    window.addEventListener('resize', syncScrollState);
-    return () => window.removeEventListener('resize', syncScrollState);
-  }, [syncScrollState, projectType.documents.length, docPrefs.width, docPrefs.rowLock]);
 
   const colProps = (doc, docIdx) => ({
     doc,
@@ -1868,7 +1878,7 @@ function ProjectTypeCanvas({ projectType, roles, onUpdateProjectType, allProject
     <div className="flex flex-col h-full overflow-hidden relative" id="canvas-print-area">
 
       {/* Display toolbar */}
-      <div className="shrink-0 flex items-center gap-2 px-4 py-2 border-b border-slate-200 bg-white no-print relative z-30">
+      <div className="shrink-0 flex flex-wrap items-center gap-2 px-4 py-2 border-b border-slate-200 bg-white no-print relative z-30">
         <div className="relative">
           <Btn variant="secondary" sm className="tb-btn" onClick={() => setPanelOpen(o => !o)}>
             ⚙ Details {hiddenDetailCount > 0 && <span className="text-indigo-600 font-bold">({DOC_DETAILS.length - hiddenDetailCount}/{DOC_DETAILS.length})</span>}
@@ -1904,6 +1914,21 @@ function ProjectTypeCanvas({ projectType, roles, onUpdateProjectType, allProject
         {docPrefs.rowLock && (
           <span className="text-[11px] text-slate-400">Rows aligned · drag to reorder is off</span>
         )}
+        <button
+          onClick={() => setNotesOpen(o => !o)}
+          className={`tb-btn inline-flex items-center gap-1.5 font-medium rounded-lg text-xs px-2.5 py-1.5 border transition-colors ${
+            notesOpen
+              ? 'bg-amber-500 border-amber-500 text-white hover:bg-amber-600'
+              : hasWorkflowNotes
+                ? 'bg-amber-50 border-amber-300 text-amber-800 hover:bg-amber-100'
+                : 'bg-white border-slate-300 text-slate-700 hover:bg-slate-50'}`}
+          title={hasWorkflowNotes ? 'This workflow has notes' : 'Add notes for this workflow'}>
+          <Icon name="notes" size={13} />
+          Notes
+          {hasWorkflowNotes && !notesOpen && (
+            <span className="inline-block rounded-full" style={{ width: 5, height: 5, background: '#f59e0b' }} />
+          )}
+        </button>
         <div className="inline-flex rounded-lg border border-slate-300 bg-white overflow-hidden ml-1"
           title="Columns share the canvas. This is the width below which they stop shrinking.">
           {DOC_WIDTHS.map(w => (
@@ -1920,6 +1945,29 @@ function ProjectTypeCanvas({ projectType, roles, onUpdateProjectType, allProject
         <div className="flex-1" />
         <span className="text-[11px] text-slate-400">{projectType.documents.length} document{projectType.documents.length !== 1 ? 's' : ''}</span>
       </div>
+
+      {/* Workflow notes — shared content, so it writes to the store. Closed by
+          default; the toolbar button shows a dot when there is something here. */}
+      {notesOpen && (
+        <div className="shrink-0 border-b border-amber-200 bg-amber-50 px-4 py-3 no-print">
+          <div className="flex items-start gap-2">
+            <Icon name="notes" size={14} className="text-amber-600 mt-0.5 shrink-0" />
+            <div className="flex-1 min-w-0">
+              <textarea
+                className="w-full text-sm bg-white border border-amber-200 rounded-lg px-3 py-2 resize-y focus:outline-none"
+                rows={3}
+                value={projectType.notes || ''}
+                onChange={e => onUpdateProjectType({ ...projectType, notes: e.target.value })}
+                placeholder="Notes about this whole workflow — context, timing, who to ask. Shown on the published page." />
+              <div className="text-[11px] text-slate-400 mt-1">
+                Shared with everyone, and included on the published page.
+              </div>
+            </div>
+            <button onClick={() => setNotesOpen(false)}
+              className="text-slate-400 hover:text-slate-600 text-sm shrink-0" title="Close">✕</button>
+          </div>
+        </div>
+      )}
 
       {docPrefs.rowLock ? (
         <RowLockedCanvas
@@ -2029,7 +2077,7 @@ function ProjectTypeEditor({ store, onUpdateStore, onClose }) {
     setPts(prev => [...prev, { id: uid(), name: newName.trim(), documents: [], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }]);
     setNewName('');
   };
-  const del = (id) => { if (confirm('Delete this project type?')) setPts(prev => prev.filter(p => p.id !== id)); };
+  const del = (id) => { if (confirm('Delete this workflow?')) setPts(prev => prev.filter(p => p.id !== id)); };
   const rename = (id) => {
     if (renameVal.trim()) setPts(prev => prev.map(p => p.id === id ? { ...p, name: renameVal.trim() } : p));
     setRenamingId(null);
@@ -2037,7 +2085,7 @@ function ProjectTypeEditor({ store, onUpdateStore, onClose }) {
   const save = () => { onUpdateStore({ ...store, projectTypes: pts }); onClose(); };
 
   return (
-    <Modal title="Manage Project / Program Types" onClose={onClose}>
+    <Modal title="Manage Workflows" onClose={onClose}>
       <p className="text-xs text-slate-500 mb-4">Project types define the top-level category. Documents and steps are configured directly on the canvas.</p>
       <div className="space-y-2 mb-4">
         {pts.map(pt => (
@@ -2054,7 +2102,7 @@ function ProjectTypeEditor({ store, onUpdateStore, onClose }) {
         ))}
       </div>
       <div className="flex gap-2 mb-4">
-        <input className={inputCls} value={newName} onChange={e => setNewName(e.target.value)} placeholder="New project type name..."
+        <input className={inputCls} value={newName} onChange={e => setNewName(e.target.value)} placeholder="New workflow name..."
           onKeyDown={e => e.key === 'Enter' && add()} />
         <Btn onClick={add}>Add</Btn>
       </div>
@@ -2128,7 +2176,7 @@ function BackupModal({ store, onRestore, onClose }) {
       <div className="space-y-4">
         <div className="border rounded-lg p-4 bg-slate-50">
           <div className="font-semibold text-sm mb-1">Export Backup</div>
-          <p className="text-xs text-slate-500 mb-3">Downloads all project types, documents, steps, templates, and roles as a JSON file.</p>
+          <p className="text-xs text-slate-500 mb-3">Downloads all workflows, documents, steps, templates, and roles as a JSON file.</p>
           <Btn onClick={exportBackup}>⬇ Download Backup</Btn>
         </div>
         <div className="border rounded-lg p-4 bg-slate-50">
@@ -2150,7 +2198,7 @@ function TemplateSaveModal({ projectType, onSave, onClose }) {
   const [name, setName] = useState(projectType.name + ' (Template)');
   return (
     <Modal title="Save as Template" onClose={onClose}>
-      <p className="text-sm text-slate-500 mb-4">Saves this project type's documents and all their steps as a reusable template.</p>
+      <p className="text-sm text-slate-500 mb-4">Saves this workflow's documents and all their steps as a reusable template.</p>
       <Field label="Template Name">
         <input className={inputCls} value={name} onChange={e => setName(e.target.value)} autoFocus />
       </Field>
@@ -2183,8 +2231,8 @@ function NewProjectTypeModal({ store, onCreate, onClose }) {
   };
 
   return (
-    <Modal title="New Project / Program Type" onClose={onClose}>
-      <Field label="Project Type Name" hint="e.g. New Program, Course Changes, Micro-Credential">
+    <Modal title="New Workflow" onClose={onClose}>
+      <Field label="Workflow Name" hint="e.g. New Program, Course Changes, Micro-Credential">
         <input className={inputCls} value={name} onChange={e => setName(e.target.value)} placeholder="Project type name..." autoFocus
           onKeyDown={e => e.key === 'Enter' && create()} />
       </Field>
@@ -2275,6 +2323,37 @@ function topoMerge(nodes, succ, indeg) {
     succ.get(k).forEach(n => { if (remaining.has(n)) indeg.set(n, indeg.get(n) - 1); });
   }
   return order;
+}
+
+// Read-only step detail, opened from a Step Flow cell. Step Flow does not edit,
+// so this renders StepCard with readOnly and no edit handlers.
+function FlowStepDetail({ steps, doc, roles, syncGroupMeta, onClose }) {
+  return (
+    <Modal title={`${doc.name} — ${steps[0] ? steps[0].stageName : 'Step'}`} onClose={onClose}>
+      <div className="flex items-center gap-2 mb-3">
+        <span className="inline-block rounded-full" style={{ width: 10, height: 10, background: doc.color }} />
+        <span className="text-xs text-slate-500">
+          {steps.length > 1 ? `${steps.length} steps at this stage` : 'Read-only — edit in the Documents view'}
+        </span>
+      </div>
+      <div className="flex flex-col gap-3">
+        {steps.map(step => (
+          <StepCard key={step.id} step={step} stepIndex={0} totalSteps={1} docSteps={steps}
+            roles={roles} docColor={doc.color} readOnly
+            onEdit={null} onDelete={null} onMove={() => {}}
+            returnStepName={step.returnToStepId
+              ? (doc.steps.find(x => x.id === step.returnToStepId) || {}).stageName
+              : null}
+            syncGroupColor={step.syncGroupId && syncGroupMeta
+              ? (syncGroupMeta[step.syncGroupId] || {}).color
+              : null} />
+        ))}
+      </div>
+      <div className="flex justify-end mt-4">
+        <Btn variant="secondary" onClick={onClose}>Close</Btn>
+      </div>
+    </Modal>
+  );
 }
 
 // ── Row Lock: align sync-grouped steps onto shared rows ────────────────────────
@@ -2384,18 +2463,18 @@ function FlowStepNode({ steps, doc, roles, details, anyDetail }) {
     .map(id => { const r = roles.find(x => x.id === id); return r ? r.label : id; })
     .join(', ');
 
-  const actionIcon = (type) => type === 'review' ? '🔍' : type === 'approval' ? '✅' : type === 'consultation' ? '💬' : type === 'prepared_by' ? '📝' : '▸';
-
+  // Same glyphs as the Documents view — one icon language across both.
   const lines = [];
   steps.forEach(step => {
-    if (details.trigger && triggerDisplay(step)) lines.push({ k: 'trigger', t: triggerDisplay(step) });
+    if (details.trigger && triggerDisplay(step)) lines.push({ k: 'trigger', icon: triggerIcon(step), t: triggerDisplay(step) });
     if (details.actions) (step.actions || []).forEach(a => lines.push({
-      k: 'action', t: `${actionIcon(a.type)} ${a.type === 'custom' ? a.label : a.label + (a.person ? ' ' + a.person : '')}`,
+      k: 'action', icon: actionSlot(a.type), color: ACTION_COLOR[actionSlot(a.type)],
+      t: a.type === 'custom' ? a.label : a.label + (a.person ? ' ' + a.person : ''),
     }));
     if (details.presenters && (step.presenterIds || []).length) lines.push({ k: 'pres', t: `Presents: ${roleLabel(step.presenterIds)}` });
     if (details.carriers && (step.carrierIds || []).length) lines.push({ k: 'carr', t: `Carries: ${roleLabel(step.carrierIds)}` });
-    if (details.storage && step.storageLocation) lines.push({ k: 'stor', t: `📁 ${step.storageLocation}${step.fileOperation === 'copy' ? ' (copy)' : step.fileOperation === 'move' ? ' (move)' : ''}` });
-    if (details.notes && step.notes) lines.push({ k: 'note', t: `📝 ${step.notes}` });
+    if (details.storage && step.storageLocation) lines.push({ k: 'stor', icon: 'storage', t: `${step.storageLocation}${step.fileOperation === 'copy' ? ' (copy)' : step.fileOperation === 'move' ? ' (move)' : ''}` });
+    if (details.notes && step.notes) lines.push({ k: 'note', icon: 'notes', t: step.notes });
   });
 
   const infoOnly = steps.every(s => s.informationOnly) && steps.length > 0;
@@ -2409,14 +2488,19 @@ function FlowStepNode({ steps, doc, roles, details, anyDetail }) {
         minWidth: anyDetail ? 0 : 44,
       }}>
       <div className="flex items-center justify-center gap-1">
-        <span style={{ color: doc.color, fontSize: 13, lineHeight: 1 }}>{infoOnly ? 'ⓘ' : '●'}</span>
+        {infoOnly
+          ? <Icon name="info" size={13} style={{ color: doc.color }} />
+          : <span style={{ color: doc.color, fontSize: 13, lineHeight: 1 }}>●</span>}
         {steps.length > 1 && <span className="text-[10px] font-bold" style={{ color: doc.color }}>×{steps.length}</span>}
-        {returns && <span className="text-[10px]" style={{ color: '#b45309' }} title="Can return to an earlier step">↩</span>}
+        {returns && <Icon name="ret" size={11} style={{ color: '#b45309' }} />}
       </div>
       {lines.length > 0 && (
         <div className="mt-1 space-y-0.5 text-left">
           {lines.map((l, i) => (
-            <div key={i} className="text-[10px] leading-snug text-slate-600 break-words">{l.t}</div>
+            <div key={i} className="text-[10px] leading-snug text-slate-600 break-words flex items-start gap-1">
+              {l.icon && <Icon name={l.icon} size={10} style={{ marginTop: 2, color: l.color || '#94a3b8' }} />}
+              <span className="min-w-0">{l.t}</span>
+            </div>
           ))}
         </div>
       )}
@@ -2424,9 +2508,10 @@ function FlowStepNode({ steps, doc, roles, details, anyDetail }) {
   );
 }
 
-function StepFlowView({ projectType, roles }) {
+function StepFlowView({ projectType, roles, syncGroupMeta }) {
   const [prefs, setPrefs] = React.useState(() => loadFlowPrefs(projectType.id));
   const [panel, setPanel] = React.useState(null); // 'steps' | 'details' | null
+  const [detailCell, setDetailCell] = React.useState(null); // { steps, doc } | null
 
   React.useEffect(() => { setPrefs(loadFlowPrefs(projectType.id)); }, [projectType.id]);
 
@@ -2461,7 +2546,7 @@ function StepFlowView({ projectType, roles }) {
 
       {/* Toolbar — z-50 so its panels clear the sticky matrix header (z-30) and
           the sticky document column (z-40) below. */}
-      <div className="shrink-0 flex items-center gap-2 px-4 py-2 border-b border-slate-200 bg-white no-print relative z-50">
+      <div className="shrink-0 flex flex-wrap items-center gap-2 px-4 py-2 border-b border-slate-200 bg-white no-print relative z-50">
         <div className="relative">
           <Btn variant="secondary" sm className="tb-btn" onClick={() => setPanel(panel === 'details' ? null : 'details')}>
             ⚙ Details {anyDetail && <span className="text-indigo-600 font-bold">({FLOW_DETAILS.filter(d => details[d.id]).length})</span>}
@@ -2576,7 +2661,11 @@ function StepFlowView({ projectType, roles }) {
                           {i === first && (
                             <div className="absolute -top-0.5 left-1/2 -translate-x-1/2 text-[9px] font-bold text-emerald-600 whitespace-nowrap">▸ START</div>
                           )}
-                          <FlowStepNode steps={steps} doc={doc} roles={roles} details={details} anyDetail={anyDetail} />
+                          <div onClick={() => setDetailCell({ steps, doc })}
+                            className="cursor-pointer transition-transform hover:scale-105"
+                            title="Click for the full step detail">
+                            <FlowStepNode steps={steps} doc={doc} roles={roles} details={details} anyDetail={anyDetail} />
+                          </div>
                           {i === last && (
                             <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 text-[9px] font-bold text-slate-400 whitespace-nowrap">✓ END</div>
                           )}
@@ -2593,6 +2682,11 @@ function StepFlowView({ projectType, roles }) {
           })}
         </div>
       </div>
+
+      {detailCell && (
+        <FlowStepDetail steps={detailCell.steps} doc={detailCell.doc} roles={roles}
+          syncGroupMeta={syncGroupMeta} onClose={() => setDetailCell(null)} />
+      )}
     </div>
   );
 }
@@ -2797,7 +2891,7 @@ function chunkRows(steps, perRow) {
 
 function PubCard({ step, index, roles, color }) {
   const roleName = (id) => { const r = roles.find(x => x.id === id); return r ? r.label : id; };
-  const actionIcon = (t) => t === 'review' ? '🔍' : t === 'approval' ? '✅' : t === 'consultation' ? '💬' : t === 'prepared_by' ? '📝' : '▸';
+
   const who = (step.presenterIds || []).map(roleName).join(', ');
   const storage = step.storageLocation
     ? step.storageLocation + (step.fileOperation === 'copy' ? ' · copy' : step.fileOperation === 'move' ? ' · move' : '')
@@ -2807,20 +2901,35 @@ function PubCard({ step, index, roles, color }) {
       <span className="pub-num" style={{ color, borderColor: color }}>{String(index + 1).padStart(2, '0')}</span>
       <div className="pub-ct">
         {step.stageName}
-        {step.informationOnly && <span className="pub-badge io">ⓘ</span>}
-        {step.returnToStepId && <span className="pub-badge rt">↩</span>}
+        {step.informationOnly && (
+          <span className="pub-badge io"><Icon name="info" size={9} /></span>
+        )}
+        {step.returnToStepId && (
+          <span className="pub-badge rt"><Icon name="ret" size={9} /></span>
+        )}
       </div>
       {(step.actions || []).length > 0 && (
         <div className="pub-ca">
           {step.actions.map(a => (
-            <div key={a.id}>{actionIcon(a.type)} {a.type === 'custom' ? a.label : a.label + (a.person ? ' ' + a.person : '')}</div>
+            <div key={a.id} className="pub-line">
+              <Icon name={actionSlot(a.type)} size={9} />
+              <span>{a.type === 'custom' ? a.label : a.label + (a.person ? ' ' + a.person : '')}</span>
+            </div>
           ))}
         </div>
       )}
       {(who || storage) && (
         <div className="pub-cm">
           {who && <div><b>{who}</b></div>}
-          {storage && <div>📁 {storage}</div>}
+          {storage && (
+            <div className="pub-line">
+              <Icon name="storage" size={9} />
+              {step.storageUrl
+                ? <a href={step.storageUrl} target="_blank" rel="noopener noreferrer"
+                    style={{ color: 'inherit' }}>{storage}</a>
+                : <span>{storage}</span>}
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -2982,6 +3091,9 @@ function PublishedView({ slug }) {
         <div className="pub-title-block">
           <h1 className="pub-h1">{snapshot.projectType.name}</h1>
           <div className="pub-sub">Continuing Studies · Langara College — {docs.length} documents, {spine.length} steps</div>
+          {(snapshot.projectType.notes || '').trim() && (
+            <div className="pub-notes">{snapshot.projectType.notes}</div>
+          )}
         </div>
 
         <section className="pub-block">
@@ -3003,7 +3115,8 @@ function PublishedView({ slug }) {
         <div className="pub-legend">
           Numbered badges follow each document's own order
           {layout === 'serpentine' ? ' · rows alternate direction' : ' · every row reads left to right'}
-          {' '}· ⓘ information only · ↩ can return to an earlier step
+          {' '}· <Icon name="info" size={9} /> information only
+          {' '}· <Icon name="ret" size={9} /> can return to an earlier step
         </div>
       </div>
     </div>
@@ -3020,6 +3133,7 @@ function normalizeSnapshot(snap) {
     syncGroupMeta: s.syncGroupMeta || {},
     projectType: {
       ...pt,
+      notes: pt.notes || '',
       documents: (pt.documents || []).map(d => ({ ...d, steps: (d.steps || []).map(normalizeStep) })),
     },
   };
@@ -3061,6 +3175,11 @@ function App({ authUser }) {
   const [view, setView] = useState('documents'); // 'documents' | 'flow'
   const [sidebarWidth, setSidebarWidth] = useState(240);
   const sidebarDragRef = useRef(false);
+  // Sidebar workflow drag-reorder state. Declared with the other hooks, above
+  // the `if (!store)` return — a hook below it runs on some renders and not
+  // others, which is React error #310 and a blank page.
+  const ptDragRef = React.useRef(null);
+  const [ptDropId, setPtDropId] = useState(null);
 
   if (!store) return (
     <div className="flex items-center justify-center h-screen bg-slate-100">
@@ -3080,20 +3199,27 @@ function App({ authUser }) {
   };
 
   const deletePT = (id) => {
-    if (!confirm('Delete this project type and all its data?')) return;
+    if (!confirm('Delete this workflow and all its data?')) return;
     updateStore(s => {
       const pts = s.projectTypes.filter(p => p.id !== id);
       return { ...s, projectTypes: pts, activeProjectTypeId: pts[0]?.id || null };
     });
   };
 
-  const movePT = (id, dir) => {
+  // Sidebar list is reordered by dragging; drop moves the dragged workflow to
+  // the target's position rather than swapping, so a long drag lands where the
+  // indicator says it will.
+  const reorderPT = (dragId, targetId) => {
+    ptDragRef.current = null;
+    setPtDropId(null);
+    if (!dragId || !targetId || dragId === targetId) return;
     updateStore(s => {
       const arr = [...s.projectTypes];
-      const idx = arr.findIndex(p => p.id === id);
-      const t = idx + dir;
-      if (t < 0 || t >= arr.length) return s;
-      [arr[idx], arr[t]] = [arr[t], arr[idx]];
+      const from = arr.findIndex(p => p.id === dragId);
+      const to = arr.findIndex(p => p.id === targetId);
+      if (from < 0 || to < 0) return s;
+      const [moved] = arr.splice(from, 1);
+      arr.splice(to, 0, moved);
       return { ...s, projectTypes: arr };
     });
   };
@@ -3173,28 +3299,32 @@ function App({ authUser }) {
         <div className="flex-1 overflow-y-auto p-3">
           {/* Project Types */}
           <div className="flex items-center justify-between mb-2 px-1">
-            <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">Project Types</span>
-            <button onClick={() => setModal('newPT')} className="text-indigo-600 hover:text-indigo-800 text-lg font-bold leading-none" title="New project type">+</button>
+            <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">Workflows</span>
+            <button onClick={() => setModal('newPT')} className="text-indigo-600 hover:text-indigo-800 text-lg font-bold leading-none" title="New workflow">+</button>
           </div>
 
           {store.projectTypes.map((pt, idx) => (
             <div key={pt.id}
+              draggable
+              onDragStart={e => { ptDragRef.current = pt.id; e.dataTransfer.effectAllowed = 'move'; }}
+              onDragEnd={() => { ptDragRef.current = null; setPtDropId(null); }}
+              onDragOver={e => { if (ptDragRef.current && ptDragRef.current !== pt.id) { e.preventDefault(); setPtDropId(pt.id); } }}
+              onDragLeave={() => setPtDropId(cur => cur === pt.id ? null : cur)}
+              onDrop={e => { e.preventDefault(); reorderPT(ptDragRef.current, pt.id); }}
               onClick={() => setActivePT(pt.id)}
-              className={`group flex items-center gap-1 px-2 py-2 rounded-lg cursor-pointer mb-1 transition-colors ${pt.id === activePT?.id ? 'bg-indigo-600 text-white' : 'text-slate-700 hover:bg-slate-100'}`}>
+              className={`group relative flex items-center gap-1 px-2 py-2 rounded-lg cursor-pointer mb-1 transition-colors ${pt.id === activePT?.id ? 'bg-indigo-600 text-white' : 'text-slate-700 hover:bg-slate-100'} ${ptDragRef.current === pt.id ? 'opacity-40' : ''}`}>
+              {ptDropId === pt.id && (
+                <div className="absolute left-1 right-1 -top-0.5 h-0.5 rounded bg-indigo-400" />
+              )}
+              <span className={`shrink-0 select-none leading-none ${pt.id === activePT?.id ? 'text-indigo-200' : 'text-slate-300'}`}
+                style={{ cursor: 'grab', fontSize: 13, letterSpacing: '-1px' }}
+                title="Drag to reorder">⠿</span>
               <span className="text-sm font-medium truncate flex-1">{pt.name}</span>
-              <div className="opacity-0 group-hover:opacity-100 flex gap-0.5 shrink-0">
-                <button onClick={e => { e.stopPropagation(); movePT(pt.id, -1); }} disabled={idx === 0}
-                  className={`w-5 h-5 rounded text-xs flex items-center justify-center disabled:opacity-20 ${pt.id === activePT?.id ? 'hover:bg-indigo-500' : 'hover:bg-slate-200'}`}
-                  title="Move up">▲</button>
-                <button onClick={e => { e.stopPropagation(); movePT(pt.id, 1); }} disabled={idx === store.projectTypes.length - 1}
-                  className={`w-5 h-5 rounded text-xs flex items-center justify-center disabled:opacity-20 ${pt.id === activePT?.id ? 'hover:bg-indigo-500' : 'hover:bg-slate-200'}`}
-                  title="Move down">▼</button>
-                {pt.id !== activePT?.id && (
-                  <button onClick={e => { e.stopPropagation(); deletePT(pt.id); }}
-                    className="w-5 h-5 rounded text-xs flex items-center justify-center text-red-400 hover:text-red-600 hover:bg-red-50"
-                    title="Delete">✕</button>
-                )}
-              </div>
+              {pt.id !== activePT?.id && (
+                <button onClick={e => { e.stopPropagation(); deletePT(pt.id); }}
+                  className="opacity-0 group-hover:opacity-100 shrink-0 w-5 h-5 rounded text-xs flex items-center justify-center text-red-400 hover:text-red-600 hover:bg-red-50"
+                  title="Delete">✕</button>
+              )}
             </div>
           ))}
 
@@ -3215,7 +3345,7 @@ function App({ authUser }) {
         {/* Bottom settings */}
         <div className="p-3 border-t border-slate-200 space-y-1">
           <button onClick={() => setModal('manageTypes')} className="w-full text-left px-3 py-2 rounded-lg text-sm text-slate-600 hover:bg-slate-100 flex items-center gap-2">
-            <span>🗂</span> Manage Project Types
+            <span>🗂</span> Manage Workflows
           </button>
           <button onClick={() => setModal('roles')} className="w-full text-left px-3 py-2 rounded-lg text-sm text-slate-600 hover:bg-slate-100 flex items-center gap-2">
             <span>👥</span> Roles &amp; People
@@ -3272,7 +3402,7 @@ function App({ authUser }) {
                 <div className="text-xs text-slate-400">{activePT.documents.length} document type{activePT.documents.length !== 1 ? 's' : ''} &middot; Updated {new Date(activePT.updatedAt).toLocaleDateString()}</div>
               </>
             ) : (
-              <h1 className="font-bold text-slate-400">No project type selected</h1>
+              <h1 className="font-bold text-slate-400">No workflow selected</h1>
             )}
           </div>
           {activePT && (
@@ -3336,7 +3466,7 @@ function App({ authUser }) {
                     title={st.state === 'stale'
                       ? 'The published page still shows an older version. Republish to bring it up to date.'
                       : st.state === 'current' ? 'The published page matches what you see here.'
-                      : 'Publish a read-only link to this project type'}
+                      : 'Publish a read-only link to this workflow'}
                     className={`inline-flex items-center gap-1.5 font-medium rounded-lg text-xs px-2.5 py-1.5 border transition-colors hover:brightness-95 ${cls}`}>
                     {label}
                   </button>
@@ -3350,7 +3480,7 @@ function App({ authUser }) {
         {/* Canvas */}
         <div className="flex-1 min-h-0 overflow-hidden">
           {activePT ? (view === 'flow' ? (
-            <StepFlowView projectType={activePT} roles={store.roles} />
+            <StepFlowView projectType={activePT} roles={store.roles} syncGroupMeta={store.syncGroupMeta} />
           ) : (
             <ProjectTypeCanvas
               projectType={activePT}
@@ -3367,7 +3497,7 @@ function App({ authUser }) {
             <div className="flex items-center justify-center h-full text-slate-400">
               <div className="text-center">
                 <div className="text-4xl mb-3">📋</div>
-                <p className="text-sm">No project type selected. Create one using the sidebar.</p>
+                <p className="text-sm">No workflow selected. Create one using the sidebar.</p>
               </div>
             </div>
           )}
