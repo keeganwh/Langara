@@ -22,13 +22,16 @@ That's how changes get checked before you see them.
 ```
 cd dev
 npm install          # first time only
-npm run check        # build, make the preview, run all 37 checks
+npm run check        # build, make the preview, run all 45 checks
 ```
 
 Other commands:
 
 ```
 npm run build        # just transpile — catches "blank page" errors early
+                     # NOTE: this does NOT rebuild .out/preview.html. If you are
+                     # poking at the preview directly, run `npm run preview`
+                     # after every edit or you will be measuring stale output.
 npm run preview      # rebuild dev/.out/preview.html, openable in a browser
 npm run shot flow    # screenshot a view: documents | flow | rowlock | published
 ```
@@ -81,6 +84,10 @@ Each check in `checks.js` exists because that thing actually broke once:
 - no emoji survive in the card content, and every action row carries an SVG
 - columns are a grid that shares the canvas
 - the badges overhang the card top edge without being clipped
+- the between-step band puts the arrow left of the stacked flags
+- information only is a dashed card with a label on the title line
+- the top fade stays off until something scrolls under the header
+- Row Lock columns flex with the canvas instead of a fixed 260px
 - the trigger chip is merged into the connector, not a bordered slab
 - the sidebar says Workflows and reorders by dragging, with no up/down buttons
 - the workflow notes panel opens, flags that notes exist, and closes again

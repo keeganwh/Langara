@@ -105,11 +105,39 @@ from card content.
 
 `.doc-col` was once `min-width` **and** `max-width: 260px`, so five columns
 could not fit a 1440px display. Columns are now a CSS grid (`.doc-grid`) that
-shares the canvas evenly down to `DOC_MIN_WIDTH` (250px), below which they stop
-shrinking and the canvas scrolls. That is one constant, not a preference — the
-flexing is what adapts to the display, so a Compact/Standard/Wide picker was
-tried and removed as redundant. The Add Document column sits **outside** the
-grid so it does not take an equal share.
+shares the canvas evenly between `DOC_MIN_WIDTH` (250px) and `DOC_MAX_WIDTH`
+(500px) — below the floor they stop shrinking and the canvas scrolls; the
+ceiling stops a one-document workflow stretching across the whole display.
+Those are constants, not preferences: the flexing is what adapts to the
+display, so a Compact/Standard/Wide picker was tried and removed as redundant.
+The Add Document column sits **outside** the grid so it does not take an equal
+share.
+
+Two things that bite here:
+
+- **`max-width` on a grid track loses to `1fr`.** The wrapper needs the cap too
+  (`--doc-cap`, from `docGridCap()`), or columns sail past the ceiling.
+- **`1fr` resolves against max-content in a shrink-to-fit box.** Row Lock's band
+  is `min-width: max-content`, so its column width is *measured* with a
+  `ResizeObserver` rather than left to the grid — every column sat on its
+  ceiling otherwise. Any flex ancestor of a max-content canvas also needs
+  `min-w-0`, or the whole app grows sideways instead of scrolling.
+
+## Between two steps
+
+The arrow sits in its own left column with the file-operation and trigger lines
+stacked beside it, and the group is centred (`.step-link`). The band itself is
+the hover target for setting a trigger — the old `⚡+` button cost a row under
+every arrow. The add control is **absolutely positioned**: as a grid cell it
+squeezed the trigger text into extra lines and cancelled the ~190px the layout
+was saving.
+
+## Information only
+
+A dashed card outline — the same convention Step Flow already used — plus a
+label sharing the stage name's line, which drops below it when the title is too
+long. The label wraps rather than truncating; there is no separator character,
+so it reads correctly on either line.
 
 Because the canvas can scroll, it says so: an edge fade and a nudge button on
 whichever side has more content, plus a scrollbar wide enough to see.
@@ -378,7 +406,7 @@ libraries, stubbed Firebase, Tailwind compiled from the app's own markup) and
 drives it in headless Chromium.
 
 ```
-cd dev && npm install && npm run check      # 37 checks
+cd dev && npm install && npm run check      # 45 checks
 cd dev && npm run shot flow                 # screenshot a view
 ```
 

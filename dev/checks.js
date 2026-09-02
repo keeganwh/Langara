@@ -67,6 +67,14 @@ const text = p => p.evaluate(() => document.body.innerText);   // innerText, not
     const by = {}; cards.forEach(c => (by[c.top] = by[c.top] || []).push(c.h));
     return Object.values(by).filter(g => g.length > 1).map(g => new Set(g).size);
   });
+  ok('Row Lock columns flex with the canvas instead of a fixed 260px',
+    await p.evaluate(() => {
+      const g = [...document.querySelectorAll('div')]
+        .find(d => /^26px /.test(getComputedStyle(d).gridTemplateColumns || ''));
+      if (!g) return false;
+      const tracks = getComputedStyle(g).gridTemplateColumns.split(' ').slice(1);
+      return tracks.length > 0 && !tracks.every(t => t === '260px');
+    }));
   ok('cards in a row share a height', rows.length > 0 && rows.every(n => n === 1), JSON.stringify(rows));
   await rowLock.click(); await p.waitForTimeout(500);
 
@@ -166,15 +174,71 @@ const text = p => p.evaluate(() => document.body.innerText);   // innerText, not
     return getComputedStyle(card).overflow !== 'hidden'
       && b.getBoundingClientRect().top < card.getBoundingClientRect().top;
   }));
-  ok('the trigger chip is merged into the connector, not its own slab',
+  ok('between-step band puts the arrow left of the stacked flags',
     await p.evaluate(() => {
-      const t = document.querySelector('[class*="group/trigger"]');
-      if (!t) return false;
-      const cs = getComputedStyle(t);
-      // Tailwind's preflight sets border-style: solid at 0 width, so measure the
-      // width, not the style.
-      return cs.borderTopWidth === '0px' && cs.backgroundColor === 'rgba(0, 0, 0, 0)';
+      const band = document.querySelector('.step-link');
+      if (!band) return false;
+      const arrow = band.querySelector('.step-link-arrow');
+      const rows = band.querySelector('.step-link-rows');
+      if (!arrow || !rows) return false;
+      return arrow.getBoundingClientRect().right <= rows.getBoundingClientRect().left + 1;
     }));
+  ok('the band is unstyled at rest, so it reads as one quiet unit',
+    await p.evaluate(() => {
+      const cs = getComputedStyle(document.querySelector('.step-link'));
+      return cs.backgroundColor === 'rgba(0, 0, 0, 0)'
+        && getComputedStyle(document.querySelector('.step-link-add')).opacity === '0';
+    }));
+  ok('the add-trigger control costs no layout width',
+    await p.evaluate(() =>
+      getComputedStyle(document.querySelector('.step-link-add')).position === 'absolute'));
+  ok('no add-trigger button takes a row of its own',
+    await p.evaluate(() => !document.body.innerText.includes('\u26A1+')));
+  ok('information only is a dashed card plus a label on the title line',
+    await p.evaluate(() => {
+      const c = document.querySelector('.step-card.info-only');
+      if (!c) return false;
+      return getComputedStyle(c).borderTopStyle === 'dashed'
+        && !!c.querySelector('.info-only-label');
+    }));
+  ok('columns stop growing at the maximum', await p.evaluate(() => {
+    const g = document.querySelector('.doc-grid');
+    return !!g && getComputedStyle(g).maxWidth !== 'none';
+  }));
+
+  // On a second, untouched page: by this point in the main run the app container
+  // has grown past the viewport, so the canvas has nothing to scroll and the
+  // fade cannot be exercised there. This is the behaviour that regressed, so it
+  // is worth a clean page rather than a weaker assertion.
+  const fp = await ctx.newPage();
+  await fp.setViewportSize({ width: 1500, height: 950 });
+  await fp.goto(PAGE); await fp.waitForTimeout(1600);
+  const fadeOpacity = () => fp.evaluate(() => {
+    const f = [...document.querySelectorAll('.sticky')]
+      .find(e => (e.style.background || '').includes('linear-gradient'));
+    return f ? getComputedStyle(f).opacity : null;
+  });
+  const scrollCanvas = (top) => fp.evaluate((t) => {
+    const f = [...document.querySelectorAll('.sticky')]
+      .find(e => (e.style.background || '').includes('linear-gradient'));
+    if (f) f.parentElement.scrollTop = t;
+  }, top);
+  const fadeAtRest = await fadeOpacity();
+  await scrollCanvas(260); await fp.waitForTimeout(450);
+  const fadeScrolled = await fadeOpacity();
+  ok('the top fade stays off until something scrolls under the header',
+    fadeAtRest === '0' && fadeScrolled !== '0',
+    `rest ${fadeAtRest} -> scrolled ${fadeScrolled}`);
+  await fp.close();
+
+  ok('the fade outranks the card badges', await p.evaluate(() => {
+    const fade = [...document.querySelectorAll('.sticky')]
+      .find(e => (e.style.background || '').includes('linear-gradient'));
+    const badge = document.querySelector('.card-badges');
+    if (!fade || !badge) return false;
+    return parseInt(getComputedStyle(fade).zIndex, 10) > parseInt(getComputedStyle(badge).zIndex, 10);
+  }));
+  await p.waitForTimeout(300);
 
   console.log('\nWorkflows rename');
   // Scoped to the sidebar: textContent is safe here because the inlined program

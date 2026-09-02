@@ -28,9 +28,14 @@
     ::-webkit-scrollbar-thumb { background:#cbd5e1; border-radius:3px; }
     /* Columns share the canvas evenly, down to --doc-min; below that they stop
        shrinking and the canvas scrolls. Width is a display preference. */
-    .doc-col { min-width: var(--doc-min, 250px); max-width: none; }
+    .doc-col { min-width: var(--doc-min, 250px); max-width: var(--doc-max, 500px); }
+    /* Columns share the canvas between the floor and the ceiling. The ceiling
+       matters for a one-document workflow, which otherwise stretches the width
+       of the display. The grid itself is capped too — max-width on a track
+       loses to 1fr, so the wrapper has to stop growing as well. */
     .doc-grid { display: grid; gap: 16px; align-items: start;
-                grid-template-columns: repeat(var(--doc-n, 1), minmax(var(--doc-min, 250px), 1fr)); }
+                grid-template-columns: repeat(var(--doc-n, 1), minmax(var(--doc-min, 250px), 1fr));
+                max-width: var(--doc-cap, none); }
     .doc-grid > * { min-width: 0; }
 
     /* Scroll affordance: fade + nudge button on whichever edge has more canvas */
@@ -70,10 +75,43 @@
     a.filed-chip { text-decoration: underline; text-decoration-color: rgba(15,118,110,.4);
                    text-underline-offset: 2px; }
     a.filed-chip:hover { background: #e3f6f2; }
-    /* Badge cluster: sync group and information-only sit together, top-right */
-    .card-badges { position: absolute; top: -11px; right: 9px; display: flex; gap: 5px; z-index: 12; }
+    /* Badge cluster: sync group and information-only sit together, top-right.
+       Kept below the canvas top fade (z-30) — at z-12 they painted over it. */
+    .card-badges { position: absolute; top: -11px; right: 9px; display: flex; gap: 5px; z-index: 2; }
     .card-badge { border-radius: 99px; color: #fff; display: flex; align-items: center;
                   justify-content: center; width: 22px; height: 22px; box-shadow: 0 0 0 2px #fff; }
+    /* Information only: a dashed outline, the same convention Step Flow uses,
+       plus a label that shares the title's line and drops below it when the
+       title is too long to leave room. */
+    .step-card.info-only { border-style: dashed; border-color: #7dd3fc; }
+    .step-title-row { display: flex; flex-wrap: wrap; align-items: baseline; gap: 3px 8px; }
+    .info-only-label { font-size: 9px; font-weight: 700; letter-spacing: .09em;
+                       text-transform: uppercase; color: #0284c7; white-space: nowrap;
+                       flex: 0 0 auto; }
+
+    /* Between two steps: the arrow sits in its own column with the file-operation
+       and trigger lines stacked beside it, and the whole group is centred. The
+       band is the hover target for setting a trigger, so no control needs a row
+       of its own — the old one cost 20px under every arrow. */
+    .step-link { display: flex; justify-content: center; align-items: center; gap: 8px;
+                 padding: 2px 8px; margin: 1px 0; border-radius: 9px; position: relative;
+                 border: 1px solid transparent; min-height: 26px; cursor: pointer;
+                 transition: background .12s, border-color .12s; }
+    .step-link:hover { background: #e8edf3; border-color: #cfd8e3; }
+    .step-link-arrow { display: flex; flex-direction: column; align-items: center;
+                       align-self: stretch; justify-content: center; min-height: 22px;
+                       width: 12px; flex: 0 0 12px; opacity: .65; }
+    .step-link-arrow .stem { width: 2px; flex: 1 1 auto; min-height: 8px; background: currentColor; }
+    .step-link-arrow .head { width: 0; height: 0; border-left: 5px solid transparent;
+                             border-right: 5px solid transparent; border-top: 7px solid currentColor; }
+    .step-link-rows { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 0 1 auto; }
+    /* Absolute, so it costs no layout width — as a grid cell it squeezed the
+       trigger text into extra lines and cancelled the space this was saving. */
+    .step-link-add { position: absolute; right: 8px; top: 50%; transform: translateY(-50%);
+                     font-size: 10.5px; font-weight: 600; color: #b45309; background: #fffbeb;
+                     border: 1px dashed #fcd34d; border-radius: 99px; padding: 2px 9px;
+                     white-space: nowrap; opacity: 0; transition: opacity .12s; }
+    .step-link:hover .step-link-add { opacity: 1; }
     .notes-expand { max-height: 0; overflow: hidden; transition: max-height 0.2s ease; }
     .notes-expand.open { max-height: 200px; }
 
@@ -1033,6 +1071,14 @@ const ALL_DOC_DETAILS = DOC_DETAILS.reduce((a, d) => { a[d.id] = true; return a;
 // the canvas scrolls instead. One number, not a preference — the flexing is
 // what adapts to the display, so a size picker had nothing left to do.
 const DOC_MIN_WIDTH = 250;
+// A ceiling as well as a floor: a one-document workflow otherwise stretches its
+// single column across the whole display.
+const DOC_MAX_WIDTH = 500;
+const DOC_GAP = 16;
+const ROW_LOCK_GUTTER = 26;   // vertical sync-group label column
+// The grid wrapper has to stop growing too — max-width on a track loses to 1fr.
+const docGridCap = (n, extra = 0) =>
+  n > 0 ? (n * DOC_MAX_WIDTH + (n - 1) * DOC_GAP + extra) + 'px' : 'none';
 
 function loadDocPrefs(projectTypeId) {
   try {
@@ -1066,12 +1112,14 @@ function StepCard({ step, stepIndex, totalSteps, docSteps, roles, docColor, onEd
   const linkColor = syncGroupColor || '#64748b';
 
   return (
-    <div className={`step-card relative bg-white rounded-xl${fillHeight ? ' flex-1 flex flex-col' : ''}`}
+    <div className={`step-card relative bg-white rounded-xl${step.informationOnly ? ' info-only' : ''}${fillHeight ? ' flex-1 flex flex-col' : ''}`}
       data-step-id={step.id}
       style={{
         '--doc-color': docColor,
-        border: syncGroupColor ? `3px solid ${syncGroupColor}` : `2px solid #e2e8f0`,
-        borderTopColor: syncGroupColor || docColor,
+        border: syncGroupColor
+          ? `3px ${step.informationOnly ? 'dashed' : 'solid'} ${syncGroupColor}`
+          : `2px ${step.informationOnly ? 'dashed' : 'solid'} ${step.informationOnly ? '#7dd3fc' : '#e2e8f0'}`,
+        borderTopColor: syncGroupColor || (step.informationOnly ? '#7dd3fc' : docColor),
         borderTopWidth: syncGroupColor ? 3 : 3,
         opacity: isDragging ? 0.4 : dimmed ? 0.3 : 1,
         cursor: readOnly ? 'default' : 'grab',
@@ -1138,9 +1186,15 @@ function StepCard({ step, stepIndex, totalSteps, docSteps, roles, docColor, onEd
       )}
 
       <div className={`p-3${fillHeight ? ' flex-1' : ''}`}>
-        {/* Stage name — takes the document colour, so a column reads as one thing */}
-        <div className="font-bold text-sm leading-tight pr-8 mb-2"
-          style={{ color: docColor, overflowWrap: 'anywhere' }}>{step.stageName}</div>
+        {/* Stage name — takes the document colour, so a column reads as one thing.
+            "Information only" shares the line and wraps below when it won't fit. */}
+        <div className="step-title-row pr-8 mb-2">
+          <span className="font-bold text-sm leading-tight min-w-0"
+            style={{ color: docColor, overflowWrap: 'anywhere' }}>{step.stageName}</span>
+          {step.informationOnly && (
+            <span className="info-only-label">Information only</span>
+          )}
+        </div>
 
         {/* Actions */}
         {details.actions && step.actions.length > 0 && (
@@ -1382,13 +1436,17 @@ function DocumentColumn({ doc, docIndex, totalDocs, onMoveDoc, projectTypeId, ro
             {dropTarget?.docId === doc.id && dropTarget?.beforeStepId === step.id && (
               <div className="h-1 rounded mx-1 my-0.5" style={{ background: doc.color }} />
             )}
-            {/* Trigger mini-card */}
-            {details.trigger && step.triggerType && (
-              <div onClick={() => setEditStep(step)}
-                className="group/trigger mx-1 mb-1 px-1 flex items-center justify-center gap-1.5 text-[11px] text-amber-700 cursor-pointer hover:text-amber-900 transition-colors no-print">
-                <Icon name={triggerIcon(step)} size={12} className="shrink-0" />
-                <span className="min-w-0 text-center" style={{ overflowWrap: 'anywhere' }}>{triggerDisplay(step)}</span>
-                <span className="opacity-0 group-hover/trigger:opacity-100 text-amber-400 shrink-0" title="Edit step to change trigger">✎</span>
+            {/* Trigger on the first step — the same band without an arrow */}
+            {details.trigger && step.triggerType && i === 0 && (
+              <div onClick={() => setEditStep(step)} className="step-link no-print"
+                title="Click to change what triggers this step">
+                <div className="step-link-rows">
+                  <div className="flex items-center gap-1.5 text-[10.5px] text-amber-700 leading-tight">
+                    <Icon name={triggerIcon(step)} size={12} />
+                    <span className="min-w-0" style={{ overflowWrap: 'anywhere' }}>{triggerDisplay(step)}</span>
+                  </div>
+                </div>
+                <span className="step-link-add">Edit trigger</span>
               </div>
             )}
             <StepCard
@@ -1418,58 +1476,75 @@ function DocumentColumn({ doc, docIndex, totalDocs, onMoveDoc, projectTypeId, ro
               syncGroupColor={step.syncGroupId && syncGroupMeta ? syncGroupMeta[step.syncGroupId]?.color : null}
               details={details}
             />
-            {/* Arrow between steps */}
+            {/* Between two steps: arrow on the left, the file-operation and
+                trigger lines stacked beside it, the whole group centred. The
+                band itself opens the trigger picker, so it needs no button. */}
             {i < doc.steps.length - 1 && (() => {
               const s = doc.steps[i];
               const nextStep = doc.steps[i + 1];
-              const opLabel = s.fileOperation === 'copy' ? 'Document Copied'
-                            : s.fileOperation === 'move' ? 'Document Moved' : null;
-              const dlLabel = s.deliveryMethod === 'download_email' ? 'Emailed as Attachment' : null;
+              const opLabel = s.fileOperation === 'copy' ? 'Document copied'
+                            : s.fileOperation === 'move' ? 'Document moved' : null;
+              const dlLabel = s.deliveryMethod === 'download_email' ? 'Emailed as attachment' : null;
               const arrowLabel = details.storage ? [opLabel, dlLabel].filter(Boolean).join(' · ') : '';
               const showPicker = inlineTriggerFor === nextStep.id;
-              return (
-                <div className="group/arrow flex flex-col items-center pt-1 pb-0.5 gap-0.5 no-print">
-                  {arrowLabel && (
-                    <span className="text-xs italic mb-0.5 text-center leading-tight" style={{ color: doc.color }}>{arrowLabel}</span>
-                  )}
-                  <svg width="20" height="20" viewBox="0 0 20 20">
-                    <line x1="10" y1="1" x2="10" y2="14" stroke={doc.color} strokeWidth="2" strokeOpacity="0.6" />
-                    <polygon points="10,19 5,11 15,11" fill={doc.color} fillOpacity="0.7" />
-                  </svg>
-                  {showPicker ? (
-                    <div className="mt-1 w-full px-1">
-                      <div className="bg-white border border-amber-200 rounded-lg p-2 shadow-sm">
-                        <div className="text-xs text-slate-400 mb-1.5 font-medium">What triggers next step?</div>
-                        <div className="flex flex-wrap gap-1 mb-1">
-                          {TRIGGER_TYPES.map(t => (
-                            <button key={t} onClick={() => setStepTrigger(nextStep.id, t)}
-                              className="px-2 py-0.5 rounded-full text-xs border border-slate-200 hover:border-amber-400 hover:bg-amber-50 text-slate-600 transition-colors inline-flex items-center gap-1.5">
-                              <Icon name={TRIGGER_ICON[t]} size={11} />{TRIGGER_LABELS[t]}
-                            </button>
-                          ))}
-                          <button onClick={() => { setInlineCustomText(''); setInlineTriggerFor(nextStep.id + '_custom'); }}
-                            className="px-2 py-0.5 rounded-full text-xs border border-slate-200 hover:border-amber-400 hover:bg-amber-50 text-slate-600 transition-colors">
-                            ✏ Custom
+              const hasTrigger = details.trigger && nextStep.triggerType;
+              if (showPicker) {
+                return (
+                  <div className="mx-1 my-1 no-print">
+                    <div className="bg-white border border-amber-200 rounded-lg p-2 shadow-sm">
+                      <div className="text-xs text-slate-400 mb-1.5 font-medium">What triggers the next step?</div>
+                      <div className="flex flex-wrap gap-1 mb-1">
+                        {TRIGGER_TYPES.map(t => (
+                          <button key={t} onClick={() => setStepTrigger(nextStep.id, t)}
+                            className="px-2 py-0.5 rounded-full text-xs border border-slate-200 hover:border-amber-400 hover:bg-amber-50 text-slate-600 transition-colors inline-flex items-center gap-1.5">
+                            <Icon name={TRIGGER_ICON[t]} size={11} />{TRIGGER_LABELS[t]}
                           </button>
-                        </div>
-                        {inlineTriggerFor === nextStep.id + '_custom' && (
-                          <div className="flex gap-1 mt-1">
-                            <input className="flex-1 text-xs border border-slate-300 rounded px-2 py-0.5" value={inlineCustomText}
-                              onChange={e => setInlineCustomText(e.target.value)}
-                              onKeyDown={e => { if (e.key === 'Enter' && inlineCustomText.trim()) setStepTrigger(nextStep.id, 'custom', inlineCustomText.trim()); if (e.key === 'Escape') setInlineTriggerFor(null); }}
-                              placeholder="Describe trigger..." autoFocus />
-                            <button onClick={() => inlineCustomText.trim() && setStepTrigger(nextStep.id, 'custom', inlineCustomText.trim())}
-                              className="px-2 py-0.5 text-xs bg-amber-500 text-white rounded hover:bg-amber-600">✓</button>
-                          </div>
+                        ))}
+                        <button onClick={() => { setInlineCustomText(''); setInlineTriggerFor(nextStep.id + '_custom'); }}
+                          className="px-2 py-0.5 rounded-full text-xs border border-slate-200 hover:border-amber-400 hover:bg-amber-50 text-slate-600 transition-colors inline-flex items-center gap-1.5">
+                          <Icon name="t_cust" size={11} />Custom
+                        </button>
+                        {nextStep.triggerType && (
+                          <button onClick={() => setStepTrigger(nextStep.id, '')}
+                            className="px-2 py-0.5 rounded-full text-xs border border-slate-200 hover:border-red-300 hover:bg-red-50 text-slate-500 transition-colors">
+                            Clear
+                          </button>
                         )}
-                        <button onClick={() => setInlineTriggerFor(null)} className="mt-1 text-xs text-slate-400 hover:text-slate-600">Cancel</button>
                       </div>
+                      {inlineTriggerFor === nextStep.id + '_custom' && (
+                        <div className="flex gap-1 mt-1">
+                          <input className="flex-1 text-xs border border-slate-300 rounded px-2 py-0.5" value={inlineCustomText}
+                            onChange={e => setInlineCustomText(e.target.value)}
+                            onKeyDown={e => { if (e.key === 'Enter' && inlineCustomText.trim()) setStepTrigger(nextStep.id, 'custom', inlineCustomText.trim()); if (e.key === 'Escape') setInlineTriggerFor(null); }}
+                            placeholder="Describe trigger..." autoFocus />
+                          <button onClick={() => inlineCustomText.trim() && setStepTrigger(nextStep.id, 'custom', inlineCustomText.trim())}
+                            className="px-2 py-0.5 text-xs bg-amber-500 text-white rounded hover:bg-amber-600">✓</button>
+                        </div>
+                      )}
+                      <button onClick={() => setInlineTriggerFor(null)} className="mt-1 text-xs text-slate-400 hover:text-slate-600">Cancel</button>
                     </div>
-                  ) : (
-                    <button onClick={() => setInlineTriggerFor(nextStep.id)}
-                      className="opacity-0 group-hover/arrow:opacity-100 mt-0.5 text-xs text-amber-400 hover:text-amber-600 transition-opacity"
-                      title="Add trigger for next step">⚡+</button>
-                  )}
+                  </div>
+                );
+              }
+              return (
+                <div className="step-link no-print"
+                  onClick={() => setInlineTriggerFor(nextStep.id)}
+                  title={hasTrigger ? 'Click to change what triggers the next step' : 'Click to set what triggers the next step'}>
+                  <div className="step-link-arrow" style={{ color: doc.color }}>
+                    <span className="stem" /><span className="head" />
+                  </div>
+                  <div className="step-link-rows">
+                    {arrowLabel && (
+                      <div className="text-[10px] italic leading-tight" style={{ color: doc.color }}>{arrowLabel}</div>
+                    )}
+                    {hasTrigger && (
+                      <div className="flex items-center gap-1.5 text-[10.5px] text-amber-700 leading-tight">
+                        <Icon name={triggerIcon(nextStep)} size={12} />
+                        <span className="min-w-0" style={{ overflowWrap: 'anywhere' }}>{triggerDisplay(nextStep)}</span>
+                      </div>
+                    )}
+                  </div>
+                  <span className="step-link-add">{hasTrigger ? 'Edit trigger' : '+ Trigger'}</span>
                 </div>
               );
             })()}
@@ -1522,6 +1597,29 @@ function DocumentColumn({ doc, docIndex, totalDocs, onMoveDoc, projectTypeId, ro
 function RowLockedCanvas({ projectType, roles, details, syncGroupMeta, onUpdateProjectType, onUpdateSyncGroupMeta, onDissolveGroup }) {
   const [editStep, setEditStep] = React.useState(null);
   const docs = projectType.documents || [];
+
+  // Column width is measured, not left to the grid. This band sits inside a
+  // shrink-to-fit box whose width depends on its content, so `1fr` resolves
+  // against max-content and every column lands on its ceiling however narrow
+  // the window is. Measuring the scroller and dividing is unambiguous.
+  const bandRef = React.useRef(null);
+  const [colWidth, setColWidth] = React.useState(DOC_MIN_WIDTH);
+  React.useEffect(() => {
+    const el = bandRef.current;
+    const host = el && el.parentElement;
+    if (!host) return;
+    const measure = () => {
+      const n = docs.length || 1;
+      const usable = host.clientWidth - 32 - ROW_LOCK_GUTTER - DOC_GAP * n;   // px-4
+      setColWidth(Math.max(DOC_MIN_WIDTH, Math.min(DOC_MAX_WIDTH, Math.floor(usable / n))));
+    };
+    // An observer, not a one-shot: on mount the scroller has not been sized yet,
+    // and a single measurement reads the unconstrained width.
+    const ro = new ResizeObserver(measure);
+    ro.observe(host);
+    measure();
+    return () => ro.disconnect();
+  }, [docs.length]);
   const bands = React.useMemo(() => buildRowBands(projectType), [projectType]);
 
   // Where each document's track starts and ends, by band index. Empty cells
@@ -1561,11 +1659,16 @@ function RowLockedCanvas({ projectType, roles, details, syncGroupMeta, onUpdateP
 
   return (
     <div className="flex-1 overflow-auto" id="canvas-print-area">
-      <div className="px-4 pt-3 pb-8" style={{ minWidth: 'max-content' }}>
+      <div className="px-4 pt-3 pb-8" ref={bandRef} style={{ minWidth: 'max-content' }}>
         <div style={{
           display: 'grid',
-          gridTemplateColumns: `26px repeat(${docs.length}, 260px)`,
-          columnGap: 16, rowGap: 0, alignItems: 'stretch',
+          // Same floor and ceiling as the Documents view — this used to hard-code
+          // 260px and ignore the canvas width entirely. Bounded on both sides
+          // rather than 1fr with a cap: this grid's wrapper is min-width
+          // max-content, so 1fr would resolve against the content and sail past
+          // the maximum.
+          gridTemplateColumns: `${ROW_LOCK_GUTTER}px repeat(${docs.length}, ${colWidth}px)`,
+          columnGap: DOC_GAP, rowGap: 0, alignItems: 'stretch',
         }}>
           {/* Gutter spacer above the sync-group labels */}
           <div style={{ gridColumn: 1, gridRow: 1 }} />
@@ -1690,7 +1793,7 @@ function ProjectTypeCanvas({ projectType, roles, onUpdateProjectType, allProject
   const [notesOpen, setNotesOpen] = React.useState(false);
   const hasWorkflowNotes = !!(projectType.notes || '').trim();
 
-  const [scrollState, setScrollState] = useState({ l: false, r: false });
+  const [scrollState, setScrollState] = useState({ l: false, r: false, v: false });
   const syncScrollState = React.useCallback(() => {
     const el = canvasRef.current;
     if (!el) return;
@@ -1698,6 +1801,7 @@ function ProjectTypeCanvas({ projectType, roles, onUpdateProjectType, allProject
     setScrollState({
       l: el.scrollLeft > 4,
       r: over && el.scrollLeft < el.scrollWidth - el.clientWidth - 4,
+      v: el.scrollTop > 4,
     });
   }, []);
   const onStepsScroll = (e) => {
@@ -1964,7 +2068,9 @@ function ProjectTypeCanvas({ projectType, roles, onUpdateProjectType, allProject
       <div className="shrink-0 overflow-hidden relative z-20 no-print" ref={headerScrollRef}
         onClick={() => setPanelOpen(false)} style={{ '--doc-min': DOC_MIN_WIDTH + 'px' }}>
         <div className="flex gap-4 px-4 pt-4 pb-0">
-          <div className="doc-grid flex-1" style={{ '--doc-n': projectType.documents.length }}>
+          <div className="doc-grid flex-1"
+            style={{ '--doc-n': projectType.documents.length,
+                     '--doc-cap': docGridCap(projectType.documents.length) }}>
             {projectType.documents.map((doc, docIdx) => (
               <DocumentColumn key={`hdr-${doc.id}`} renderMode="header" {...colProps(doc, docIdx)} />
             ))}
@@ -1976,11 +2082,16 @@ function ProjectTypeCanvas({ projectType, roles, onUpdateProjectType, allProject
       {/* Scrollable steps area */}
       <div className="overflow-x-auto overflow-y-auto flex-1 pb-4 relative canvas-scroll" ref={canvasRef}
         onScroll={onStepsScroll} style={{ '--doc-min': DOC_MIN_WIDTH + 'px' }}>
-        {/* Gradient overlays the top of the steps area, below the fixed headers */}
-        <div className="sticky top-0 left-0 right-0 h-8 pointer-events-none no-print z-10 -mb-8"
-          style={{ background: 'linear-gradient(to bottom, #f1f5f9 0%, transparent 100%)' }} />
+        {/* Softens content passing under the header row — but only once something
+            is actually scrolling under it. Unconditionally, it faded the top of
+            the first card at rest. z-30 keeps it above the card badges (z-2). */}
+        <div className="sticky top-0 left-0 right-0 h-8 pointer-events-none no-print z-30 -mb-8"
+          style={{ background: 'linear-gradient(to bottom, #f1f5f9 0%, transparent 100%)',
+                   opacity: scrollState.v ? 1 : 0, transition: 'opacity .15s' }} />
         <div className="flex gap-4 px-4 pt-3 pb-4 relative" style={{ zIndex: 1 }}>
-          <div className="doc-grid flex-1" style={{ '--doc-n': projectType.documents.length }}>
+          <div className="doc-grid flex-1"
+            style={{ '--doc-n': projectType.documents.length,
+                     '--doc-cap': docGridCap(projectType.documents.length) }}>
           {projectType.documents.map((doc, docIdx) => (
             <DocumentColumn
               key={`body-${doc.id}`}
@@ -3457,7 +3568,10 @@ function App({ authUser }) {
         </header>
 
         {/* Canvas */}
-        <div className="flex-1 min-h-0 overflow-hidden">
+        {/* min-w-0 as well as min-h-0: without it this flex item will not shrink
+            below its content, so a wide canvas (Row Lock sizes its band to
+            max-content) grows the whole app sideways instead of scrolling. */}
+        <div className="flex-1 min-h-0 min-w-0 overflow-hidden">
           {activePT ? (view === 'flow' ? (
             <StepFlowView projectType={activePT} roles={store.roles} syncGroupMeta={store.syncGroupMeta} />
           ) : (
