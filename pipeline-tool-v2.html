@@ -26,7 +26,54 @@
     @keyframes fadeIn { from { opacity:0; transform:translateY(-4px); } to { opacity:1; transform:translateY(0); } }
     ::-webkit-scrollbar { width:6px; height:6px; }
     ::-webkit-scrollbar-thumb { background:#cbd5e1; border-radius:3px; }
-    .doc-col { min-width: 260px; max-width: 260px; }
+    /* Columns share the canvas evenly, down to --doc-min; below that they stop
+       shrinking and the canvas scrolls. Width is a display preference. */
+    .doc-col { min-width: var(--doc-min, 250px); max-width: none; }
+    .doc-grid { display: grid; gap: 16px; align-items: start;
+                grid-template-columns: repeat(var(--doc-n, 1), minmax(var(--doc-min, 250px), 1fr)); }
+    .doc-grid > * { min-width: 0; }
+
+    /* Scroll affordance: fade + nudge button on whichever edge has more canvas */
+    .scroll-edge { position: absolute; top: 0; bottom: 0; width: 52px; pointer-events: none;
+                   opacity: 0; transition: opacity .18s; z-index: 25; }
+    .scroll-edge.l { left: 0; background: linear-gradient(90deg, rgba(241,245,249,.95), rgba(241,245,249,0)); }
+    .scroll-edge.r { right: 0; background: linear-gradient(270deg, rgba(241,245,249,.95), rgba(241,245,249,0)); }
+    .scroll-edge.on { opacity: 1; }
+    .scroll-nudge { position: absolute; top: 50%; transform: translateY(-50%); z-index: 26;
+                    width: 30px; height: 44px; border-radius: 8px; border: 1px solid #cbd5e1;
+                    background: #fff; color: #475569; cursor: pointer; display: none;
+                    align-items: center; justify-content: center; padding: 0;
+                    box-shadow: 0 2px 8px rgba(15,23,42,.14); }
+    .scroll-nudge.on { display: flex; }
+    .scroll-nudge:hover { background: #f8fafc; color: #0f172a; }
+    /* A canvas you can scroll should look like one. */
+    .canvas-scroll::-webkit-scrollbar { height: 12px; width: 10px; }
+    .canvas-scroll::-webkit-scrollbar-track { background: #e2e8f0; border-radius: 6px; }
+    .canvas-scroll::-webkit-scrollbar-thumb { background: #94a3b8; border-radius: 6px;
+                                              border: 2px solid #e2e8f0; }
+    .canvas-scroll::-webkit-scrollbar-thumb:hover { background: #64748b; }
+
+    /* Both views' toolbars start with the same two controls, same size, same place */
+    .tb-btn { min-width: 128px; justify-content: center; }
+
+    /* Role / filed chips — the data carries the weight, the key stays quiet */
+    .meta-key { font-size: 9px; letter-spacing: .08em; text-transform: uppercase;
+                color: #94a3b8; font-weight: 700; width: 52px; flex: 0 0 52px; line-height: 1.6; }
+    .role-pill { display: inline-block; font-size: 10px; line-height: 1.5; padding: 1px 7px;
+                 border-radius: 99px; border: 1px solid #dbe1e9; background: #f8fafc;
+                 color: #3f4a5a; white-space: nowrap; font-weight: 500; }
+    .filed-chip { display: inline-flex; align-items: center; gap: 5px; font-size: 10px;
+                  line-height: 1.5; padding: 1px 8px 1px 6px; border-radius: 99px;
+                  border: 1px solid #ccebe6; background: #f0fbf9; color: #0f766e;
+                  font-weight: 500; min-width: 0; max-width: 100%; }
+    .filed-chip > span { min-width: 0; overflow-wrap: anywhere; }
+    a.filed-chip { text-decoration: underline; text-decoration-color: rgba(15,118,110,.4);
+                   text-underline-offset: 2px; }
+    a.filed-chip:hover { background: #e3f6f2; }
+    /* Badge cluster: sync group and information-only sit together, top-right */
+    .card-badges { position: absolute; top: -11px; right: 9px; display: flex; gap: 5px; z-index: 12; }
+    .card-badge { border-radius: 99px; color: #fff; display: flex; align-items: center;
+                  justify-content: center; width: 22px; height: 22px; box-shadow: 0 0 0 2px #fff; }
     .notes-expand { max-height: 0; overflow: hidden; transition: max-height 0.2s ease; }
     .notes-expand.open { max-height: 200px; }
 
@@ -201,7 +248,8 @@ function getFbAuth() { return firebase.auth(getFbApp()); }
 function normalizeStep(s) {
   return { ...s,
     actions: s.actions || [], presenterIds: s.presenterIds || [], carrierIds: s.carrierIds || [],
-    notes: s.notes || '', storageLocation: s.storageLocation || '', fileOperation: s.fileOperation || '',
+    notes: s.notes || '', storageLocation: s.storageLocation || '', storageUrl: s.storageUrl || '',
+    fileOperation: s.fileOperation || '',
     deliveryMethod: s.deliveryMethod || '', informationOnly: s.informationOnly || false,
     triggerType: s.triggerType || '', triggerLabel: s.triggerLabel || '',
     syncGroupId: s.syncGroupId || null, returnToStepId: s.returnToStepId || null,
@@ -214,6 +262,7 @@ function normalizeStore(store) {
     publications: store.publications || {},
     projectTypes: (store.projectTypes || []).map(pt => ({
       ...pt,
+      notes: pt.notes || '',
       documents: (pt.documents || []).map(d => ({ ...d, steps: (d.steps || []).map(normalizeStep), orderLabel: d.orderLabel || '' })),
     })),
   };
@@ -241,6 +290,50 @@ async function saveToFB(data) {
   }
 }
 
+// ── Icon set (Lucide 1.39, ISC) ─────────────────────────────────────────────────
+// One glyph per meaning. Rendered at 24x24 with currentColor, so an icon takes
+// whatever colour its context sets. Keep this map in sync across all views.
+const ICON_PATHS = {
+  review:       "<path d=\"m21 21-4.34-4.34\" /> <circle cx=\"11\" cy=\"11\" r=\"8\" />",
+  approval:     "<path d=\"M15 5.88 14 10h5.83a2 2 0 0 1 1.92 2.56l-2.33 8A2 2 0 0 1 17.5 22H4a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2h2.76a2 2 0 0 0 1.79-1.11L12 2a3.13 3.13 0 0 1 3 3.88Z\" /> <path d=\"M7 10v12\" />",
+  consultation: "<path d=\"M2.992 16.342a2 2 0 0 1 .094 1.167l-1.065 3.29a1 1 0 0 0 1.236 1.168l3.413-.998a2 2 0 0 1 1.099.092 10 10 0 1 0-4.777-4.719\" /> <path d=\"M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3\" /> <path d=\"M12 17h.01\" />",
+  prepared_by:  "<path d=\"M12.659 22H18a2 2 0 0 0 2-2V8a2.4 2.4 0 0 0-.706-1.706l-3.588-3.588A2.4 2.4 0 0 0 14 2H6a2 2 0 0 0-2 2v9.34\" /> <path d=\"M14 2v5a1 1 0 0 0 1 1h5\" /> <path d=\"M10.378 12.622a1 1 0 0 1 3 3.003L8.36 20.637a2 2 0 0 1-.854.506l-2.867.837a.5.5 0 0 1-.62-.62l.836-2.869a2 2 0 0 1 .506-.853z\" />",
+  custom:       "<circle cx=\"12\" cy=\"12\" r=\"10\" /> <path d=\"m10 8 4 4-4 4\" />",
+  storage:      "<path d=\"M2 9.35V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H20a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h7\" /> <path d=\"m8 16 3-3-3-3\" />",
+  ret:          "<path d=\"M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8\" /> <path d=\"M3 3v5h5\" />",
+  t_imm:        "<path d=\"m15 10 5 5-5 5\" /> <path d=\"M4 4v7a4 4 0 0 0 4 4h12\" />",
+  t_meet:       "<path d=\"M16 14v2.2l1.6 1\" /> <path d=\"M16 2v3\" /> <path d=\"M21 7.338V5a2 2 0 00-2-2H5a2 2 0 00-2 2v14a2 2 0 002 2h2.338\" /> <path d=\"M3 9h5.859\" /> <path d=\"M8 2v3\" /> <circle cx=\"16\" cy=\"16\" r=\"6\" />",
+  t_man:        "<path d=\"M18 11V6a2 2 0 0 0-2-2a2 2 0 0 0-2 2\" /> <path d=\"M14 10V4a2 2 0 0 0-2-2a2 2 0 0 0-2 2v2\" /> <path d=\"M10 10.5V6a2 2 0 0 0-2-2a2 2 0 0 0-2 2v8\" /> <path d=\"M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15\" />",
+  t_task:       "<rect width=\"8\" height=\"4\" x=\"8\" y=\"2\" rx=\"1\" ry=\"1\" /> <path d=\"M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2\" /> <path d=\"m9 14 2 2 4-4\" />",
+  t_cust:       "<path d=\"M10.268 21a2 2 0 0 0 3.464 0\" /> <path d=\"M3.262 15.326A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.673C19.41 13.956 18 12.499 18 8A6 6 0 0 0 6 8c0 4.499-1.411 5.956-2.738 7.326\" />",
+  sync:         "<path d=\"M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71\" /> <path d=\"M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71\" />",
+  notes:        "<path d=\"M13.4 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7.4\" /> <path d=\"M2 6h4\" /> <path d=\"M2 10h4\" /> <path d=\"M2 14h4\" /> <path d=\"M2 18h4\" /> <path d=\"M21.378 5.626a1 1 0 1 0-3.004-3.004l-5.01 5.012a2 2 0 0 0-.506.854l-.837 2.87a.5.5 0 0 0 .62.62l2.87-.837a2 2 0 0 0 .854-.506z\" />",
+  info:         "<circle cx=\"12\" cy=\"12\" r=\"10\" /> <path d=\"M12 16v-4\" /> <path d=\"M12 8h.01\" />",
+};
+const ICON_NAMES = {"review": "search", "approval": "thumbs-up", "consultation": "message-circle-question-mark", "prepared_by": "file-pen", "custom": "circle-chevron-right", "storage": "folder-symlink", "ret": "rotate-ccw", "t_imm": "corner-down-right", "t_meet": "calendar-clock", "sync": "link", "notes": "notebook-pen", "info": "info", "t_man": "hand", "t_task": "clipboard-check", "t_cust": "bell"}; // Lucide names, for reference
+const ACTION_COLOR = { review: '#0284c7', approval: '#059669', consultation: '#7c3aed',
+                      prepared_by: '#475569', custom: '#94a3b8' };
+const actionSlot = (type) => ACTION_COLOR[type] ? type : 'custom';
+
+function Icon({ name, size = 13, className = '', style = {} }) {
+  const d = ICON_PATHS[name];
+  if (!d) return null;
+  return (
+    <svg className={className} width={size} height={size} viewBox="0 0 24 24" fill="none"
+      stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+      style={{ flex: '0 0 auto', ...style }} aria-hidden="true"
+      dangerouslySetInnerHTML={{ __html: d }} />
+  );
+}
+// Same glyphs as a raw string, for the print/publish renderers (no JSX there).
+function iconSvg(name, size = 13, color = 'currentColor') {
+  const d = ICON_PATHS[name];
+  if (!d) return '';
+  return '<svg width="' + size + '" height="' + size + '" viewBox="0 0 24 24" fill="none" stroke="'
+    + color + '" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"'
+    + ' style="flex:0 0 auto">' + d + '</svg>';
+}
+
 // ── Seed data helpers ──────────────────────────────────────────────────────────
 const DEFAULT_ROLES = [
   { id: 'r1', label: 'PC' },
@@ -253,12 +346,18 @@ const STORAGE_PRESETS = ['CS Mgmt SharePoint', 'CS SharePoint', 'N Drive'];
 const STORAGE_SHAREPOINT = ['CS Mgmt SharePoint', 'CS SharePoint', 'N Drive'];
 const STORAGE_ALL = [...STORAGE_SHAREPOINT];
 
+// Label text only — the glyph comes from TRIGGER_ICON, so both stay swappable.
 const TRIGGER_LABELS = {
-  immediate: '⚡ Immediately after previous step',
-  scheduled_meeting: '📅 Next scheduled meeting',
-  manual_request: '📧 Manual request',
-  task_assigned: '📋 Task assigned',
+  immediate: 'Immediately after previous step',
+  scheduled_meeting: 'Next scheduled meeting',
+  manual_request: 'Manual request',
+  task_assigned: 'Task assigned',
 };
+const TRIGGER_ICON = {
+  immediate: 't_imm', scheduled_meeting: 't_meet', manual_request: 't_man',
+  task_assigned: 't_task', custom: 't_cust',
+};
+const triggerIcon = (step) => TRIGGER_ICON[step.triggerType] || 't_imm';
 const TRIGGER_TYPES = Object.keys(TRIGGER_LABELS);
 const triggerDisplay = (step) => step.triggerType === 'custom' ? (step.triggerLabel || 'Custom trigger') : (TRIGGER_LABELS[step.triggerType] || '');
 
@@ -617,8 +716,8 @@ function StepForm({ step, docSteps, allSteps, roles, docColor, syncGroupMeta, on
         <div className="flex flex-wrap gap-1.5">
           {TRIGGER_TYPES.map(t => (
             <button key={t} onClick={() => set('triggerType', form.triggerType === t ? '' : t)}
-              className={`px-2.5 py-1 rounded-full text-xs font-medium border transition-colors ${form.triggerType === t ? 'bg-amber-500 text-white border-amber-500' : 'border-slate-300 text-slate-600 hover:border-amber-400'}`}>
-              {TRIGGER_LABELS[t]}
+              className={`px-2.5 py-1 rounded-full text-xs font-medium border transition-colors inline-flex items-center gap-1.5 ${form.triggerType === t ? 'bg-amber-500 text-white border-amber-500' : 'border-slate-300 text-slate-600 hover:border-amber-400'}`}>
+              <Icon name={TRIGGER_ICON[t]} size={12} />{TRIGGER_LABELS[t]}
             </button>
           ))}
           <button onClick={() => set('triggerType', form.triggerType === 'custom' ? '' : 'custom')}
@@ -677,7 +776,9 @@ function StepForm({ step, docSteps, allSteps, roles, docColor, syncGroupMeta, on
 
       {/* Document Storage */}
       <div className="mb-4 p-3 bg-teal-50 rounded-xl border border-teal-100">
-        <div className="text-sm font-semibold text-teal-800 mb-3">📁 Document Storage</div>
+        <div className="text-sm font-semibold text-teal-800 mb-3 flex items-center gap-1.5">
+          <Icon name="storage" size={14} /> Document Storage
+        </div>
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label className="block text-xs font-semibold text-slate-600 mb-1">File Location at This Step</label>
@@ -691,6 +792,15 @@ function StepForm({ step, docSteps, allSteps, roles, docColor, syncGroupMeta, on
                 onChange={e => updateStorage(storagePreset, e.target.value)}
                 placeholder="Sub-folder (optional): e.g. Programs / 2025 / New" />
             )}
+            <label className="block text-xs font-semibold text-slate-600 mb-1 mt-2.5">
+              Link to this location <span className="font-normal text-slate-400">(optional)</span>
+            </label>
+            <input className={inputCls} value={form.storageUrl || ''}
+              onChange={e => set('storageUrl', e.target.value)}
+              placeholder="https://... or a file path" />
+            <div className="text-xs text-slate-400 mt-1">
+              Makes the folder name on the card clickable.
+            </div>
           </div>
           <div>
             <label className="block text-xs font-semibold text-slate-600 mb-1">Moving to Next Step</label>
@@ -912,13 +1022,24 @@ const DOC_DETAILS = [
 ];
 const ALL_DOC_DETAILS = DOC_DETAILS.reduce((a, d) => { a[d.id] = true; return a; }, {});
 
+// Columns flex to share the canvas; this is the width below which they stop
+// shrinking and the canvas scrolls instead.
+const DOC_WIDTHS = [
+  { id: 'compact',  label: 'Compact',  px: 215 },
+  { id: 'standard', label: 'Standard', px: 250 },
+  { id: 'wide',     label: 'Wide',     px: 300 },
+];
+const DEFAULT_DOC_WIDTH = 'standard';
+const docWidthPx = (id) => (DOC_WIDTHS.find(w => w.id === id) || DOC_WIDTHS[1]).px;
+
 function loadDocPrefs(projectTypeId) {
   try {
     const all = JSON.parse(localStorage.getItem(DOC_PREFS_KEY) || '{}');
     const p = all[projectTypeId] || {};
-    return { details: { ...ALL_DOC_DETAILS, ...(p.details || {}) }, rowLock: !!p.rowLock };
+    return { details: { ...ALL_DOC_DETAILS, ...(p.details || {}) }, rowLock: !!p.rowLock,
+             width: p.width || DEFAULT_DOC_WIDTH };
   } catch (e) {
-    return { details: { ...ALL_DOC_DETAILS }, rowLock: false };
+    return { details: { ...ALL_DOC_DETAILS }, rowLock: false, width: DEFAULT_DOC_WIDTH };
   }
 }
 function saveDocPrefs(projectTypeId, prefs) {
@@ -937,7 +1058,6 @@ function StepCard({ step, stepIndex, totalSteps, docSteps, roles, docColor, onEd
     const r = roles.find(r => r.id === id);
     return r ? r.label.replace('Program Coordinator', 'PC') : id;
   };
-  const actionIcon = (type) => type === 'review' ? '🔍' : type === 'approval' ? '✅' : type === 'consultation' ? '💬' : type === 'prepared_by' ? '📝' : '▸';
 
   const inActiveGroup = step.syncGroupId && step.syncGroupId === linkingGroupId;
   const inDifferentGroup = step.syncGroupId && linkingGroupId && step.syncGroupId !== linkingGroupId;
@@ -999,27 +1119,37 @@ function StepCard({ step, stepIndex, totalSteps, docSteps, roles, docColor, onEd
         </>)}
       </div>
 
+      {/* Badges: sync group and information-only, side by side above the top edge */}
+      {(syncGroupColor || step.informationOnly) && (
+        <div className="card-badges">
+          {syncGroupColor && (
+            <div className="card-badge" style={{ background: syncGroupColor }} title="In a sync group">
+              <Icon name="sync" size={13} />
+            </div>
+          )}
+          {step.informationOnly && (
+            <div className="card-badge" style={{ background: '#0284c7' }}
+              title="Information only — no action or approval at this step">
+              <Icon name="info" size={13} />
+            </div>
+          )}
+        </div>
+      )}
+
       <div className={`p-3${fillHeight ? ' flex-1' : ''}`}>
-        {/* Sync group icon — always visible when in a group */}
-        {syncGroupColor && (
-          <div className="absolute top-2 left-2 w-5 h-5 rounded-full flex items-center justify-center z-10 text-white"
-            style={{ background: syncGroupColor, fontSize: 10 }} title="In a sync group">🔗</div>
-        )}
-        {/* Stage name */}
-        <div className={`font-bold text-sm text-slate-800 leading-tight ${syncGroupColor ? 'pl-6' : ''} pr-2 ${step.informationOnly ? 'mb-1' : 'mb-2'}`}>{step.stageName}</div>
-        {step.informationOnly && (
-          <div className="mb-2 inline-flex items-center gap-1 text-xs font-semibold text-sky-600 bg-sky-50 border border-sky-200 rounded-full px-2 py-0.5">
-            <span>ⓘ</span><span>Information Only</span>
-          </div>
-        )}
+        {/* Stage name — takes the document colour, so a column reads as one thing */}
+        <div className="font-bold text-sm leading-tight pr-8 mb-2"
+          style={{ color: docColor, overflowWrap: 'anywhere' }}>{step.stageName}</div>
 
         {/* Actions */}
         {details.actions && step.actions.length > 0 && (
-          <div className="mb-2 space-y-1">
+          <div className="mb-2 flex flex-col" style={{ gap: 6 }}>
             {step.actions.map(a => (
-              <div key={a.id} className="flex items-start gap-1.5 text-xs text-slate-700">
-                <span className="shrink-0 mt-0.5 text-base leading-none" style={{ fontSize: 11 }}>{actionIcon(a.type)}</span>
-                <span>
+              <div key={a.id} className="flex items-start gap-1.5 text-xs text-slate-700"
+                style={{ lineHeight: 1.55 }}>
+                <Icon name={actionSlot(a.type)} size={13} className="shrink-0"
+                  style={{ marginTop: 2, color: ACTION_COLOR[actionSlot(a.type)] }} />
+                <span className="min-w-0" style={{ overflowWrap: 'anywhere' }}>
                   {a.type === 'custom'
                     ? a.label
                     : <><span className="font-medium">{a.label}</span>{a.person ? <span className="text-slate-500"> {a.person}</span> : null}</>
@@ -1032,22 +1162,40 @@ function StepCard({ step, stepIndex, totalSteps, docSteps, roles, docColor, onEd
 
         {/* Responsible parties + storage */}
         {((details.presenters && step.presenterIds.length > 0) || (details.carriers && step.carrierIds.length > 0) || (details.storage && (step.storageLocation || step.fileOperation))) && (
-          <div className="border-t border-slate-100 pt-2 mt-2 space-y-1">
+          <div className="border-t border-slate-100 pt-2 mt-2 flex flex-col" style={{ gap: 5 }}>
             {details.presenters && step.presenterIds.length > 0 && (
-              <div className="text-xs text-slate-500">
-                <span className="font-semibold text-indigo-600">Prepares/Presents: </span>
-                {step.presenterIds.map(roleName).join(', ')}
+              <div className="flex items-baseline" style={{ gap: 8 }}>
+                <span className="meta-key">Presents</span>
+                <span className="flex flex-wrap min-w-0" style={{ gap: 4 }}>
+                  {step.presenterIds.map(id => (
+                    <span key={id} className="role-pill">{roleName(id)}</span>
+                  ))}
+                </span>
               </div>
             )}
             {details.carriers && step.carrierIds.length > 0 && (
-              <div className="text-xs text-slate-500">
-                <span className="font-semibold text-emerald-600">Carries to next: </span>
-                {step.carrierIds.map(roleName).join(', ')}
+              <div className="flex items-baseline" style={{ gap: 8 }}>
+                <span className="meta-key">Carries</span>
+                <span className="flex flex-wrap min-w-0" style={{ gap: 4 }}>
+                  {step.carrierIds.map(id => (
+                    <span key={id} className="role-pill">{roleName(id)}</span>
+                  ))}
+                </span>
               </div>
             )}
             {details.storage && step.storageLocation && (
-              <div className="text-xs text-teal-700">
-                <span className="font-semibold">📁 </span>{step.storageLocation}
+              <div className="flex items-baseline" style={{ gap: 8 }}>
+                <span className="meta-key">Filed</span>
+                <span className="min-w-0">
+                  {step.storageUrl
+                    ? <a className="filed-chip" href={step.storageUrl} target="_blank" rel="noopener noreferrer"
+                        onClick={e => e.stopPropagation()} title={step.storageUrl}>
+                        <Icon name="storage" size={11} /><span>{step.storageLocation}</span>
+                      </a>
+                    : <span className="filed-chip">
+                        <Icon name="storage" size={11} /><span>{step.storageLocation}</span>
+                      </span>}
+                </span>
               </div>
             )}
           </div>
@@ -1056,7 +1204,7 @@ function StepCard({ step, stepIndex, totalSteps, docSteps, roles, docColor, onEd
         {/* Return path */}
         {details.returns && step.returnToStepId && returnStepName && (
           <div className="mt-2 pt-2 border-t border-dashed border-amber-300 text-xs text-amber-700 flex items-start gap-1">
-            <span className="shrink-0">↩</span>
+            <Icon name="ret" size={12} className="shrink-0" style={{ marginTop: 2 }} />
             <span><span className="font-semibold">If rejected:</span> returns to "{returnStepName}"</span>
           </div>
         )}
@@ -1066,8 +1214,10 @@ function StepCard({ step, stepIndex, totalSteps, docSteps, roles, docColor, onEd
           <div className="mt-2 pt-2 border-t border-slate-100">
             <button onClick={() => setNotesOpen(o => !o)}
               className="text-xs text-slate-400 hover:text-slate-600 flex items-center gap-1">
+              <span className="inline-block rounded-full" style={{ width: 5, height: 5, background: '#f59e0b' }} />
+              <Icon name="notes" size={12} />
+              <span>Notes</span>
               <span>{notesOpen ? '▾' : '▸'}</span>
-              <span>📝 Notes</span>
             </button>
             <div className={`notes-expand ${notesOpen ? 'open' : ''}`}>
               <p className="text-xs text-slate-500 mt-1 bg-amber-50 rounded p-2 border border-amber-100">{step.notes}</p>
@@ -1140,8 +1290,8 @@ function DocumentColumn({ doc, docIndex, totalDocs, onMoveDoc, projectTypeId, ro
   const returnStepName = (id) => doc.steps.find(s => s.id === id)?.stageName;
 
   const headerJSX = (
-    <div className="group relative rounded-xl px-3 py-2.5 flex items-center no-print"
-      style={{ background: `color-mix(in srgb, ${doc.color} 12%, white)`, borderBottom: `3px solid ${doc.color}` }}>
+    <div className="group relative rounded-xl px-3 py-2.5 flex items-center no-print bg-white"
+      style={{ border: '1px solid #e2e8f0', borderLeft: `4px solid ${doc.color}` }}>
       {editDocName ? (
         <input className="flex-1 text-sm font-bold bg-white border rounded px-2 py-0.5 border-slate-300"
           value={docNameVal} onChange={e => setDocNameVal(e.target.value)}
@@ -1151,7 +1301,7 @@ function DocumentColumn({ doc, docIndex, totalDocs, onMoveDoc, projectTypeId, ro
           {editOrderLabel ? (
             <input
               className="w-8 text-xs font-bold text-center bg-white border rounded px-1 py-0.5 border-slate-300 mr-1.5 shrink-0"
-              style={{ color: doc.color }}
+              style={{ color: '#0f172a' }}
               value={orderLabelVal}
               onChange={e => setOrderLabelVal(e.target.value)}
               onBlur={() => { onUpdateDoc({ ...doc, orderLabel: orderLabelVal.trim() }); setEditOrderLabel(false); }}
@@ -1162,7 +1312,7 @@ function DocumentColumn({ doc, docIndex, totalDocs, onMoveDoc, projectTypeId, ro
           ) : (
             <span
               className="text-xs font-bold mr-1.5 shrink-0 cursor-pointer hover:opacity-80 transition-opacity"
-              style={{ color: doc.color, opacity: doc.orderLabel ? 1 : 0.3 }}
+              style={{ color: '#0f172a', opacity: doc.orderLabel ? 1 : 0.3 }}
               onClick={() => { setOrderLabelVal(doc.orderLabel || ''); setEditOrderLabel(true); }}
               title="Click to set order number">
               {doc.orderLabel ? `#${doc.orderLabel}` : '#'}
@@ -1173,8 +1323,8 @@ function DocumentColumn({ doc, docIndex, totalDocs, onMoveDoc, projectTypeId, ro
             title="Double-click to rename">{doc.name}</span>
         </>
       )}
-      <div className="absolute right-2 top-1/2 -translate-y-1/2 flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
-        style={{ background: doc.color + '18' }}>
+      <div className="absolute right-2 top-1/2 -translate-y-1/2 flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity rounded"
+        style={{ background: '#fff', boxShadow: '0 0 0 4px #fff' }}>
         <button onClick={() => onMoveDoc(-1)} disabled={docIndex === 0}
           className="w-5 h-5 rounded text-xs flex items-center justify-center disabled:opacity-20 hover:bg-white/60 transition-colors" style={{ color: doc.color }} title="Move column left">◀</button>
         <button onClick={() => onMoveDoc(1)} disabled={docIndex === totalDocs - 1}
@@ -1211,7 +1361,7 @@ function DocumentColumn({ doc, docIndex, totalDocs, onMoveDoc, projectTypeId, ro
     <div className="doc-col flex flex-col bg-slate-100">
 
       {/* Print header */}
-      <div className="rounded-xl mb-3 px-3 py-2.5 hidden" style={{ background: doc.color + '18', borderBottom: `3px solid ${doc.color}` }}
+      <div className="rounded-xl mb-3 px-3 py-2.5 hidden bg-white" style={{ border: '1px solid #e2e8f0', borderLeft: `4px solid ${doc.color}` }}
         id={`print-header-${doc.id}`}>
         <span className="font-bold text-sm" style={{ color: doc.color }}>{doc.name}</span>
       </div>
@@ -1235,7 +1385,10 @@ function DocumentColumn({ doc, docIndex, totalDocs, onMoveDoc, projectTypeId, ro
             {details.trigger && step.triggerType && (
               <div onClick={() => setEditStep(step)}
                 className="group/trigger mx-1 mb-1 px-3 py-1 rounded-lg border border-dashed border-amber-300 bg-amber-50 flex items-center justify-between text-xs text-amber-700 cursor-pointer hover:bg-amber-100 transition-colors no-print">
-                <span>{triggerDisplay(step)}</span>
+                <span className="flex items-center gap-1.5 min-w-0">
+                  <Icon name={triggerIcon(step)} size={12} />
+                  <span className="min-w-0" style={{ overflowWrap: 'anywhere' }}>{triggerDisplay(step)}</span>
+                </span>
                 <span className="opacity-0 group-hover/trigger:opacity-100 text-amber-400 text-xs ml-2" title="Edit step to change trigger">✎</span>
               </div>
             )}
@@ -1291,8 +1444,8 @@ function DocumentColumn({ doc, docIndex, totalDocs, onMoveDoc, projectTypeId, ro
                         <div className="flex flex-wrap gap-1 mb-1">
                           {TRIGGER_TYPES.map(t => (
                             <button key={t} onClick={() => setStepTrigger(nextStep.id, t)}
-                              className="px-2 py-0.5 rounded-full text-xs border border-slate-200 hover:border-amber-400 hover:bg-amber-50 text-slate-600 transition-colors">
-                              {TRIGGER_LABELS[t]}
+                              className="px-2 py-0.5 rounded-full text-xs border border-slate-200 hover:border-amber-400 hover:bg-amber-50 text-slate-600 transition-colors inline-flex items-center gap-1.5">
+                              <Icon name={TRIGGER_ICON[t]} size={11} />{TRIGGER_LABELS[t]}
                             </button>
                           ))}
                           <button onClick={() => { setInlineCustomText(''); setInlineTriggerFor(nextStep.id + '_custom'); }}
@@ -1671,9 +1824,28 @@ function ProjectTypeCanvas({ projectType, roles, onUpdateProjectType, allProject
     dragRef.current = null;
   };
 
+  const [scrollState, setScrollState] = useState({ l: false, r: false });
+  const syncScrollState = React.useCallback(() => {
+    const el = canvasRef.current;
+    if (!el) return;
+    const over = el.scrollWidth - el.clientWidth > 4;
+    setScrollState({
+      l: el.scrollLeft > 4,
+      r: over && el.scrollLeft < el.scrollWidth - el.clientWidth - 4,
+    });
+  }, []);
   const onStepsScroll = (e) => {
     if (headerScrollRef.current) headerScrollRef.current.scrollLeft = e.currentTarget.scrollLeft;
+    syncScrollState();
   };
+  const nudge = (dir) => {
+    if (canvasRef.current) canvasRef.current.scrollBy({ left: dir * 360, behavior: 'smooth' });
+  };
+  React.useEffect(() => {
+    syncScrollState();
+    window.addEventListener('resize', syncScrollState);
+    return () => window.removeEventListener('resize', syncScrollState);
+  }, [syncScrollState, projectType.documents.length, docPrefs.width, docPrefs.rowLock]);
 
   const colProps = (doc, docIdx) => ({
     doc,
@@ -1698,7 +1870,7 @@ function ProjectTypeCanvas({ projectType, roles, onUpdateProjectType, allProject
       {/* Display toolbar */}
       <div className="shrink-0 flex items-center gap-2 px-4 py-2 border-b border-slate-200 bg-white no-print relative z-30">
         <div className="relative">
-          <Btn variant="secondary" sm onClick={() => setPanelOpen(o => !o)}>
+          <Btn variant="secondary" sm className="tb-btn" onClick={() => setPanelOpen(o => !o)}>
             ⚙ Details {hiddenDetailCount > 0 && <span className="text-indigo-600 font-bold">({DOC_DETAILS.length - hiddenDetailCount}/{DOC_DETAILS.length})</span>}
           </Btn>
           {panelOpen && (
@@ -1722,7 +1894,7 @@ function ProjectTypeCanvas({ projectType, roles, onUpdateProjectType, allProject
         </div>
         <button
           onClick={() => setAndSaveDocPrefs({ ...docPrefs, rowLock: !docPrefs.rowLock })}
-          className={`inline-flex items-center gap-1.5 font-medium rounded-lg text-xs px-2.5 py-1.5 border transition-colors ${
+          className={`tb-btn inline-flex items-center gap-1.5 font-medium rounded-lg text-xs px-2.5 py-1.5 border transition-colors ${
             docPrefs.rowLock
               ? 'bg-indigo-600 border-indigo-600 text-white hover:bg-indigo-700'
               : 'bg-white border-slate-300 text-slate-700 hover:bg-slate-50'}`}
@@ -1732,6 +1904,19 @@ function ProjectTypeCanvas({ projectType, roles, onUpdateProjectType, allProject
         {docPrefs.rowLock && (
           <span className="text-[11px] text-slate-400">Rows aligned · drag to reorder is off</span>
         )}
+        <div className="inline-flex rounded-lg border border-slate-300 bg-white overflow-hidden ml-1"
+          title="Columns share the canvas. This is the width below which they stop shrinking.">
+          {DOC_WIDTHS.map(w => (
+            <button key={w.id}
+              onClick={() => setAndSaveDocPrefs({ ...docPrefs, width: w.id })}
+              className={`text-xs px-2.5 py-1.5 font-medium transition-colors ${
+                docPrefs.width === w.id
+                  ? 'bg-indigo-600 text-white'
+                  : 'text-slate-600 hover:bg-slate-50'}`}>
+              {w.label}
+            </button>
+          ))}
+        </div>
         <div className="flex-1" />
         <span className="text-[11px] text-slate-400">{projectType.documents.length} document{projectType.documents.length !== 1 ? 's' : ''}</span>
       </div>
@@ -1749,21 +1934,26 @@ function ProjectTypeCanvas({ projectType, roles, onUpdateProjectType, allProject
       ) : (<>
 
       {/* Fixed header row — never scrolls vertically */}
-      <div className="shrink-0 overflow-hidden relative z-20 no-print" ref={headerScrollRef} onClick={() => setPanelOpen(false)}>
-        <div className="flex gap-4 px-4 pt-4 pb-0" style={{ minWidth: 'max-content' }}>
-          {projectType.documents.map((doc, docIdx) => (
-            <DocumentColumn key={`hdr-${doc.id}`} renderMode="header" {...colProps(doc, docIdx)} />
-          ))}
-          <div className="doc-col" /> {/* spacer to align with Add Document button */}
+      <div className="shrink-0 overflow-hidden relative z-20 no-print" ref={headerScrollRef}
+        onClick={() => setPanelOpen(false)} style={{ '--doc-min': docWidthPx(docPrefs.width) + 'px' }}>
+        <div className="flex gap-4 px-4 pt-4 pb-0">
+          <div className="doc-grid flex-1" style={{ '--doc-n': projectType.documents.length }}>
+            {projectType.documents.map((doc, docIdx) => (
+              <DocumentColumn key={`hdr-${doc.id}`} renderMode="header" {...colProps(doc, docIdx)} />
+            ))}
+          </div>
+          <div className="shrink-0" style={{ width: 170 }} /> {/* aligns with Add Document */}
         </div>
       </div>
 
       {/* Scrollable steps area */}
-      <div className="overflow-x-auto overflow-y-auto flex-1 pb-4 relative" ref={canvasRef} onScroll={onStepsScroll}>
+      <div className="overflow-x-auto overflow-y-auto flex-1 pb-4 relative canvas-scroll" ref={canvasRef}
+        onScroll={onStepsScroll} style={{ '--doc-min': docWidthPx(docPrefs.width) + 'px' }}>
         {/* Gradient overlays the top of the steps area, below the fixed headers */}
         <div className="sticky top-0 left-0 right-0 h-8 pointer-events-none no-print z-10 -mb-8"
           style={{ background: 'linear-gradient(to bottom, #f1f5f9 0%, transparent 100%)' }} />
-        <div className="flex gap-4 px-4 pt-3 pb-4 relative" style={{ minWidth: 'max-content', zIndex:1 }}>
+        <div className="flex gap-4 px-4 pt-3 pb-4 relative" style={{ zIndex: 1 }}>
+          <div className="doc-grid flex-1" style={{ '--doc-n': projectType.documents.length }}>
           {projectType.documents.map((doc, docIdx) => (
             <DocumentColumn
               key={`body-${doc.id}`}
@@ -1780,8 +1970,9 @@ function ProjectTypeCanvas({ projectType, roles, onUpdateProjectType, allProject
               onDissolveGroup={onDissolveGroup}
             />
           ))}
+          </div>
           {/* Add document column button */}
-          <div className="doc-col no-print">
+          <div className="no-print shrink-0" style={{ width: 170 }}>
             <button onClick={addDocument}
               className="w-full h-24 rounded-xl border-2 border-dashed border-slate-300 text-slate-400 hover:border-indigo-400 hover:text-indigo-500 transition-colors text-sm font-medium flex flex-col items-center justify-center gap-1">
               <span className="text-2xl">+</span>
@@ -1790,6 +1981,18 @@ function ProjectTypeCanvas({ projectType, roles, onUpdateProjectType, allProject
           </div>
         </div>
       </div>
+
+      {/* Scroll affordance — the canvas says when there is more of it */}
+      <div className={`scroll-edge l no-print${scrollState.l ? ' on' : ''}`} />
+      <div className={`scroll-edge r no-print${scrollState.r ? ' on' : ''}`} />
+      <button className={`scroll-nudge no-print${scrollState.l ? ' on' : ''}`} style={{ left: 8 }}
+        onClick={() => nudge(-1)} title="Scroll left" aria-label="Scroll left">
+        <Icon name="custom" size={17} style={{ transform: 'rotate(180deg)' }} />
+      </button>
+      <button className={`scroll-nudge no-print${scrollState.r ? ' on' : ''}`} style={{ right: 8 }}
+        onClick={() => nudge(1)} title="Scroll right" aria-label="Scroll right">
+        <Icon name="custom" size={17} />
+      </button>
       </>)}
 
       {/* Done-linking floating button */}
@@ -2256,31 +2459,11 @@ function StepFlowView({ projectType, roles }) {
   return (
     <div className="flex flex-col h-full overflow-hidden" id="flow-print-area">
 
-      {/* Toolbar */}
-      <div className="shrink-0 flex items-center gap-2 px-4 py-2 border-b border-slate-200 bg-white no-print relative z-30">
+      {/* Toolbar — z-50 so its panels clear the sticky matrix header (z-30) and
+          the sticky document column (z-40) below. */}
+      <div className="shrink-0 flex items-center gap-2 px-4 py-2 border-b border-slate-200 bg-white no-print relative z-50">
         <div className="relative">
-          <Btn variant="secondary" sm onClick={() => setPanel(panel === 'steps' ? null : 'steps')}>
-            ⚑ Steps shown {prefs.hidden.length > 0 && <span className="text-indigo-600 font-bold">({spine.length}/{fullSpine.length})</span>}
-          </Btn>
-          {panel === 'steps' && (
-            <div className="absolute left-0 top-full mt-1 w-72 bg-white border border-slate-200 rounded-xl shadow-xl p-2 fade-in max-h-80 overflow-y-auto">
-              <div className="text-xs text-slate-400 px-2 py-1">Uncheck a step to drop it from this view. Doesn't change the data.</div>
-              {fullSpine.map(n => (
-                <label key={n.key} className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-slate-50 cursor-pointer">
-                  <input type="checkbox" checked={!hiddenSet.has(n.key)} onChange={() => toggleStep(n.key)} />
-                  <span className="text-sm text-slate-700 truncate">{n.label}</span>
-                </label>
-              ))}
-              {prefs.hidden.length > 0 && (
-                <button onClick={() => setAndSave({ ...prefs, hidden: [] })}
-                  className="w-full mt-1 text-xs text-indigo-600 hover:bg-indigo-50 rounded-lg py-1.5">Show all steps</button>
-              )}
-            </div>
-          )}
-        </div>
-
-        <div className="relative">
-          <Btn variant="secondary" sm onClick={() => setPanel(panel === 'details' ? null : 'details')}>
+          <Btn variant="secondary" sm className="tb-btn" onClick={() => setPanel(panel === 'details' ? null : 'details')}>
             ⚙ Details {anyDetail && <span className="text-indigo-600 font-bold">({FLOW_DETAILS.filter(d => details[d.id]).length})</span>}
           </Btn>
           {panel === 'details' && (
@@ -2295,6 +2478,27 @@ function StepFlowView({ projectType, roles }) {
               {anyDetail && (
                 <button onClick={() => setAndSave({ ...prefs, details: { ...NO_DETAILS } })}
                   className="w-full mt-1 text-xs text-indigo-600 hover:bg-indigo-50 rounded-lg py-1.5">Hide all details</button>
+              )}
+            </div>
+          )}
+        </div>
+
+        <div className="relative">
+          <Btn variant="secondary" sm className="tb-btn" onClick={() => setPanel(panel === 'steps' ? null : 'steps')}>
+            ⚑ Steps shown {prefs.hidden.length > 0 && <span className="text-indigo-600 font-bold">({spine.length}/{fullSpine.length})</span>}
+          </Btn>
+          {panel === 'steps' && (
+            <div className="absolute left-0 top-full mt-1 w-72 bg-white border border-slate-200 rounded-xl shadow-xl p-2 fade-in max-h-80 overflow-y-auto">
+              <div className="text-xs text-slate-400 px-2 py-1">Uncheck a step to drop it from this view. Doesn't change the data.</div>
+              {fullSpine.map(n => (
+                <label key={n.key} className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-slate-50 cursor-pointer">
+                  <input type="checkbox" checked={!hiddenSet.has(n.key)} onChange={() => toggleStep(n.key)} />
+                  <span className="text-sm text-slate-700 truncate">{n.label}</span>
+                </label>
+              ))}
+              {prefs.hidden.length > 0 && (
+                <button onClick={() => setAndSave({ ...prefs, hidden: [] })}
+                  className="w-full mt-1 text-xs text-indigo-600 hover:bg-indigo-50 rounded-lg py-1.5">Show all steps</button>
               )}
             </div>
           )}
