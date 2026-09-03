@@ -95,11 +95,37 @@ string for renderers that cannot use JSX.
 | Return path | `rotate-ccw` | Notes | `notebook-pen` |
 | Information only | `info` | | |
 
+A second block in `ICON_PATHS` covers the chrome — `check`, `x`, chevrons,
+`pencil`, `copy`, `grip-vertical`, `settings`, `workflow`, `users`,
+`database-backup`, `history`, `log-out`, `share-2`, `refresh-cw`,
+`layout-template`, `columns-3`, `route`, and the empty-state glyphs. **There
+are no emoji or typographic symbols left anywhere in the app**, and a check
+asserts it against `innerText`.
+
 **Use these everywhere** — Documents, Step Flow, the published page, and
 anything added later. Emoji were replaced because they rendered at
 inconsistent optical sizes and baselines and carried their own colours, which
 fought the palette. Do not reintroduce them; `checks.js` asserts they are gone
 from card content.
+
+## Chrome
+
+The top bar carries only what is about *this workflow*: a `WORKFLOW` eyebrow,
+the name, and a sync line whose refresh button is the status (green synced,
+amber saving, red offline — the old pill is gone). Then presence avatars and
+Publish, rightmost. The brand block sits **above the sidebar** and is a button,
+because it will link to a dashboard later; it deliberately does nothing today.
+
+Both views render the same toolbar row: `ViewToggle`, Details, Row Lock /
+Steps shown, Notes, then Save as Template pinned right. The view toggle lives
+here rather than the top bar so it sits beside the other view controls.
+
+Manage workflows, Roles & people, Backup & restore, Sign out and Reset to
+defaults are all behind one **Settings** button at the foot of the sidebar.
+
+`notesOpenFor` lives in `App`, keyed by workflow id, so the notes panel stays
+open across a view switch. The notes themselves are store content; only the
+open state is local.
 
 ## Column sizing
 
@@ -406,7 +432,7 @@ libraries, stubbed Firebase, Tailwind compiled from the app's own markup) and
 drives it in headless Chromium.
 
 ```
-cd dev && npm install && npm run check      # 45 checks
+cd dev && npm install && npm run check      # 53 checks
 cd dev && npm run shot flow                 # screenshot a view
 ```
 

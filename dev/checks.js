@@ -79,11 +79,11 @@ const text = p => p.evaluate(() => document.body.innerText);   // innerText, not
   await rowLock.click(); await p.waitForTimeout(500);
 
   console.log('\nStep Flow');
-  await p.click('text=🪜 Step Flow'); await p.waitForTimeout(600);
+  await p.click('text=Step Flow'); await p.waitForTimeout(600);
   const flow = await text(p);
   ok('renders bypass markers', flow.includes('bypassed'));
   ok('renders START markers', /START/.test(flow));
-  await p.click('text=▤ Documents'); await p.waitForTimeout(500);
+  await p.click('button:has-text("Documents")'); await p.waitForTimeout(500);
 
   console.log('\nPublishing');
   await p.locator('button', { hasText: /Publish/ }).first().click(); await p.waitForTimeout(400);
@@ -248,8 +248,8 @@ const text = p => p.evaluate(() => document.body.innerText);   // innerText, not
     const a = document.querySelector('aside');
     return a ? a.textContent : '';
   });
-  ok('sidebar and menus say Workflows, not Project Types',
-    /Workflows/.test(shell) && /Manage Workflows/.test(shell) && !/project type/i.test(shell),
+  ok('sidebar says Workflows, never Project Types',
+    /Workflows/.test(shell) && !/project type/i.test(shell),
     (shell.match(/.{0,30}project type.{0,30}/i) || ['sidebar text: ' + shell.slice(0, 60)])[0]);
   ok('workflow list is drag-reorderable, with no up/down buttons', await p.evaluate(() => {
     const rows = [...document.querySelectorAll('aside div[draggable="true"]')];
@@ -325,6 +325,77 @@ const text = p => p.evaluate(() => document.body.innerText);   // innerText, not
     if (b) b.click();
   });
   await p.waitForTimeout(500);
+
+  console.log('\nIcon language');
+  await p.goto(PAGE); await p.waitForTimeout(1500);
+  ok('no emoji anywhere in the rendered app', await p.evaluate(() => {
+    // innerText, not textContent: the program source is inlined in the page.
+    const t = document.body.innerText;
+    const m = t.match(/[\u{1F300}-\u{1FAFF}\u{2190}-\u{21FF}\u{2300}-\u{27BF}\u{2B00}-\u{2BFF}\u{FE0F}]/gu);
+    return !m;
+  }), await p.evaluate(() => {
+    const m = (document.body.innerText.match(/[\u{1F300}-\u{1FAFF}\u{2190}-\u{21FF}\u{2300}-\u{27BF}\u{2B00}-\u{2BFF}]/gu) || []);
+    return [...new Set(m)].join(' ');
+  }));
+  ok('the brand sits above the sidebar and is clickable', await p.evaluate(() => {
+    const b = [...document.querySelectorAll('aside button')]
+      .find(x => x.textContent.includes('Workflow Tool'));
+    if (!b) return false;
+    const aside = b.closest('aside');
+    return b.getBoundingClientRect().top <= aside.getBoundingClientRect().top + 4;
+  }));
+  ok('the sidebar footer is a single Settings button', await p.evaluate(() => {
+    const t = document.querySelector('aside').innerText;
+    return t.includes('Settings') && !t.includes('Backup') && !t.includes('Reset to Defaults');
+  }));
+  ok('Settings opens the moved items', await p.evaluate(async () => {
+    const b = [...document.querySelectorAll('aside button')].find(x => x.textContent.trim() === 'Settings');
+    if (!b) return false;
+    b.click();
+    await new Promise(r => setTimeout(r, 350));
+    const t = document.body.innerText;
+    return t.includes('Manage workflows') && t.includes('Backup & restore')
+        && t.includes('Sign out') && t.includes('Reset to defaults');
+  }));
+  await p.keyboard.press('Escape'); await p.waitForTimeout(250);
+  ok('the view toggle sits in the toolbar, not the top bar', await p.evaluate(() => {
+    const b = [...document.querySelectorAll('button')].find(x => x.textContent.includes('Step Flow'));
+    if (!b) return false;
+    return !b.closest('header');
+  }));
+  ok('the top bar labels the workflow and drops the doc-type count', await p.evaluate(() => {
+    const h = document.querySelector('header');
+    return !!h && /workflow/i.test(h.innerText) && !/document type/i.test(h.innerText);
+  }));
+
+  ok('Step Flow gets the same scroll affordance as Documents', await p.evaluate(async () => {
+    const b = [...document.querySelectorAll('button')].find(x => x.textContent.includes('Step Flow'));
+    if (b) b.click();
+    await new Promise(r => setTimeout(r, 800));
+    const sc = document.querySelector('#flow-print-area .canvas-scroll');
+    if (!sc) return false;
+    const over = sc.scrollWidth > sc.clientWidth + 2;
+    const nudges = document.querySelectorAll('#flow-print-area .scroll-nudge').length;
+    return over && nudges === 2;
+  }));
+  ok('workflow notes survive a view switch', await p.evaluate(async () => {
+    const click = (pred) => {
+      const b = [...document.querySelectorAll('button')].find(pred);
+      if (b) b.click();
+      return !!b;
+    };
+    // open in Step Flow
+    if (!click(x => /^\s*Notes/.test(x.textContent))) return false;
+    await new Promise(r => setTimeout(r, 300));
+    if (!document.querySelector('textarea')) return false;
+    // switch to Documents; it should still be open
+    click(x => x.textContent.trim() === 'Documents');
+    await new Promise(r => setTimeout(r, 600));
+    const stillOpen = !!document.querySelector('textarea');
+    click(x => /^\s*Notes/.test(x.textContent));   // tidy up
+    return stillOpen;
+  }));
+  await p.waitForTimeout(300);
 
   console.log('\nErrors');
   ok('no console or page errors', errors.length === 0, errors.slice(0, 3).join(' | '));

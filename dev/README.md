@@ -22,7 +22,7 @@ That's how changes get checked before you see them.
 ```
 cd dev
 npm install          # first time only
-npm run check        # build, make the preview, run all 45 checks
+npm run check        # build, make the preview, run all 53 checks
 ```
 
 Other commands:
@@ -88,6 +88,10 @@ Each check in `checks.js` exists because that thing actually broke once:
 - information only is a dashed card with a label on the title line
 - the top fade stays off until something scrolls under the header
 - Row Lock columns flex with the canvas instead of a fixed 260px
+- no emoji survive anywhere in the rendered app
+- the brand sits above the sidebar; Settings holds what used to be under it
+- Step Flow has the same scroll affordance as Documents
+- workflow notes stay open across a view switch
 - the trigger chip is merged into the connector, not a bordered slab
 - the sidebar says Workflows and reorders by dragging, with no up/down buttons
 - the workflow notes panel opens, flags that notes exist, and closes again
