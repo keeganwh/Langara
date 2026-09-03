@@ -97,8 +97,9 @@ string for renderers that cannot use JSX.
 
 A second block in `ICON_PATHS` covers the chrome — `check`, `x`, chevrons,
 `pencil`, `copy`, `grip-vertical`, `settings`, `workflow`, `users`,
-`database-backup`, `history`, `log-out`, `share-2`, `refresh-cw`,
-`layout-template`, `columns-3`, `route`, and the empty-state glyphs. **There
+`archive-restore`, `history`, `log-out`, `globe`, `refresh-cw`, `copy-plus`,
+`layout-list`, `route`, `list-chevrons-down-up`, `rows-3`, and the empty-state
+glyphs. **There
 are no emoji or typographic symbols left anywhere in the app**, and a check
 asserts it against `innerText`.
 
