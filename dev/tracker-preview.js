@@ -38,13 +38,13 @@ const fixture = {
   syncGroupMeta: { g1: { name: 'JCCS Oct', color: '#f59e0b' } },
   projectTypes: [{ id: 'wf1', name: 'New Program', documents: [
     { id: 'd1', name: 'Concept Paper', color: '#6366f1', steps: [
-      { id: 's1', stageName: 'Draft', presenterIds: ['r1'] },
+      { id: 's1', stageName: 'Draft', presenterIds: ['r1'], notes: 'Use the 2026 template.', storageLocation: 'CS SharePoint', actions: [{ id: 'a1', type: 'prepared_by', label: 'Prepared by', person: 'PC' }, { id: 'a2', type: 'review', label: 'Reviewed by', person: 'Director' }] },
       { id: 's2', stageName: 'Dean Review', presenterIds: ['r3'] },
-      { id: 's3', stageName: 'JCCS', presenterIds: ['r2'], syncGroupId: 'g1', triggerType: 'meeting' },
+      { id: 's3', stageName: 'JCCS', presenterIds: ['r2'], syncGroupId: 'g1', triggerType: 'scheduled_meeting' },
       { id: 's4', stageName: 'EDCO' } ] },
     { id: 'd2', name: 'Program Proposal', color: '#10b981', steps: [
       { id: 't1', stageName: 'Draft', presenterIds: ['r1'] },
-      { id: 't3', stageName: 'JCCS', presenterIds: ['r2'], syncGroupId: 'g1', triggerType: 'meeting' },
+      { id: 't3', stageName: 'JCCS', presenterIds: ['r2'], syncGroupId: 'g1', triggerType: 'scheduled_meeting' },
       { id: 't4', stageName: 'EDCO' } ] } ] }],
 };
 const sample = fs.existsSync(samplePath) ? R(samplePath) : JSON.stringify(fixture);

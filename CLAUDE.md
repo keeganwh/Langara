@@ -413,7 +413,8 @@ tracker
                          createdAt, createdBy, updatedAt }
     ├── progress/<docId>/<stepId>
     │     { status, round, startDate, dueDate, meetingDate,
-    │       assignees[], notes, heldReason, history/<push> }
+    │       assignees[], notes, heldReason, history/<push>,
+    │       checks/r<round>/t<actionIndex> { at, by } }
     └── activity/<push>  { at, by, text }
 ```
 
@@ -435,6 +436,27 @@ tracker
   it directly. Role holders come from the project's override, else from each
   person's default `roleIds`.
 
+### Views
+
+- **Dashboard** — summary tiles (active, held up, sent back, overdue, stale),
+  Needs your attention, a compact project list (click the chevron for
+  per-document detail), and reports: held up or sent back, next 14 days of
+  dates, stale projects (no activity in `STALE_DAYS`, 14), recent updates.
+  "Last updated" is the newest activity entry, so any logged change counts.
+- **Project → Overview** (default) — one row per document with a sliding
+  last done / now / up next strip (`docWindow()`); the strip is keyed on the
+  current step id, so it re-mounts and slides in when a step closes. Plus a
+  timeline (start → target, today marker, % time used vs % steps done) and
+  upcoming dates.
+- **Project → Full flow** — the Step-Flow-style grid (`FlowGrid`). The chosen
+  view is a per-viewer preference in `localStorage` (`cs_tracker_project_view_v1`).
+- **Step panel** — status, the step's map actions as a **checklist**
+  (`checks/r<round>/t<index>`, fresh each round), the map's trigger, storage and
+  notes (snapshotted), dates, people, shared notes, send back, history.
+
+"Sent back" counts only a later-round step that is being reworked (not
+pending); the steps a send-back reset to pending still show their round badge.
+
 ### Behaviour
 
 - Statuses: pending, in progress, **held up** (needs a reason), complete,
@@ -450,7 +472,7 @@ tracker
   next for their document, sorted by due date.
 - Routing is the hash (`#/p/<id>`), so projects can be linked directly.
 
-Checks: `cd dev && npm run tracker` (26 checks, own Firebase stub with nested
+Checks: `cd dev && npm run tracker` (38 checks, own Firebase stub with nested
 paths and live listeners — see `dev/tracker-preview.js`).
 
 ## Conventions to follow

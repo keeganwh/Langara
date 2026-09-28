@@ -68,7 +68,13 @@ const cell = (d, docId, stepId) => {
   const proj = Object.values(d.tracker.projects || {})[0];
   ok('project created with a workflow snapshot', proj && proj.documents.length === 2 && proj.sourceHash);
   t = await text(p);
-  ok('opens the project view with one track per document', t.includes('Concept Paper') && t.includes('Program Proposal') && t.includes('JCCS'));
+  ok('opens on the Overview, one row per document', await p.evaluate(() => document.querySelectorAll('[data-testid=ov-doc]').length === 2));
+  ok('overview shows now and up next', t.includes('LAST DONE') || t.includes('Last done'));
+  ok('overview row starts with nothing completed', t.includes('Nothing completed yet'));
+  await p.screenshot({ path: path.join(SHOTS, 'tracker-overview.png') });
+  await click(p, 'button[data-view=flow]'); await p.waitForTimeout(150);
+  t = await text(p);
+  ok('full flow view shows one track per document', t.includes('Concept Paper') && t.includes('Program Proposal') && t.includes('EDCO'));
   ok('bypassed steps draw a dashed track', await p.evaluate(() => !!document.querySelector('.trk-line.bypass')));
   ok('activity records the creation', Object.values(proj.activity || {}).some(a => /Created from/.test(a.text)));
   await p.screenshot({ path: path.join(SHOTS, 'tracker-project.png') });
@@ -88,6 +94,12 @@ const cell = (d, docId, stepId) => {
   await click(p, '.fixed button', 'In progress'); await p.waitForTimeout(100);
   d = await db(p);
   ok('status write lands on the narrow cell path', cell(d, 'd1', 's1').status === 'in_progress' && cell(d, 'd1', 's1').startDate);
+  t = await text(p);
+  ok('step panel shows the workflow map\'s notes and storage', t.includes('Use the 2026 template.') && t.includes('CS SharePoint'));
+  ok('actions become a checklist', await p.evaluate(() => document.querySelectorAll('[data-testid=checklist] input[type=checkbox]').length === 2));
+  await p.evaluate(() => document.querySelector('[data-testid=checklist] input').click()); await p.waitForTimeout(100);
+  d = await db(p);
+  ok('ticking a task records it against round 1', !!((cell(d, 'd1', 's1').checks || {}).r1 || {}).t0);
   await click(p, '.fixed button', 'Complete'); await p.waitForTimeout(100);
   await p.evaluate(() => document.querySelector('.fixed button[aria-label="Close"]').click()); await p.waitForTimeout(100);
 
@@ -114,9 +126,13 @@ const cell = (d, docId, stepId) => {
   await click(p, 'button', 'Dashboard'); await p.waitForTimeout(200);
   t = await text(p);
   ok('dashboard lists the step assigned through a role', await p.evaluate(() => { const a = document.querySelector('[data-testid=attention]'); return !!a && a.innerText.includes('JCCS'); }));
-  ok('project row shows held up count and current steps', t.includes('held up') && t.includes('Concept Paper:'));
-  await p.screenshot({ path: path.join(SHOTS, 'tracker-dashboard.png') });
-  await click(p, '[data-testid=project-row]'); await p.waitForTimeout(200);
+  ok('summary tiles count held up steps', await p.evaluate(() => /HELD UP\s*2|Held up\s*2/i.test(document.querySelector('[data-testid=tiles]').innerText)));
+  ok('project row is compact until expanded', !t.includes('then EDCO') && t.includes('2 held'));
+  await click(p, '[data-testid=expand]'); await p.waitForTimeout(100);
+  ok('expanding a row shows each document', await p.evaluate(() => { const d = document.querySelector('[data-testid=project-docs]'); return !!d && d.innerText.includes('Program Proposal'); }));
+  ok('held up report names the reason', await p.evaluate(() => document.querySelector('[data-testid=report-flagged]').innerText.includes('Waiting on the Dean')));
+  ok('recent updates list activity', await p.evaluate(() => document.querySelector('[data-testid=recent]').innerText.includes('Held up')));
+  await click(p, '[data-testid=project-row] button:nth-child(2)'); await p.waitForTimeout(200);
 
   console.log('\nSkip');
   await openStep('Concept Paper', 'Dean Review');
@@ -145,6 +161,14 @@ const cell = (d, docId, stepId) => {
   ok('earlier completion stays in history', Object.values(s1.history || {}).some(h => h.to === 'complete' && (h.round || 1) === 1));
   t = await text(p);
   ok('round badge shows on the track', t.includes('R2'));
+  await click(p, 'button[data-view=overview]'); await p.waitForTimeout(150);
+  ok('overview now slides to the reopened step', await p.evaluate(() => { const n = document.querySelector('[data-kind=now]'); return !!n && n.innerText.includes('Draft') && n.innerText.includes('R2'); }));
+  await p.screenshot({ path: path.join(SHOTS, 'tracker-overview-2.png') });
+  await p.goto(PAGE); await p.waitForTimeout(400);
+  ok('sent back report shows the new round', await p.evaluate(() => document.querySelector('[data-testid=report-flagged]').innerText.includes('Round 2')));
+  await p.screenshot({ path: path.join(SHOTS, 'tracker-dashboard.png'), fullPage: true });
+  await click(p, '[data-testid=project-row] button:nth-child(2)'); await p.waitForTimeout(200);
+  await click(p, 'button[data-view=flow]'); await p.waitForTimeout(150);
 
   console.log('\nWorkflow update');
   await p.evaluate(() => {
