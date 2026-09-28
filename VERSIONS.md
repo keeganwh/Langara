@@ -42,7 +42,17 @@ about to do something risky, take both.
 
 ## Released versions
 
-### v2.2 — visual clarity pass (current)
+### v2.3 — Program Tracker (hidden)
+Archive branch: `archive/v2.3-pre-tracker` · branch `feature/tracker`
+
+Adds `tracker.html`, a separate page for running projects through a workflow:
+dashboard, per-document tracks, statuses, dates, people and roles, send back
+with rounds, skip, held up, notes, activity log. Writes only under `tracker/`
+in Firebase; the Workflow Map and its data are unchanged. Not linked from the
+map yet. Rolling back the code is deleting the file; its data can be removed
+by deleting `tracker/` in the Firebase console.
+
+### v2.2 — visual clarity pass
 Archive branch: `archive/v2.2-pre-visual-clarity` · branch `visual-clarity-pass`
 
 A legibility and layout pass over the **Documents** view, plus the surgical

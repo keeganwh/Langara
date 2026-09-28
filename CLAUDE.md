@@ -16,7 +16,8 @@ process itself; it does not track individual in-flight programs.
 
 ## Repository shape
 
-The entire application is one file:
+The Workflow Map is one file (the Program Tracker, `tracker.html`, is a
+second, separate page — see its section below):
 
 - `pipeline-tool-v2.html` — ~2,100 lines. HTML + Tailwind (CDN) + React 18
   (UMD) + in-browser Babel + Firebase compat SDKs. No build step, no
@@ -388,6 +389,69 @@ Avoid SVG `marker` elements for this: a marker is sized in stroke-width units
 and will happily draw longer than the segment it terminates, overhanging
 backwards past the start of the line and reading as an arrow pointing the
 wrong way at narrow widths.
+
+## The Program Tracker (`tracker.html`)
+
+A second page, for **running** workflows rather than mapping them. The Workflow
+Map (`pipeline-tool-v2.html`) stays the reference/design tool; the tracker
+creates *projects* from its workflows and tracks each one's progress. Same
+stack, same sign-in, same Firebase project, same icon set (`ICON_PATHS` is
+copied into the tracker — keep the two in sync when adding glyphs).
+
+**Status: hidden.** It is live at `/Langara/tracker.html`, but the Workflow Map
+does not link to it yet. Adding that link is the "go live" step.
+
+### Data (`tracker/` in Firebase — never writes to `pipeline`)
+
+```
+tracker
+├── people/<id>        { name, email, roleIds[] }        — added by hand
+└── projects/<id>      { name, workflowId, workflowName, sourceHash,
+                         documents[] (snapshot), syncGroupMeta,
+                         startDate, dueDate, notes, archived,
+                         roleAssignments { roleId: [personId] | 'none' },
+                         createdAt, createdBy, updatedAt }
+    ├── progress/<docId>/<stepId>
+    │     { status, round, startDate, dueDate, meetingDate,
+    │       assignees[], notes, heldReason, history/<push> }
+    └── activity/<push>  { at, by, text }
+```
+
+- **Writes go to the narrowest path** (`update` on one cell, `push` for history
+  and activity) and the page renders from live `on('value')` listeners. This is
+  deliberate: the map's whole-document, last-write-wins save is not safe for
+  several people updating statuses at once. Do not switch the tracker to that
+  pattern.
+- **A project is a snapshot.** `snapshotDocs()` copies the workflow's documents
+  and steps **keeping their ids**, so "Update to latest workflow" can carry
+  progress over by `docId/stepId`. `sourceHash` detects drift. Progress on
+  steps that disappear is kept in the database but no longer shown, and the
+  confirm dialog lists them.
+- **Firebase drops empty arrays.** `normalizeProject()` / `cellOf()` fill
+  defaults on read, and an empty role override is stored as `'none'` so
+  "nobody" stays distinct from "use the default".
+- **People** match a sign-in by email (`meOf`). A step's people are the holders
+  of its roles (the map's `presenterIds` + `carrierIds`) plus anyone tagged on
+  it directly. Role holders come from the project's override, else from each
+  person's default `roleIds`.
+
+### Behaviour
+
+- Statuses: pending, in progress, **held up** (needs a reason), complete,
+  skipped (needs confirmation and a reason).
+- **Send back** reopens an earlier step in a new `round`; every step after it
+  that had been started resets to pending in a new round. `history` is
+  append-only, so earlier rounds stay on record.
+- **Meeting shortcut:** steps sharing a `syncGroupId` can take a status and
+  meeting date for every document at once.
+- **Current step** of a document is the first in progress / held up step, else
+  the first not closed.
+- **Needs your attention:** steps you are on that are active, or pending and
+  next for their document, sorted by due date.
+- Routing is the hash (`#/p/<id>`), so projects can be linked directly.
+
+Checks: `cd dev && npm run tracker` (26 checks, own Firebase stub with nested
+paths and live listeners — see `dev/tracker-preview.js`).
 
 ## Conventions to follow
 

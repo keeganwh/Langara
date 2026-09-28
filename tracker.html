@@ -1,0 +1,1169 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CS Program Tracker</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.23.10/babel.min.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
+  <style>
+    body { font-family: system-ui, -apple-system, sans-serif; }
+    input:focus, select:focus, textarea:focus { outline: 2px solid #6366f1; outline-offset: 1px; }
+    .fade-in { animation: fadeIn 0.15s ease; }
+    @keyframes fadeIn { from { opacity:0; transform:translateY(-4px); } to { opacity:1; transform:translateY(0); } }
+    ::-webkit-scrollbar { width:8px; height:10px; }
+    ::-webkit-scrollbar-thumb { background:#cbd5e1; border-radius:4px; }
+    /* Track matrix: one row per document, one column per step. */
+    .trk-grid { display: grid; gap: 0; align-items: stretch; }
+    .trk-cell { position: relative; padding: 8px 6px; min-width: 150px; }
+    .trk-line { position: absolute; left: 0; right: 0; top: 50%; height: 0; z-index: 0; }
+    .trk-line.solid { border-top: 3px solid var(--doc); opacity: .55; }
+    .trk-line.bypass { border-top: 2px dashed #cbd5e1; }
+    .trk-line.half-r { left: 50%; }
+    .trk-line.half-l { right: 50%; }
+    .trk-node { position: relative; z-index: 1; }
+    .st-skipped { border-style: dashed !important; }
+  </style>
+</head>
+<body class="bg-slate-100 min-h-screen">
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useEffect, useRef, useCallback, useMemo } = React;
+
+// ── Utilities ──────────────────────────────────────────────────────────────────
+// The tracker runs live workflows. The map it runs them from is the Workflow
+// Map (pipeline-tool-v2.html), read from `pipeline`; everything the tracker
+// writes lives under `tracker`. It never writes to `pipeline`.
+const uid = () => Math.random().toString(36).slice(2, 9);
+const MAP_URL = 'pipeline-tool-v2.html';
+
+// ── Firebase config ────────────────────────────────────────────────────────────
+const FIREBASE_CONFIG = {
+  apiKey:            'AIzaSyA_YvPJhYcbonyz3xkuelvEnSuFVvAc6zQ',
+  authDomain:        'cs-program-development-flow.firebaseapp.com',
+  databaseURL:       'https://cs-program-development-flow-default-rtdb.firebaseio.com',
+  projectId:         'cs-program-development-flow',
+  storageBucket:     'cs-program-development-flow.firebasestorage.app',
+  messagingSenderId: '919178147665',
+  appId:             '1:919178147665:web:e63d7582e776b84454c570',
+};
+const MAP_PATH = 'pipeline';
+const TRK_PATH = 'tracker';
+
+let _fbApp = null;
+let _fbDb = null;
+function getFbApp() {
+  if (!_fbApp) _fbApp = firebase.initializeApp(FIREBASE_CONFIG);
+  return _fbApp;
+}
+function getFbDb() {
+  if (!_fbDb) _fbDb = firebase.database(getFbApp());
+  return _fbDb;
+}
+function getFbAuth() { return firebase.auth(getFbApp()); }
+
+// Writes go to the narrowest path that changed, so two people updating
+// different steps at the same time never overwrite each other. (The Workflow
+// Map saves one whole document; the tracker deliberately does not.)
+const trkRef = (p) => getFbDb().ref(TRK_PATH + '/' + p);
+const dbUpdate = (p, obj) => trkRef(p).update(obj);
+const dbSet = (p, v) => trkRef(p).set(v);
+const dbRemove = (p) => trkRef(p).remove();
+
+// ── Icon set (Lucide 1.39, ISC) ─────────────────────────────────────────────────
+// Copied from the Workflow Map so both pages speak the same icon language.
+// The tracker-only glyphs are added below it.
+const ICON_PATHS = {
+  review:       "<path d=\"m21 21-4.34-4.34\" /> <circle cx=\"11\" cy=\"11\" r=\"8\" />",
+  approval:     "<path d=\"M15 5.88 14 10h5.83a2 2 0 0 1 1.92 2.56l-2.33 8A2 2 0 0 1 17.5 22H4a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2h2.76a2 2 0 0 0 1.79-1.11L12 2a3.13 3.13 0 0 1 3 3.88Z\" /> <path d=\"M7 10v12\" />",
+  consultation: "<path d=\"M2.992 16.342a2 2 0 0 1 .094 1.167l-1.065 3.29a1 1 0 0 0 1.236 1.168l3.413-.998a2 2 0 0 1 1.099.092 10 10 0 1 0-4.777-4.719\" /> <path d=\"M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3\" /> <path d=\"M12 17h.01\" />",
+  prepared_by:  "<path d=\"M12.659 22H18a2 2 0 0 0 2-2V8a2.4 2.4 0 0 0-.706-1.706l-3.588-3.588A2.4 2.4 0 0 0 14 2H6a2 2 0 0 0-2 2v9.34\" /> <path d=\"M14 2v5a1 1 0 0 0 1 1h5\" /> <path d=\"M10.378 12.622a1 1 0 0 1 3 3.003L8.36 20.637a2 2 0 0 1-.854.506l-2.867.837a.5.5 0 0 1-.62-.62l.836-2.869a2 2 0 0 1 .506-.853z\" />",
+  custom:       "<circle cx=\"12\" cy=\"12\" r=\"10\" /> <path d=\"m10 8 4 4-4 4\" />",
+  storage:      "<path d=\"M2 9.35V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H20a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h7\" /> <path d=\"m8 16 3-3-3-3\" />",
+  ret:          "<path d=\"M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8\" /> <path d=\"M3 3v5h5\" />",
+  t_imm:        "<path d=\"m15 10 5 5-5 5\" /> <path d=\"M4 4v7a4 4 0 0 0 4 4h12\" />",
+  t_meet:       "<path d=\"M16 14v2.2l1.6 1\" /> <path d=\"M16 2v3\" /> <path d=\"M21 7.338V5a2 2 0 00-2-2H5a2 2 0 00-2 2v14a2 2 0 002 2h2.338\" /> <path d=\"M3 9h5.859\" /> <path d=\"M8 2v3\" /> <circle cx=\"16\" cy=\"16\" r=\"6\" />",
+  t_man:        "<path d=\"M18 11V6a2 2 0 0 0-2-2a2 2 0 0 0-2 2\" /> <path d=\"M14 10V4a2 2 0 0 0-2-2a2 2 0 0 0-2 2v2\" /> <path d=\"M10 10.5V6a2 2 0 0 0-2-2a2 2 0 0 0-2 2v8\" /> <path d=\"M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15\" />",
+  t_task:       "<rect width=\"8\" height=\"4\" x=\"8\" y=\"2\" rx=\"1\" ry=\"1\" /> <path d=\"M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2\" /> <path d=\"m9 14 2 2 4-4\" />",
+  t_cust:       "<path d=\"M10.268 21a2 2 0 0 0 3.464 0\" /> <path d=\"M3.262 15.326A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.673C19.41 13.956 18 12.499 18 8A6 6 0 0 0 6 8c0 4.499-1.411 5.956-2.738 7.326\" />",
+  sync:         "<path d=\"M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71\" /> <path d=\"M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71\" />",
+  notes:        "<path d=\"M13.4 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7.4\" /> <path d=\"M2 6h4\" /> <path d=\"M2 10h4\" /> <path d=\"M2 14h4\" /> <path d=\"M2 18h4\" /> <path d=\"M21.378 5.626a1 1 0 1 0-3.004-3.004l-5.01 5.012a2 2 0 0 0-.506.854l-.837 2.87a.5.5 0 0 0 .62.62l2.87-.837a2 2 0 0 0 .854-.506z\" />",
+  info:         "<circle cx=\"12\" cy=\"12\" r=\"10\" /> <path d=\"M12 16v-4\" /> <path d=\"M12 8h.01\" />",
+  // ── UI glyphs ── chrome and controls. Separate from the meaning icons
+  // above, but drawn from the same set so nothing in the app is an emoji.
+  check:        "<path d=\"M20 6 9 17l-5-5\" />",
+  x:            "<path d=\"M18 6 6 18\" /> <path d=\"m6 6 12 12\" />",
+  chev_r:       "<path d=\"m9 18 6-6-6-6\" />",
+  chev_d:       "<path d=\"m6 9 6 6 6-6\" />",
+  chev_u:       "<path d=\"m18 15-6-6-6 6\" />",
+  chev_l:       "<path d=\"m15 18-6-6 6-6\" />",
+  plus:         "<path d=\"M5 12h14\" /> <path d=\"M12 5v14\" />",
+  edit:         "<path d=\"M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z\" /> <path d=\"m15 5 4 4\" />",
+  copy:         "<rect width=\"14\" height=\"14\" x=\"8\" y=\"8\" rx=\"2\" ry=\"2\" /> <path d=\"M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2\" />",
+  grip:         "<circle cx=\"9\" cy=\"12\" r=\"1\" /> <circle cx=\"9\" cy=\"5\" r=\"1\" /> <circle cx=\"9\" cy=\"19\" r=\"1\" /> <circle cx=\"15\" cy=\"12\" r=\"1\" /> <circle cx=\"15\" cy=\"5\" r=\"1\" /> <circle cx=\"15\" cy=\"19\" r=\"1\" />",
+  trash:        "<path d=\"M10 11v6\" /> <path d=\"M14 11v6\" /> <path d=\"M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6\" /> <path d=\"M3 6h18\" /> <path d=\"M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2\" />",
+  sb_close:     "<rect width=\"18\" height=\"18\" x=\"3\" y=\"3\" rx=\"2\" /> <path d=\"M9 3v18\" /> <path d=\"m16 15-3-3 3-3\" />",
+  sb_open:      "<rect width=\"18\" height=\"18\" x=\"3\" y=\"3\" rx=\"2\" /> <path d=\"M9 3v18\" /> <path d=\"m14 9 3 3-3 3\" />",
+  details:      "<path d=\"M3 5h8\" /> <path d=\"M3 12h8\" /> <path d=\"M3 19h8\" /> <path d=\"m15 5 3 3 3-3\" /> <path d=\"m15 19 3-3 3 3\" />",
+  rowlock:      "<rect width=\"18\" height=\"18\" x=\"3\" y=\"3\" rx=\"2\" /> <path d=\"M21 9H3\" /> <path d=\"M21 15H3\" />",
+  stepsShown:   "<path d=\"M2 5h20\" /> <path d=\"M6 12h12\" /> <path d=\"M9 19h6\" />",
+  warn:         "<path d=\"m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3\" /> <path d=\"M12 9v4\" /> <path d=\"M12 17h.01\" />",
+  loading:      "<path d=\"M21 12a9 9 0 1 1-6.219-8.56\" />",
+  printer:      "<path d=\"M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2\" /> <path d=\"M6 9V3a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v6\" /> <rect x=\"6\" y=\"14\" width=\"12\" height=\"8\" rx=\"1\" />",
+  download:     "<path d=\"M12 15V3\" /> <path d=\"M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4\" /> <path d=\"m7 10 5 5 5-5\" />",
+  upload:       "<path d=\"M12 3v12\" /> <path d=\"m17 8-5-5-5 5\" /> <path d=\"M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4\" />",
+  settings:     "<path d=\"M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.915 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.915 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.915 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.319-1.915\" /> <circle cx=\"12\" cy=\"12\" r=\"3\" />",
+  manage:       "<rect width=\"8\" height=\"8\" x=\"3\" y=\"3\" rx=\"2\" /> <path d=\"M7 11v4a2 2 0 0 0 2 2h4\" /> <rect width=\"8\" height=\"8\" x=\"13\" y=\"13\" rx=\"2\" />",
+  roles:        "<path d=\"M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2\" /> <path d=\"M16 3.128a4 4 0 0 1 0 7.744\" /> <path d=\"M22 21v-2a4 4 0 0 0-3-3.87\" /> <circle cx=\"9\" cy=\"7\" r=\"4\" />",
+  backup:       "<rect width=\"20\" height=\"5\" x=\"2\" y=\"3\" rx=\"1\" /> <path d=\"M4 8v11a2 2 0 0 0 2 2h2\" /> <path d=\"M20 8v11a2 2 0 0 1-2 2h-2\" /> <path d=\"m9 15 3-3 3 3\" /> <path d=\"M12 12v9\" />",
+  reset:        "<path d=\"M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8\" /> <path d=\"M3 3v5h5\" /> <path d=\"M12 7v5l4 2\" />",
+  signout:      "<path d=\"m16 17 5-5-5-5\" /> <path d=\"M21 12H9\" /> <path d=\"M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4\" />",
+  publish:      "<circle cx=\"12\" cy=\"12\" r=\"10\" /> <path d=\"M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20\" /> <path d=\"M2 12h20\" />",
+  sync:         "<path d=\"M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8\" /> <path d=\"M21 3v5h-5\" /> <path d=\"M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16\" /> <path d=\"M8 16H3v5\" />",
+  template:     "<line x1=\"15\" x2=\"15\" y1=\"12\" y2=\"18\" /> <line x1=\"12\" x2=\"18\" y1=\"15\" y2=\"15\" /> <rect width=\"14\" height=\"14\" x=\"8\" y=\"8\" rx=\"2\" ry=\"2\" /> <path d=\"M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2\" />",
+  v_docs:       "<rect width=\"7\" height=\"7\" x=\"3\" y=\"3\" rx=\"1\" /> <rect width=\"7\" height=\"7\" x=\"3\" y=\"14\" rx=\"1\" /> <path d=\"M14 4h7\" /> <path d=\"M14 9h7\" /> <path d=\"M14 15h7\" /> <path d=\"M14 20h7\" />",
+  v_flow:       "<circle cx=\"6\" cy=\"19\" r=\"3\" /> <path d=\"M9 19h8.5a3.5 3.5 0 0 0 0-7h-11a3.5 3.5 0 0 1 0-7H15\" /> <circle cx=\"18\" cy=\"5\" r=\"3\" />",
+  start:        "<path d=\"M5 5a2 2 0 0 1 3.008-1.728l11.997 6.998a2 2 0 0 1 .003 3.458l-12 7A2 2 0 0 1 5 19z\" />",
+  through:      "<circle cx=\"12\" cy=\"12\" r=\"10\" />",
+  empty_doc:    "<path d=\"M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z\" /> <path d=\"M14 2v5a1 1 0 0 0 1 1h5\" /> <path d=\"M10 9H8\" /> <path d=\"M16 13H8\" /> <path d=\"M16 17H8\" />",
+  empty_flow:   "<circle cx=\"6\" cy=\"19\" r=\"3\" /> <path d=\"M9 19h8.5a3.5 3.5 0 0 0 0-7h-11a3.5 3.5 0 0 1 0-7H15\" /> <circle cx=\"18\" cy=\"5\" r=\"3\" />",
+  empty_pub:    "<path d=\"M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z\" /> <path d=\"M12 17h.01\" /> <path d=\"M9.1 9a3 3 0 0 1 5.82 1c0 2-3 3-3 3\" />",
+  empty_wf:     "<rect width=\"8\" height=\"4\" x=\"8\" y=\"2\" rx=\"1\" ry=\"1\" /> <path d=\"M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2\" /> <path d=\"M12 11h4\" /> <path d=\"M12 16h4\" /> <path d=\"M8 11h.01\" /> <path d=\"M8 16h.01\" />",
+};
+Object.assign(ICON_PATHS, {
+  calendar:   "<path d=\"M8 2v4\" /> <path d=\"M16 2v4\" /> <rect width=\"18\" height=\"18\" x=\"3\" y=\"4\" rx=\"2\" /> <path d=\"M3 10h18\" />",
+  clock:      "<circle cx=\"12\" cy=\"12\" r=\"10\" /> <path d=\"M12 6v6l4 2\" />",
+  held:       "<circle cx=\"12\" cy=\"12\" r=\"10\" /> <line x1=\"10\" x2=\"10\" y1=\"15\" y2=\"9\" /> <line x1=\"14\" x2=\"14\" y1=\"15\" y2=\"9\" />",
+  skip:       "<path d=\"M21 4v16\" /> <path d=\"M6.029 4.285A2 2 0 0 0 3 6v12a2 2 0 0 0 3.029 1.715l9.997-5.998a2 2 0 0 0 .003-3.432z\" />",
+  done:       "<circle cx=\"12\" cy=\"12\" r=\"10\" /> <path d=\"m9 12 2 2 4-4\" />",
+  pending:    "<circle cx=\"12\" cy=\"12\" r=\"10\" />",
+  archive:    "<rect width=\"20\" height=\"5\" x=\"2\" y=\"3\" rx=\"1\" /> <path d=\"M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8\" /> <path d=\"M10 12h4\" />",
+  dashboard:  "<rect width=\"7\" height=\"9\" x=\"3\" y=\"3\" rx=\"1\" /> <rect width=\"7\" height=\"5\" x=\"14\" y=\"3\" rx=\"1\" /> <rect width=\"7\" height=\"9\" x=\"14\" y=\"12\" rx=\"1\" /> <rect width=\"7\" height=\"5\" x=\"3\" y=\"16\" rx=\"1\" />",
+  user:       "<circle cx=\"12\" cy=\"8\" r=\"5\" /> <path d=\"M20 21a8 8 0 0 0-16 0\" />",
+  history:    "<path d=\"M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8\" /> <path d=\"M3 3v5h5\" /> <path d=\"M12 7v5l4 2\" />",
+  map:        "<circle cx=\"6\" cy=\"19\" r=\"3\" /> <path d=\"M9 19h8.5a3.5 3.5 0 0 0 0-7h-11a3.5 3.5 0 0 1 0-7H15\" /> <circle cx=\"18\" cy=\"5\" r=\"3\" />",
+});
+
+function Icon({ name, size = 13, className = '', style = {} }) {
+  const d = ICON_PATHS[name];
+  if (!d) return null;
+  return (
+    <svg className={className} width={size} height={size} viewBox="0 0 24 24" fill="none"
+      stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+      style={{ flex: '0 0 auto', ...style }} aria-hidden="true"
+      dangerouslySetInnerHTML={{ __html: d }} />
+  );
+}
+
+// ── Dates ──────────────────────────────────────────────────────────────────────
+// Dates are stored as local 'YYYY-MM-DD' strings — no time zone to drift.
+const pad = (n) => String(n).padStart(2, '0');
+const todayStr = () => { const d = new Date(); return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); };
+const daysUntil = (ds) => {
+  if (!ds) return null;
+  const [y, m, d] = ds.split('-').map(Number);
+  const t = new Date(); t.setHours(0, 0, 0, 0);
+  return Math.round((new Date(y, m - 1, d) - t) / 86400000);
+};
+const fmtDate = (ds) => {
+  if (!ds) return '';
+  const [y, m, d] = ds.split('-').map(Number);
+  return new Date(y, m - 1, d).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+};
+const fmtStamp = (ms) => ms ? new Date(ms).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '';
+function dueLabel(ds) {
+  const n = daysUntil(ds);
+  if (n === null) return null;
+  if (n < 0) return { text: 'Overdue ' + (-n) + 'd', tone: 'red' };
+  if (n === 0) return { text: 'Due today', tone: 'amber' };
+  if (n <= 7) return { text: 'Due in ' + n + 'd', tone: 'amber' };
+  return { text: 'Due ' + fmtDate(ds), tone: 'slate' };
+}
+const TONE = {
+  red:   'bg-red-50 text-red-700 border-red-200',
+  amber: 'bg-amber-50 text-amber-800 border-amber-200',
+  slate: 'bg-slate-50 text-slate-600 border-slate-200',
+};
+
+// ── Status ─────────────────────────────────────────────────────────────────────
+const STATUSES = [
+  { id: 'pending',     label: 'Pending',     icon: 'pending', color: '#94a3b8', cls: 'bg-white text-slate-600 border-slate-300' },
+  { id: 'in_progress', label: 'In progress', icon: 'clock',   color: '#2563eb', cls: 'bg-blue-50 text-blue-700 border-blue-300' },
+  { id: 'held_up',     label: 'Held up',     icon: 'held',    color: '#d97706', cls: 'bg-amber-50 text-amber-800 border-amber-300' },
+  { id: 'complete',    label: 'Complete',    icon: 'done',    color: '#059669', cls: 'bg-emerald-50 text-emerald-700 border-emerald-300' },
+  { id: 'skipped',     label: 'Skipped',     icon: 'skip',    color: '#94a3b8', cls: 'bg-slate-50 text-slate-500 border-slate-300 st-skipped' },
+];
+const STATUS = STATUSES.reduce((a, s) => { a[s.id] = s; return a; }, {});
+const isClosed = (st) => st === 'complete' || st === 'skipped';
+
+function StatusChip({ status, sm }) {
+  const s = STATUS[status] || STATUS.pending;
+  return (
+    <span className={`inline-flex items-center gap-1 border rounded-full font-medium whitespace-nowrap ${sm ? 'text-[10px] px-1.5 py-0' : 'text-xs px-2 py-0.5'} ${s.cls}`}>
+      <Icon name={s.icon} size={sm ? 10 : 12} />{s.label}
+    </span>
+  );
+}
+
+// ── Step matching (same rules as the Workflow Map's Step Flow view) ───────────
+const stepKey = (name) => (name || '')
+  .replace(/[‐-―]/g, '-')
+  .trim().toLowerCase().replace(/\s+/g, ' ');
+
+function buildStepSpine(documents) {
+  const nodes = new Map(), succ = new Map(), indeg = new Map();
+  (documents || []).forEach(doc => {
+    (doc.steps || []).forEach((s, i) => {
+      const k = stepKey(s.stageName);
+      if (!k) return;
+      if (!nodes.has(k)) { nodes.set(k, { key: k, label: (s.stageName || '').trim(), firstIdx: i }); succ.set(k, new Set()); indeg.set(k, 0); }
+      else if (i < nodes.get(k).firstIdx) nodes.get(k).firstIdx = i;
+    });
+  });
+  (documents || []).forEach(doc => {
+    const keys = (doc.steps || []).map(s => stepKey(s.stageName)).filter(Boolean);
+    for (let i = 0; i < keys.length - 1; i++) {
+      const a = keys[i], b = keys[i + 1];
+      if (a === b || !succ.has(a)) continue;
+      if (!succ.get(a).has(b)) { succ.get(a).add(b); indeg.set(b, indeg.get(b) + 1); }
+    }
+  });
+  const cmp = (a, b) => (nodes.get(a).firstIdx - nodes.get(b).firstIdx) || String(nodes.get(a).label).localeCompare(String(nodes.get(b).label));
+  const order = [], remaining = new Set(nodes.keys());
+  while (remaining.size) {
+    let ready = [...remaining].filter(k => indeg.get(k) === 0);
+    if (!ready.length) ready = [...remaining];
+    ready.sort(cmp);
+    const k = ready[0];
+    order.push(nodes.get(k)); remaining.delete(k);
+    succ.get(k).forEach(n => { if (remaining.has(n)) indeg.set(n, indeg.get(n) - 1); });
+  }
+  return order;
+}
+
+// ── Workflow snapshot ──────────────────────────────────────────────────────────
+// A project copies its workflow when it is created, so later edits to the map
+// don't move the ground under a project in flight. Step ids are kept from the
+// map, which is what lets "Update to latest workflow" carry progress across.
+function snapshotDocs(projectType) {
+  return (projectType.documents || []).map(d => ({
+    id: d.id, name: d.name || 'Document', color: d.color || '#6366f1',
+    steps: (d.steps || []).map(s => ({
+      id: s.id, stageName: s.stageName || '',
+      roleIds: [...new Set([...(s.presenterIds || []), ...(s.carrierIds || [])])],
+      actions: (s.actions || []).map(a => ({ type: a.type, label: a.label || '', person: a.person || '' })),
+      syncGroupId: s.syncGroupId || null,
+      informationOnly: !!s.informationOnly,
+      triggerType: s.triggerType || '', triggerLabel: s.triggerLabel || '',
+    })),
+  }));
+}
+function stableStringify(v) {
+  if (v === null || typeof v !== 'object') return JSON.stringify(v);
+  if (Array.isArray(v)) return '[' + v.map(stableStringify).join(',') + ']';
+  return '{' + Object.keys(v).sort().map(k => JSON.stringify(k) + ':' + stableStringify(v[k])).join(',') + '}';
+}
+function contentHash(obj) {
+  const s = stableStringify(obj);
+  let h = 5381;
+  for (let i = 0; i < s.length; i++) h = ((h * 33) ^ s.charCodeAt(i)) >>> 0;
+  return h.toString(36);
+}
+const docsHash = (docs) => contentHash(docs);
+
+// Firebase drops empty arrays and objects, so fill them back in on read.
+function normalizeProject(id, p) {
+  const docs = (p.documents || []).map(d => ({ ...d, steps: (d.steps || []).map(s => ({
+    ...s, roleIds: s.roleIds || [], actions: s.actions || [], syncGroupId: s.syncGroupId || null,
+  })) }));
+  return {
+    ...p, id, name: p.name || 'Untitled project', documents: docs,
+    roleAssignments: p.roleAssignments || {}, progress: p.progress || {}, activity: p.activity || {},
+    syncGroupMeta: p.syncGroupMeta || {}, notes: p.notes || '', archived: !!p.archived,
+    startDate: p.startDate || '', dueDate: p.dueDate || '',
+  };
+}
+function cellOf(project, docId, stepId) {
+  const c = (project.progress[docId] || {})[stepId] || {};
+  return {
+    status: c.status || 'pending', round: c.round || 1,
+    startDate: c.startDate || '', dueDate: c.dueDate || '', meetingDate: c.meetingDate || '',
+    assignees: c.assignees || [], notes: c.notes || '', heldReason: c.heldReason || '',
+    history: c.history || {},
+  };
+}
+const cellPath = (projectId, docId, stepId) => 'projects/' + projectId + '/progress/' + docId + '/' + stepId;
+
+// The document's current step: the first one being worked on (in progress or
+// held up), or failing that the first one not yet complete or skipped. The
+// first rule matters when a meeting shortcut moves a later step ahead.
+function currentIndex(project, doc) {
+  const steps = doc.steps || [];
+  for (let i = 0; i < steps.length; i++) {
+    const st = cellOf(project, doc.id, steps[i].id).status;
+    if (st === 'in_progress' || st === 'held_up') return i;
+  }
+  for (let i = 0; i < steps.length; i++) if (!isClosed(cellOf(project, doc.id, steps[i].id).status)) return i;
+  return -1;   // every step closed
+}
+function projectStats(project) {
+  let total = 0, closed = 0, held = 0, overdue = 0, nextDue = '';
+  project.documents.forEach(doc => doc.steps.forEach(s => {
+    const c = cellOf(project, doc.id, s.id);
+    total++;
+    if (isClosed(c.status)) { closed++; return; }
+    if (c.status === 'held_up') held++;
+    if (c.dueDate) {
+      if (daysUntil(c.dueDate) < 0) overdue++;
+      if (!nextDue || c.dueDate < nextDue) nextDue = c.dueDate;
+    }
+  }));
+  return { total, closed, held, overdue, nextDue, pct: total ? Math.round(closed / total * 100) : 0, done: total > 0 && closed === total };
+}
+
+// ── People and roles ──────────────────────────────────────────────────────────
+// People are added by hand. Each can be the default holder of one or more of
+// the map's roles; a project can override who fills a role; a step can have
+// people tagged on it directly. A step's people = its roles' holders + tags.
+function roleHolders(project, people, roleId) {
+  const ov = project.roleAssignments[roleId];
+  if (ov === 'none') return [];
+  if (ov) return Array.isArray(ov) ? ov : Object.values(ov);
+  return people.filter(p => (p.roleIds || []).includes(roleId)).map(p => p.id);
+}
+function stepPeople(project, people, step, cell) {
+  const ids = new Set(cell.assignees);
+  (step.roleIds || []).forEach(r => roleHolders(project, people, r).forEach(id => ids.add(id)));
+  return [...ids];
+}
+const personById = (people, id) => people.find(p => p.id === id);
+const meOf = (people, authUser) => authUser && authUser.email
+  ? people.find(p => (p.email || '').trim().toLowerCase() === authUser.email.toLowerCase()) || null : null;
+const initials = (name) => (name || '?').split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase();
+
+function Avatar({ person, size = 22 }) {
+  return (
+    <span title={person ? person.name + (person.email ? ' · ' + person.email : '') : 'Unknown'}
+      className="inline-flex items-center justify-center rounded-full bg-indigo-100 text-indigo-700 font-semibold border border-white"
+      style={{ width: size, height: size, fontSize: size * 0.42 }}>{initials(person && person.name)}</span>
+  );
+}
+
+// Items needing a person's attention: steps they are on that are active, or
+// pending and next up for their document.
+function attentionFor(projects, people, me) {
+  if (!me) return [];
+  const items = [];
+  projects.filter(p => !p.archived).forEach(project => {
+    project.documents.forEach(doc => {
+      const cur = currentIndex(project, doc);
+      doc.steps.forEach((s, i) => {
+        const c = cellOf(project, doc.id, s.id);
+        if (isClosed(c.status)) return;
+        if (!stepPeople(project, people, s, c).includes(me.id)) return;
+        const active = c.status === 'in_progress' || c.status === 'held_up';
+        if (!active && i !== cur) return;
+        items.push({ project, doc, step: s, cell: c, isNext: i === cur });
+      });
+    });
+  });
+  const key = (it) => it.cell.dueDate || '9999';
+  return items.sort((a, b) => key(a).localeCompare(key(b)));
+}
+
+// ── Activity log ───────────────────────────────────────────────────────────────
+function logActivity(projectId, authUser, text) {
+  return trkRef('projects/' + projectId + '/activity').push({
+    at: firebase.database.ServerValue.TIMESTAMP, by: (authUser && authUser.email) || '', text,
+  });
+}
+function pushHistory(path, authUser, entry) {
+  return trkRef(path + '/history').push({
+    at: firebase.database.ServerValue.TIMESTAMP, by: (authUser && authUser.email) || '', ...entry,
+  });
+}
+
+// ── Data hook ──────────────────────────────────────────────────────────────────
+// Live listeners on both trees: anyone's change shows up for everyone.
+function useTrackerData(authUser) {
+  const [map, setMap] = useState(null);
+  const [trk, setTrk] = useState(null);
+  const [online, setOnline] = useState(true);
+  useEffect(() => {
+    if (!authUser) return;
+    const db = getFbDb();
+    const mRef = db.ref(MAP_PATH), tRef = db.ref(TRK_PATH), cRef = db.ref('.info/connected');
+    const onMap = mRef.on('value', s => setMap(s.val() || {}), () => setMap({}));
+    const onTrk = tRef.on('value', s => setTrk(s.val() || {}), () => setTrk({}));
+    const onCon = cRef.on('value', s => setOnline(s.val() !== false));
+    return () => { mRef.off('value', onMap); tRef.off('value', onTrk); cRef.off('value', onCon); };
+  }, [authUser && authUser.uid]);
+  const data = useMemo(() => {
+    if (!map || !trk) return null;
+    const people = Object.entries(trk.people || {}).map(([id, p]) => ({ ...p, id, roleIds: p.roleIds || [] }))
+      .sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+    const projects = Object.entries(trk.projects || {}).map(([id, p]) => normalizeProject(id, p))
+      .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+    const workflows = (map.projectTypes || []).map(pt => ({ ...pt, documents: pt.documents || [] }));
+    return { roles: map.roles || [], workflows, people, projects, syncGroupMeta: map.syncGroupMeta || {} };
+  }, [map, trk]);
+  return [data, online];
+}
+
+// ── Primitive components ──────────────────────────────────────────────────────
+function Modal({ title, onClose, wide, children, footer }) {
+  const content = (
+    <div className="fixed inset-0 flex items-center justify-center bg-black/40 p-4" style={{ zIndex: 99999 }}
+      onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className={`bg-white rounded-xl shadow-2xl flex flex-col ${wide ? 'w-full max-w-3xl' : 'w-full max-w-lg'} max-h-[90vh] fade-in`}>
+        <div className="flex items-center justify-between px-5 py-3 border-b">
+          <h2 className="font-bold text-slate-800 text-base">{title}</h2>
+          <button onClick={onClose} aria-label="Close" className="text-slate-400 hover:text-slate-700"><Icon name="x" size={18} /></button>
+        </div>
+        <div className="overflow-y-auto flex-1 px-5 py-4">{children}</div>
+        {footer && <div className="px-5 py-3 border-t flex items-center justify-end gap-2 bg-slate-50 rounded-b-xl">{footer}</div>}
+      </div>
+    </div>
+  );
+  return ReactDOM.createPortal(content, document.body);
+}
+function Btn({ onClick, children, variant = 'primary', sm, disabled, className = '', title }) {
+  const base = 'inline-flex items-center gap-1.5 font-medium rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-offset-1';
+  const size = sm ? 'text-xs px-2.5 py-1.5' : 'text-sm px-3.5 py-2';
+  const vs = {
+    primary: 'bg-indigo-600 hover:bg-indigo-700 text-white focus:ring-indigo-500',
+    secondary: 'bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 focus:ring-indigo-400',
+    danger: 'bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 focus:ring-red-400',
+    ghost: 'text-slate-500 hover:bg-slate-100 focus:ring-slate-400',
+  };
+  return (
+    <button onClick={onClick} disabled={disabled} title={title}
+      className={`${base} ${size} ${vs[variant]} ${disabled ? 'opacity-50 cursor-not-allowed' : ''} ${className}`}>{children}</button>
+  );
+}
+function Field({ label, hint, children }) {
+  return (
+    <div className="mb-4">
+      <label className="block text-sm font-semibold text-slate-700 mb-1">{label}</label>
+      {hint && <p className="text-xs text-slate-400 mb-1.5">{hint}</p>}
+      {children}
+    </div>
+  );
+}
+const inputCls = 'w-full border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white focus:border-indigo-400 transition-colors';
+const textareaCls = inputCls + ' resize-y';
+
+// A confirmation that needs a reason — used for skip, send back and held up.
+function ReasonModal({ title, message, label, required = true, confirmLabel, danger, onConfirm, onClose }) {
+  const [reason, setReason] = useState('');
+  const ok = !required || reason.trim();
+  return (
+    <Modal title={title} onClose={onClose} footer={<>
+      <Btn variant="secondary" onClick={onClose}>Cancel</Btn>
+      <Btn variant={danger ? 'danger' : 'primary'} disabled={!ok} onClick={() => ok && onConfirm(reason.trim())}>{confirmLabel}</Btn>
+    </>}>
+      <p className="text-sm text-slate-600 mb-3">{message}</p>
+      <Field label={label}>
+        <textarea autoFocus rows={3} className={textareaCls} value={reason} onChange={e => setReason(e.target.value)} />
+      </Field>
+    </Modal>
+  );
+}
+
+function PeoplePicker({ people, value, onChange }) {
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      {people.length === 0 && <span className="text-xs text-slate-400">No people yet — add them under People.</span>}
+      {people.map(p => {
+        const on = value.includes(p.id);
+        return (
+          <button key={p.id} type="button" onClick={() => onChange(on ? value.filter(x => x !== p.id) : [...value, p.id])}
+            className={`inline-flex items-center gap-1.5 text-xs border rounded-full pl-0.5 pr-2 py-0.5 ${on ? 'bg-indigo-50 border-indigo-300 text-indigo-800' : 'bg-white border-slate-300 text-slate-600 hover:bg-slate-50'}`}>
+            <Avatar person={p} size={18} />{p.name}{on && <Icon name="check" size={11} />}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+// ── Login screen ───────────────────────────────────────────────────────────────
+function LoginScreen() {
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+  const submit = async (e) => {
+    e.preventDefault(); setError(''); setLoading(true);
+    try { await getFbAuth().signInWithEmailAndPassword(email.trim(), password); }
+    catch (err) {
+      setError(err.code === 'auth/invalid-credential' || err.code === 'auth/wrong-password' || err.code === 'auth/user-not-found'
+        ? 'Invalid email or password.' : 'Sign-in failed. Please try again.');
+      setLoading(false);
+    }
+  };
+  return (
+    <div className="min-h-screen bg-slate-100 flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-8">
+        <h1 className="text-xl font-bold text-slate-800 mb-1">CS Program Tracker</h1>
+        <p className="text-sm text-slate-500 mb-6">Continuing Studies · Langara College</p>
+        <form onSubmit={submit} className="space-y-4">
+          <div>
+            <label className="block text-xs font-semibold text-slate-600 mb-1">Email</label>
+            <input type="email" value={email} onChange={e => setEmail(e.target.value)} className={inputCls} placeholder="you@langara.ca" required autoFocus />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-slate-600 mb-1">Password</label>
+            <input type="password" value={password} onChange={e => setPassword(e.target.value)} className={inputCls} required />
+          </div>
+          {error && <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{error}</p>}
+          <button type="submit" disabled={loading}
+            className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-lg py-2 text-sm disabled:opacity-60">
+            {loading ? 'Signing in…' : 'Sign in'}
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// ── People editor ──────────────────────────────────────────────────────────────
+function PeopleModal({ data, onClose }) {
+  const [editing, setEditing] = useState(null);   // person draft or null
+  const save = () => {
+    const d = editing;
+    if (!d.name.trim()) return;
+    const id = d.id || uid();
+    dbSet('people/' + id, { name: d.name.trim(), email: d.email.trim(), roleIds: d.roleIds });
+    setEditing(null);
+  };
+  const del = (p) => {
+    if (!confirm('Remove ' + p.name + '? They will drop off any steps they are tagged on.')) return;
+    dbRemove('people/' + p.id);
+  };
+  const roleLabel = (id) => (data.roles.find(r => r.id === id) || {}).label || id;
+  return (
+    <Modal title="People" wide onClose={onClose}>
+      <p className="text-xs text-slate-500 mb-3">
+        The email should match the one they sign in with — that is how the dashboard knows which steps are theirs.
+        Default roles fill those roles on every new project unless the project says otherwise.
+      </p>
+      {!editing && <>
+        <div className="divide-y border rounded-lg mb-3">
+          {data.people.length === 0 && <div className="p-4 text-sm text-slate-400">No people yet.</div>}
+          {data.people.map(p => (
+            <div key={p.id} className="flex items-center gap-3 px-3 py-2">
+              <Avatar person={p} size={28} />
+              <div className="flex-1 min-w-0">
+                <div className="text-sm font-medium text-slate-800">{p.name}</div>
+                <div className="text-xs text-slate-500 truncate">{p.email || 'No email'}{p.roleIds.length ? ' · Default ' + p.roleIds.map(roleLabel).join(', ') : ''}</div>
+              </div>
+              <Btn sm variant="ghost" onClick={() => setEditing({ ...p, email: p.email || '' })}><Icon name="edit" size={12} />Edit</Btn>
+              <Btn sm variant="ghost" onClick={() => del(p)}><Icon name="trash" size={12} /></Btn>
+            </div>
+          ))}
+        </div>
+        <Btn onClick={() => setEditing({ name: '', email: '', roleIds: [] })}><Icon name="plus" size={14} />Add person</Btn>
+      </>}
+      {editing && <div>
+        <Field label="Name"><input autoFocus className={inputCls} value={editing.name} onChange={e => setEditing({ ...editing, name: e.target.value })} /></Field>
+        <Field label="Email" hint="The address they sign in with."><input className={inputCls} value={editing.email} onChange={e => setEditing({ ...editing, email: e.target.value })} /></Field>
+        <Field label="Default roles" hint="A role can have more than one person.">
+          <div className="flex flex-wrap gap-2">
+            {data.roles.map(r => {
+              const on = editing.roleIds.includes(r.id);
+              return (
+                <label key={r.id} className={`inline-flex items-center gap-1.5 text-sm border rounded-lg px-2.5 py-1 cursor-pointer ${on ? 'bg-indigo-50 border-indigo-300' : 'border-slate-300'}`}>
+                  <input type="checkbox" checked={on} onChange={() => setEditing({ ...editing, roleIds: on ? editing.roleIds.filter(x => x !== r.id) : [...editing.roleIds, r.id] })} />
+                  {r.label}
+                </label>
+              );
+            })}
+          </div>
+        </Field>
+        <div className="flex gap-2 justify-end">
+          <Btn variant="secondary" onClick={() => setEditing(null)}>Cancel</Btn>
+          <Btn disabled={!editing.name.trim()} onClick={save}>Save person</Btn>
+        </div>
+      </div>}
+    </Modal>
+  );
+}
+
+// ── New project ────────────────────────────────────────────────────────────────
+function NewProjectModal({ data, authUser, onCreated, onClose }) {
+  const [name, setName] = useState('');
+  const [wfId, setWfId] = useState(data.workflows[0] ? data.workflows[0].id : '');
+  const [startDate, setStartDate] = useState(todayStr());
+  const [dueDate, setDueDate] = useState('');
+  const wf = data.workflows.find(w => w.id === wfId);
+  const create = () => {
+    if (!name.trim() || !wf) return;
+    const id = uid();
+    const docs = snapshotDocs(wf);
+    const usedGroups = new Set();
+    docs.forEach(d => d.steps.forEach(s => s.syncGroupId && usedGroups.add(s.syncGroupId)));
+    const syncGroupMeta = {};
+    usedGroups.forEach(g => { if (data.syncGroupMeta[g]) syncGroupMeta[g] = data.syncGroupMeta[g]; });
+    dbSet('projects/' + id, {
+      name: name.trim(), workflowId: wf.id, workflowName: wf.name || '', sourceHash: docsHash(docs),
+      documents: docs, syncGroupMeta, startDate, dueDate, notes: '', archived: false,
+      createdAt: Date.now(), createdBy: authUser.email || '', updatedAt: Date.now(),
+    }).then(() => { logActivity(id, authUser, 'Created from the "' + (wf.name || '') + '" workflow'); onCreated(id); });
+  };
+  return (
+    <Modal title="New project" onClose={onClose} footer={<>
+      <Btn variant="secondary" onClick={onClose}>Cancel</Btn>
+      <Btn disabled={!name.trim() || !wf} onClick={create}>Create project</Btn>
+    </>}>
+      <Field label="Project name" hint="e.g. the program or course it is for.">
+        <input autoFocus className={inputCls} value={name} onChange={e => setName(e.target.value)} placeholder="Certificate in …" />
+      </Field>
+      <Field label="Workflow" hint="The project copies this workflow's documents and steps from the Workflow Map.">
+        <select className={inputCls} value={wfId} onChange={e => setWfId(e.target.value)}>
+          {data.workflows.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
+        </select>
+      </Field>
+      {wf && <div className="text-xs text-slate-500 -mt-2 mb-4">
+        {wf.documents.map(d => (d.name || 'Document') + ' (' + (d.steps || []).length + ' steps)').join(' · ') || 'This workflow has no documents yet.'}
+      </div>}
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="Start date"><input type="date" className={inputCls} value={startDate} onChange={e => setStartDate(e.target.value)} /></Field>
+        <Field label="Target completion"><input type="date" className={inputCls} value={dueDate} onChange={e => setDueDate(e.target.value)} /></Field>
+      </div>
+    </Modal>
+  );
+}
+
+// ── Project settings (details, roles, workflow version, archive) ───────────────
+function ProjectSettingsModal({ project, data, authUser, onDeleted, onClose }) {
+  const [form, setForm] = useState({ name: project.name, startDate: project.startDate, dueDate: project.dueDate, notes: project.notes });
+  const [roles, setRoles] = useState(() => {
+    const r = {};
+    data.roles.forEach(role => { r[role.id] = project.roleAssignments[role.id] ? roleHolders(project, data.people, role.id) : null; });
+    return r;
+  });
+  const base = 'projects/' + project.id;
+  const save = () => {
+    // An empty override is stored as 'none' — Firebase drops empty arrays, and
+    // "nobody on this project" has to stay different from "use the default".
+    const ra = {};
+    Object.entries(roles).forEach(([k, v]) => { if (v) ra[k] = v.length ? v : 'none'; });
+    dbUpdate(base, { ...form, roleAssignments: Object.keys(ra).length ? ra : null, updatedAt: Date.now() });
+    logActivity(project.id, authUser, 'Edited project details');
+    onClose();
+  };
+  const toggleArchive = () => {
+    dbUpdate(base, { archived: !project.archived, updatedAt: Date.now() });
+    logActivity(project.id, authUser, project.archived ? 'Restored from archive' : 'Archived the project');
+    onClose();
+  };
+  const del = () => {
+    const typed = prompt('This permanently deletes "' + project.name + '" and all its progress. Type DELETE to confirm.');
+    if (typed !== 'DELETE') return;
+    dbRemove(base).then(onDeleted);
+  };
+  return (
+    <Modal title="Project settings" wide onClose={onClose} footer={<>
+      <Btn variant="danger" onClick={del} className="mr-auto"><Icon name="trash" size={13} />Delete</Btn>
+      <Btn variant="secondary" onClick={toggleArchive}><Icon name="archive" size={13} />{project.archived ? 'Restore' : 'Archive'}</Btn>
+      <Btn variant="secondary" onClick={onClose}>Cancel</Btn>
+      <Btn onClick={save}>Save</Btn>
+    </>}>
+      <Field label="Name"><input className={inputCls} value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} /></Field>
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="Start date"><input type="date" className={inputCls} value={form.startDate} onChange={e => setForm({ ...form, startDate: e.target.value })} /></Field>
+        <Field label="Target completion"><input type="date" className={inputCls} value={form.dueDate} onChange={e => setForm({ ...form, dueDate: e.target.value })} /></Field>
+      </div>
+      <Field label="Project notes" hint="Shared with everyone."><textarea rows={3} className={textareaCls} value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} /></Field>
+      <Field label="Who fills each role on this project" hint="Uses the defaults from People unless you override a role here.">
+        <div className="space-y-2">
+          {data.roles.map(role => {
+            const ov = roles[role.id];
+            const defaults = data.people.filter(p => p.roleIds.includes(role.id));
+            return (
+              <div key={role.id} className="border rounded-lg p-2.5">
+                <div className="flex items-center gap-2 mb-1.5">
+                  <span className="text-sm font-semibold text-slate-700">{role.label}</span>
+                  <label className="ml-auto text-xs text-slate-500 inline-flex items-center gap-1.5">
+                    <input type="checkbox" checked={!!ov} onChange={() => setRoles({ ...roles, [role.id]: ov ? null : defaults.map(p => p.id) })} />
+                    Override for this project
+                  </label>
+                </div>
+                {ov
+                  ? <PeoplePicker people={data.people} value={ov} onChange={v => setRoles({ ...roles, [role.id]: v })} />
+                  : <div className="text-xs text-slate-500">{defaults.length ? 'Default: ' + defaults.map(p => p.name).join(', ') : 'No default person'}</div>}
+              </div>
+            );
+          })}
+        </div>
+      </Field>
+    </Modal>
+  );
+}
+
+// ── Update to latest workflow ─────────────────────────────────────────────────
+function workflowDrift(project, data) {
+  const wf = data.workflows.find(w => w.id === project.workflowId);
+  if (!wf) return { missing: true };
+  const latest = snapshotDocs(wf);
+  if (docsHash(latest) === project.sourceHash) return null;
+  const newIds = new Set();
+  latest.forEach(d => d.steps.forEach(s => newIds.add(d.id + '/' + s.id)));
+  const lost = [];
+  project.documents.forEach(d => d.steps.forEach(s => {
+    const c = cellOf(project, d.id, s.id);
+    if (!newIds.has(d.id + '/' + s.id) && (c.status !== 'pending' || c.notes || Object.keys(c.history).length)) lost.push(d.name + ' — ' + s.stageName);
+  }));
+  return { wf, latest, lost };
+}
+function applyWorkflowUpdate(project, data, drift, authUser) {
+  const msg = drift.lost.length
+    ? 'These steps have progress but are no longer in the workflow. Their records are kept but will not show:\n\n  ' + drift.lost.join('\n  ') + '\n\nUpdate anyway?'
+    : 'Update this project to the current version of "' + drift.wf.name + '"? Progress on steps that still exist is kept.';
+  if (!confirm(msg)) return;
+  const syncGroupMeta = { ...project.syncGroupMeta };
+  drift.latest.forEach(d => d.steps.forEach(s => { if (s.syncGroupId && data.syncGroupMeta[s.syncGroupId]) syncGroupMeta[s.syncGroupId] = data.syncGroupMeta[s.syncGroupId]; }));
+  dbUpdate('projects/' + project.id, { documents: drift.latest, sourceHash: docsHash(drift.latest), syncGroupMeta, workflowName: drift.wf.name || '', updatedAt: Date.now() });
+  logActivity(project.id, authUser, 'Updated to the latest version of the workflow');
+}
+
+// ── Step panel ─────────────────────────────────────────────────────────────────
+function StepModal({ project, doc, step, data, authUser, onClose }) {
+  const cell = cellOf(project, doc.id, step.id);
+  const [notes, setNotes] = useState(cell.notes);
+  const [ask, setAsk] = useState(null);           // pending ReasonModal config
+  const [allAtMeeting, setAllAtMeeting] = useState(false);
+  const path = cellPath(project.id, doc.id, step.id);
+  const who = (authUser && authUser.email) || '';
+  const stepIdx = doc.steps.findIndex(s => s.id === step.id);
+
+  // Other documents' steps that are the same meeting (same sync group).
+  const siblings = step.syncGroupId ? project.documents.flatMap(d => d.id === doc.id ? [] :
+    d.steps.filter(s => s.syncGroupId === step.syncGroupId).map(s => ({ doc: d, step: s }))) : [];
+  const meetingName = step.syncGroupId && project.syncGroupMeta[step.syncGroupId] ? project.syncGroupMeta[step.syncGroupId].name : '';
+  const targets = allAtMeeting ? [{ doc, step }, ...siblings] : [{ doc, step }];
+
+  const setStatus = (status, reason) => {
+    targets.forEach(t => {
+      const p = cellPath(project.id, t.doc.id, t.step.id);
+      const c = cellOf(project, t.doc.id, t.step.id);
+      const upd = { status, heldReason: status === 'held_up' ? reason : null };
+      if (status === 'in_progress' && !c.startDate) upd.startDate = todayStr();
+      dbUpdate(p, upd);
+      pushHistory(p, authUser, { type: status === 'skipped' ? 'skipped' : 'status', to: status, round: c.round, reason: reason || null });
+      logActivity(project.id, authUser, t.doc.name + ' · ' + t.step.stageName + ': ' + STATUS[status].label + (reason ? ' — ' + reason : ''));
+    });
+  };
+  const choose = (status) => {
+    if (status === cell.status) return;
+    if (status === 'held_up') return setAsk({ title: 'Mark as held up', message: 'What is it waiting on?', label: 'Reason', confirmLabel: 'Mark held up', run: r => setStatus('held_up', r) });
+    if (status === 'skipped') return setAsk({ title: 'Skip this step?', message: 'Skipping marks "' + step.stageName + '" as not needed for ' + doc.name + '. It stays on record as skipped.', label: 'Why is it being skipped?', confirmLabel: 'Skip step', danger: true, run: r => setStatus('skipped', r) });
+    setStatus(status);
+  };
+  const setField = (field, value) => {
+    const fanOut = field === 'meetingDate' ? targets : [{ doc, step }];
+    fanOut.forEach(t => dbUpdate(cellPath(project.id, t.doc.id, t.step.id), { [field]: value || null }));
+  };
+
+  // Send back: the target step opens a new round; every step after it that
+  // had been started resets to pending in a new round. History is never
+  // cleared, so the earlier rounds stay on record.
+  const sendBack = (targetIdx, reason) => {
+    const target = doc.steps[targetIdx];
+    for (let i = targetIdx; i <= stepIdx; i++) {
+      const s = doc.steps[i];
+      const c = cellOf(project, doc.id, s.id);
+      const touched = c.status !== 'pending' || i === targetIdx;
+      if (!touched) continue;
+      const p = cellPath(project.id, doc.id, s.id);
+      const round = c.status === 'pending' && !Object.keys(c.history).length ? c.round : c.round + 1;
+      dbUpdate(p, { status: i === targetIdx ? 'in_progress' : 'pending', round, heldReason: null });
+      pushHistory(p, authUser, { type: 'sent_back', to: i === targetIdx ? 'in_progress' : 'pending', round, from: step.stageName, reason });
+    }
+    logActivity(project.id, authUser, doc.name + ' sent back from ' + step.stageName + ' to ' + target.stageName + ' — ' + reason);
+    onClose();
+  };
+  const [backTo, setBackTo] = useState(stepIdx > 0 ? stepIdx - 1 : -1);
+
+  const history = Object.values(cell.history).sort((a, b) => (b.at || 0) - (a.at || 0));
+  const assigned = stepPeople(project, data.people, step, cell);
+  const roleLabel = (id) => (data.roles.find(r => r.id === id) || {}).label || '';
+  const due = dueLabel(cell.dueDate);
+
+  return (
+    <Modal title={doc.name + ' · ' + step.stageName} wide onClose={onClose}>
+      <div className="flex flex-wrap items-center gap-2 mb-4">
+        <span className="w-3 h-3 rounded-full" style={{ background: doc.color }} />
+        <span className="text-sm text-slate-600">Step {stepIdx + 1} of {doc.steps.length}</span>
+        {cell.round > 1 && <span className="text-xs font-semibold bg-violet-50 text-violet-700 border border-violet-200 rounded-full px-2 py-0.5">Round {cell.round}</span>}
+        {step.informationOnly && <span className="text-xs text-slate-500 border border-dashed border-slate-300 rounded-full px-2 py-0.5">Information only</span>}
+        {due && !isClosed(cell.status) && <span className={`text-xs border rounded-full px-2 py-0.5 ${TONE[due.tone]}`}>{due.text}</span>}
+      </div>
+
+      <Field label="Status">
+        <div className="flex flex-wrap gap-1.5">
+          {STATUSES.map(s => (
+            <button key={s.id} onClick={() => choose(s.id)}
+              className={`inline-flex items-center gap-1.5 text-sm border rounded-lg px-3 py-1.5 ${cell.status === s.id ? s.cls + ' ring-2 ring-offset-1 ring-indigo-300' : 'bg-white border-slate-300 text-slate-600 hover:bg-slate-50'}`}>
+              <Icon name={s.icon} size={14} />{s.label}
+            </button>
+          ))}
+        </div>
+        {cell.status === 'held_up' && cell.heldReason && <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mt-2">Held up: {cell.heldReason}</p>}
+        {siblings.length > 0 && (
+          <label className="flex items-start gap-2 mt-3 text-xs text-slate-600 bg-slate-50 border rounded-lg px-3 py-2">
+            <input type="checkbox" className="mt-0.5" checked={allAtMeeting} onChange={e => setAllAtMeeting(e.target.checked)} />
+            <span>Apply status and meeting date to every document at this meeting{meetingName ? ' (' + meetingName + ')' : ''}: {siblings.map(s => s.doc.name).join(', ')}</span>
+          </label>
+        )}
+      </Field>
+
+      <div className="grid grid-cols-3 gap-3">
+        <Field label="Start"><input type="date" className={inputCls} value={cell.startDate} onChange={e => setField('startDate', e.target.value)} /></Field>
+        <Field label="Due"><input type="date" className={inputCls} value={cell.dueDate} onChange={e => setField('dueDate', e.target.value)} /></Field>
+        <Field label={step.triggerType === 'meeting' ? 'Meeting date' : 'Meeting date (if any)'}><input type="date" className={inputCls} value={cell.meetingDate} onChange={e => setField('meetingDate', e.target.value)} /></Field>
+      </div>
+
+      <Field label="People on this step" hint={step.roleIds.length ? 'From roles: ' + step.roleIds.map(roleLabel).filter(Boolean).join(', ') + '. Tag anyone else below.' : 'Tag the people who should see this step.'}>
+        <div className="flex flex-wrap gap-1 mb-2">
+          {assigned.map(id => { const p = personById(data.people, id); return p ? <span key={id} className="inline-flex items-center gap-1 text-xs text-slate-700 bg-slate-100 rounded-full pl-0.5 pr-2 py-0.5"><Avatar person={p} size={18} />{p.name}</span> : null; })}
+          {!assigned.length && <span className="text-xs text-slate-400">Nobody yet.</span>}
+        </div>
+        <div className="text-xs font-semibold text-slate-500 mb-1">Tagged directly</div>
+        <PeoplePicker people={data.people} value={cell.assignees} onChange={v => dbSet(path + '/assignees', v.length ? v : null)} />
+      </Field>
+
+      <Field label="Notes" hint="Shared with everyone. Saved when you click away.">
+        <textarea rows={3} className={textareaCls} value={notes} onChange={e => setNotes(e.target.value)}
+          onBlur={() => { if (notes !== cell.notes) { dbUpdate(path, { notes }); logActivity(project.id, authUser, doc.name + ' · ' + step.stageName + ': edited notes'); } }} />
+      </Field>
+
+      {stepIdx > 0 && (
+        <div className="border rounded-lg p-3 mb-4 bg-slate-50">
+          <div className="text-sm font-semibold text-slate-700 mb-1 flex items-center gap-1.5"><Icon name="ret" size={14} />Send back</div>
+          <p className="text-xs text-slate-500 mb-2">Returns {doc.name} to an earlier step for another round. Steps already done stay on record.</p>
+          <div className="flex gap-2">
+            <select className={inputCls} value={backTo} onChange={e => setBackTo(Number(e.target.value))}>
+              {doc.steps.slice(0, stepIdx).map((s, i) => <option key={s.id} value={i}>{i + 1}. {s.stageName}</option>)}
+            </select>
+            <Btn variant="secondary" onClick={() => setAsk({ title: 'Send back?', message: doc.name + ' goes back to "' + doc.steps[backTo].stageName + '". That step and any started steps after it begin a new round.', label: 'Why is it going back?', confirmLabel: 'Send back', danger: true, run: r => sendBack(backTo, r) })}>Send back</Btn>
+          </div>
+        </div>
+      )}
+
+      <div>
+        <div className="text-sm font-semibold text-slate-700 mb-1.5 flex items-center gap-1.5"><Icon name="history" size={14} />History</div>
+        {!history.length && <p className="text-xs text-slate-400">Nothing yet.</p>}
+        <ul className="space-y-1">
+          {history.map((h, i) => (
+            <li key={i} className="text-xs text-slate-600 flex gap-2">
+              <span className="text-slate-400 whitespace-nowrap">{fmtStamp(h.at)}</span>
+              <span>
+                <span className="font-medium">R{h.round || 1}</span>{' '}
+                {h.type === 'sent_back' ? 'Sent back from ' + h.from + (h.to === 'pending' ? ' (reset)' : '') : (STATUS[h.to] || {}).label}
+                {h.reason ? ' — ' + h.reason : ''}<span className="text-slate-400"> · {h.by}</span>
+              </span>
+            </li>
+          ))}
+        </ul>
+      </div>
+
+      {ask && <ReasonModal {...ask} onClose={() => setAsk(null)} onConfirm={r => { ask.run(r); setAsk(null); }} />}
+    </Modal>
+  );
+}
+
+// ── Activity ───────────────────────────────────────────────────────────────────
+function ActivityModal({ project, onClose }) {
+  const items = Object.values(project.activity).sort((a, b) => (b.at || 0) - (a.at || 0));
+  return (
+    <Modal title={'Activity · ' + project.name} wide onClose={onClose}>
+      {!items.length && <p className="text-sm text-slate-400">No activity yet.</p>}
+      <ul className="divide-y">
+        {items.map((a, i) => (
+          <li key={i} className="py-2 text-sm flex gap-3">
+            <span className="text-xs text-slate-400 whitespace-nowrap w-32 flex-shrink-0">{fmtStamp(a.at)}</span>
+            <span className="text-slate-700 flex-1">{a.text}<span className="text-xs text-slate-400"> · {a.by}</span></span>
+          </li>
+        ))}
+      </ul>
+    </Modal>
+  );
+}
+
+// ── Project view: one track per document ───────────────────────────────────────
+function TrackNode({ project, doc, step, people, onOpen }) {
+  const c = cellOf(project, doc.id, step.id);
+  const s = STATUS[c.status];
+  const due = !isClosed(c.status) ? dueLabel(c.dueDate) : null;
+  const ppl = stepPeople(project, people, step, c).map(id => personById(people, id)).filter(Boolean);
+  return (
+    <button onClick={onOpen} className={`trk-node w-full text-left bg-white rounded-lg border-2 px-2.5 py-2 hover:shadow-md transition-shadow ${step.informationOnly ? 'border-dashed' : ''} ${c.status === 'skipped' ? 'st-skipped opacity-70' : ''}`}
+      style={{ borderColor: s.color }} data-status={c.status}>
+      <div className="flex items-center gap-1.5 mb-1">
+        <span style={{ color: s.color }}><Icon name={s.icon} size={14} /></span>
+        <span className="text-xs font-semibold text-slate-800 truncate flex-1">{step.stageName}</span>
+        {c.round > 1 && <span className="text-[10px] font-semibold text-violet-700 bg-violet-50 border border-violet-200 rounded px-1">R{c.round}</span>}
+      </div>
+      <div className="flex items-center gap-1 flex-wrap">
+        <StatusChip status={c.status} sm />
+        {due && <span className={`text-[10px] border rounded-full px-1.5 ${TONE[due.tone]}`}>{due.text}</span>}
+        {c.meetingDate && <span className="text-[10px] text-slate-500 inline-flex items-center gap-0.5"><Icon name="calendar" size={10} />{fmtDate(c.meetingDate)}</span>}
+        {c.notes && <span className="text-slate-400" title="Has notes"><Icon name="notes" size={11} /></span>}
+      </div>
+      {ppl.length > 0 && <div className="flex -space-x-1 mt-1.5">{ppl.slice(0, 4).map(p => <Avatar key={p.id} person={p} size={18} />)}{ppl.length > 4 && <span className="text-[10px] text-slate-500 pl-2">+{ppl.length - 4}</span>}</div>}
+    </button>
+  );
+}
+
+function ProjectView({ project, data, authUser, onBack }) {
+  const [open, setOpen] = useState(null);          // { docId, stepId }
+  const [modal, setModal] = useState(null);        // 'settings' | 'activity'
+  const spine = useMemo(() => buildStepSpine(project.documents), [project.documents]);
+  const stats = projectStats(project);
+  const drift = workflowDrift(project, data);
+  const openDoc = open && project.documents.find(d => d.id === open.docId);
+  const openStep = openDoc && openDoc.steps.find(s => s.id === open.stepId);
+  const pdue = !stats.done ? dueLabel(project.dueDate) : null;
+
+  return (
+    <div className="p-4 sm:p-6 min-w-0">
+      <button onClick={onBack} className="text-xs text-slate-500 hover:text-slate-800 inline-flex items-center gap-1 mb-2"><Icon name="chev_l" size={12} />Dashboard</button>
+      <div className="flex flex-wrap items-start gap-3 mb-4">
+        <div className="flex-1 min-w-0">
+          <div className="text-[10px] font-semibold tracking-widest text-slate-400 uppercase">Project · {project.workflowName}</div>
+          <h1 className="text-xl font-bold text-slate-800">{project.name}{project.archived && <span className="ml-2 text-xs font-medium text-slate-500 border rounded-full px-2 py-0.5 align-middle">Archived</span>}</h1>
+          <div className="text-xs text-slate-500 mt-1 flex flex-wrap gap-x-3 gap-y-1 items-center">
+            {project.startDate && <span>Started {fmtDate(project.startDate)}</span>}
+            {project.dueDate && <span>Target {fmtDate(project.dueDate)}</span>}
+            {pdue && pdue.tone !== 'slate' && <span className={`border rounded-full px-2 ${TONE[pdue.tone]}`}>{pdue.text}</span>}
+            <span>{stats.closed}/{stats.total} steps done</span>
+          </div>
+        </div>
+        <div className="flex gap-2">
+          <Btn variant="secondary" sm onClick={() => setModal('activity')}><Icon name="history" size={13} />Activity</Btn>
+          <Btn variant="secondary" sm onClick={() => setModal('settings')}><Icon name="settings" size={13} />Project settings</Btn>
+        </div>
+      </div>
+
+      {drift && !drift.missing && (
+        <div className="flex items-center gap-3 bg-amber-50 border border-amber-200 text-amber-900 text-sm rounded-lg px-3 py-2 mb-4">
+          <Icon name="warn" size={15} />
+          <span className="flex-1">The "{drift.wf.name}" workflow has changed since this project started.</span>
+          <Btn sm variant="secondary" onClick={() => applyWorkflowUpdate(project, data, drift, authUser)}>Update to latest workflow</Btn>
+        </div>
+      )}
+      {project.notes && <div className="bg-white border rounded-lg px-3 py-2 text-sm text-slate-700 mb-4 whitespace-pre-wrap"><span className="text-xs font-semibold text-slate-500 mr-2">Notes</span>{project.notes}</div>}
+
+      {!project.documents.length
+        ? <div className="text-sm text-slate-500 bg-white border rounded-lg p-6">This workflow had no documents when the project was created.</div>
+        : <div className="bg-white border rounded-xl overflow-auto">
+            <div className="trk-grid" style={{ gridTemplateColumns: '190px repeat(' + spine.length + ', minmax(160px, 1fr))' }}>
+              <div className="sticky left-0 z-10 bg-slate-50 border-b border-r px-3 py-2 text-[10px] font-semibold uppercase tracking-wider text-slate-400">Document</div>
+              {spine.map(n => <div key={n.key} className="bg-slate-50 border-b px-2 py-2 text-xs font-semibold text-slate-600 truncate" title={n.label}>{n.label}</div>)}
+              {project.documents.map(doc => {
+                const byKey = new Map();
+                doc.steps.forEach(s => { const k = stepKey(s.stageName); if (k && !byKey.has(k)) byKey.set(k, s); });
+                const idx = spine.map(n => byKey.has(n.key));
+                const first = idx.indexOf(true), last = idx.lastIndexOf(true);
+                const cur = currentIndex(project, doc);
+                const docDone = cur < 0 && doc.steps.length > 0;
+                return (
+                  <React.Fragment key={doc.id}>
+                    <div className="sticky left-0 z-10 bg-white border-b border-r px-3 py-2 flex flex-col justify-center" style={{ '--doc': doc.color }}>
+                      <div className="flex items-center gap-2"><span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: doc.color }} /><span className="text-sm font-semibold text-slate-800 truncate">{doc.name}</span></div>
+                      <div className="text-[11px] text-slate-500 mt-0.5 pl-4">{docDone ? 'Complete' : cur >= 0 ? 'At: ' + doc.steps[cur].stageName : 'No steps'}</div>
+                    </div>
+                    {spine.map((n, i) => {
+                      const s = byKey.get(n.key);
+                      const inside = i >= first && i <= last;
+                      const lineCls = !inside ? '' : s ? 'solid' + (i === first ? ' half-r' : '') + (i === last ? ' half-l' : '') : 'bypass';
+                      return (
+                        <div key={n.key} className="trk-cell border-b" style={{ '--doc': doc.color }}>
+                          {inside && !(i === first && i === last) && <div className={'trk-line ' + lineCls} />}
+                          {s && <TrackNode project={project} doc={doc} step={s} people={data.people} onOpen={() => setOpen({ docId: doc.id, stepId: s.id })} />}
+                        </div>
+                      );
+                    })}
+                  </React.Fragment>
+                );
+              })}
+            </div>
+          </div>}
+
+      {openStep && <StepModal key={open.docId + open.stepId} project={project} doc={openDoc} step={openStep} data={data} authUser={authUser} onClose={() => setOpen(null)} />}
+      {modal === 'settings' && <ProjectSettingsModal project={project} data={data} authUser={authUser} onDeleted={onBack} onClose={() => setModal(null)} />}
+      {modal === 'activity' && <ActivityModal project={project} onClose={() => setModal(null)} />}
+    </div>
+  );
+}
+
+// ── Dashboard ──────────────────────────────────────────────────────────────────
+function Dashboard({ data, authUser, onOpen, onNew }) {
+  const [q, setQ] = useState('');
+  const [wf, setWf] = useState('');
+  const [mine, setMine] = useState(false);
+  const [showArchived, setShowArchived] = useState(false);
+  const me = meOf(data.people, authUser);
+  const attention = attentionFor(data.projects, data.people, me);
+
+  const involves = (project, pid) => project.documents.some(d => d.steps.some(s => stepPeople(project, data.people, s, cellOf(project, d.id, s.id)).includes(pid)));
+  const list = data.projects.filter(p =>
+    (showArchived ? p.archived : !p.archived) &&
+    (!wf || p.workflowId === wf) &&
+    (!q || p.name.toLowerCase().includes(q.toLowerCase())) &&
+    (!mine || (me && involves(p, me.id))));
+
+  return (
+    <div className="p-4 sm:p-6 max-w-6xl mx-auto">
+      <section className="mb-6">
+        <h2 className="text-sm font-bold text-slate-700 mb-2 flex items-center gap-1.5"><Icon name="t_cust" size={14} />Needs your attention</h2>
+        {!me && <div className="text-sm text-slate-600 bg-white border rounded-lg px-4 py-3">
+          Your sign-in ({authUser.email}) is not on the People list yet, so nothing can be assigned to you. Add yourself under <strong>People</strong>.
+        </div>}
+        {me && !attention.length && <div className="text-sm text-slate-500 bg-white border rounded-lg px-4 py-3">Nothing pending for you.</div>}
+        {me && attention.length > 0 && (
+          <div className="bg-white border rounded-lg divide-y" data-testid="attention">
+            {attention.map((it, i) => {
+              const due = dueLabel(it.cell.dueDate);
+              return (
+                <button key={i} onClick={() => onOpen(it.project.id)} className="w-full text-left px-4 py-2.5 flex flex-wrap items-center gap-x-3 gap-y-1 hover:bg-slate-50">
+                  <span className="w-2.5 h-2.5 rounded-full" style={{ background: it.doc.color }} />
+                  <span className="text-sm font-medium text-slate-800">{it.step.stageName}</span>
+                  <span className="text-xs text-slate-500">{it.doc.name} · {it.project.name}</span>
+                  <span className="ml-auto flex items-center gap-2">
+                    {it.cell.round > 1 && <span className="text-[10px] font-semibold text-violet-700 bg-violet-50 border border-violet-200 rounded px-1">Round {it.cell.round}</span>}
+                    {due && <span className={`text-xs border rounded-full px-2 ${TONE[due.tone]}`}>{due.text}</span>}
+                    <StatusChip status={it.cell.status} sm />
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </section>
+
+      <section>
+        <div className="flex flex-wrap items-center gap-2 mb-2">
+          <h2 className="text-sm font-bold text-slate-700 mr-2">{showArchived ? 'Archived projects' : 'Projects'}</h2>
+          <input className="border border-slate-300 rounded-lg px-2.5 py-1.5 text-sm bg-white w-48" placeholder="Search" value={q} onChange={e => setQ(e.target.value)} />
+          <select className="border border-slate-300 rounded-lg px-2 py-1.5 text-sm bg-white" value={wf} onChange={e => setWf(e.target.value)}>
+            <option value="">All workflows</option>
+            {data.workflows.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
+          </select>
+          <label className="text-sm text-slate-600 inline-flex items-center gap-1.5"><input type="checkbox" checked={mine} onChange={e => setMine(e.target.checked)} />Mine only</label>
+          <label className="text-sm text-slate-600 inline-flex items-center gap-1.5"><input type="checkbox" checked={showArchived} onChange={e => setShowArchived(e.target.checked)} />Archived</label>
+          <Btn className="ml-auto" onClick={onNew}><Icon name="plus" size={14} />New project</Btn>
+        </div>
+        {!list.length && <div className="text-sm text-slate-500 bg-white border rounded-lg px-4 py-6 text-center">
+          {data.projects.length ? 'No projects match.' : 'No projects yet. Start one from a workflow with New project.'}
+        </div>}
+        <div className="space-y-2">
+          {list.map(p => {
+            const st = projectStats(p);
+            const due = !st.done ? dueLabel(p.dueDate) : null;
+            return (
+              <button key={p.id} onClick={() => onOpen(p.id)} className="w-full text-left bg-white border rounded-lg px-4 py-3 hover:shadow-md transition-shadow" data-testid="project-row">
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                  <span className="text-base font-semibold text-slate-800">{p.name}</span>
+                  <span className="text-xs text-slate-500">{p.workflowName}</span>
+                  <span className="ml-auto flex items-center gap-2 text-xs">
+                    {st.held > 0 && <span className="border rounded-full px-2 bg-amber-50 text-amber-800 border-amber-200">{st.held} held up</span>}
+                    {st.overdue > 0 && <span className="border rounded-full px-2 bg-red-50 text-red-700 border-red-200">{st.overdue} overdue</span>}
+                    {st.done ? <StatusChip status="complete" sm /> : due && <span className={`border rounded-full px-2 ${TONE[due.tone]}`}>{due.text}</span>}
+                  </span>
+                </div>
+                <div className="flex items-center gap-2 mt-2">
+                  <div className="flex-1 h-1.5 bg-slate-100 rounded-full overflow-hidden"><div className="h-full bg-emerald-500" style={{ width: st.pct + '%' }} /></div>
+                  <span className="text-xs text-slate-500 w-10 text-right">{st.pct}%</span>
+                </div>
+                <div className="flex flex-wrap gap-x-4 gap-y-1 mt-2">
+                  {p.documents.map(d => {
+                    const cur = currentIndex(p, d);
+                    const c = cur >= 0 ? cellOf(p, d.id, d.steps[cur].id) : null;
+                    return (
+                      <span key={d.id} className="text-xs text-slate-600 inline-flex items-center gap-1.5">
+                        <span className="w-2 h-2 rounded-full" style={{ background: d.color }} />
+                        <span className="font-medium">{d.name}:</span>
+                        {cur < 0 ? <span className="text-emerald-700">done</span> : <>{d.steps[cur].stageName} <StatusChip status={c.status} sm /></>}
+                      </span>
+                    );
+                  })}
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      </section>
+    </div>
+  );
+}
+
+// ── App ────────────────────────────────────────────────────────────────────────
+// Routing is the URL hash (#/p/<id>), so a project can be linked to directly.
+const readRoute = () => { const m = location.hash.match(/^#\/p\/([\w-]+)/); return m ? m[1] : null; };
+
+function App({ authUser }) {
+  const [data, online] = useTrackerData(authUser);
+  const [route, setRoute] = useState(readRoute());
+  const [modal, setModal] = useState(null);   // 'people' | 'new'
+  useEffect(() => {
+    const on = () => setRoute(readRoute());
+    window.addEventListener('hashchange', on);
+    return () => window.removeEventListener('hashchange', on);
+  }, []);
+  const go = useCallback((id) => { location.hash = id ? '#/p/' + id : '#/'; setRoute(id); }, []);
+  const project = data && route ? data.projects.find(p => p.id === route) : null;
+  useEffect(() => { document.title = project ? project.name + ' · CS Program Tracker' : 'CS Program Tracker'; }, [project && project.name]);
+
+  if (!data) return <div className="flex items-center justify-center h-screen text-slate-400 text-sm">Loading…</div>;
+  return (
+    <div className="min-h-screen flex flex-col">
+      <header className="bg-white border-b px-4 sm:px-6 py-2.5 flex items-center gap-3 sticky top-0 z-20">
+        <button onClick={() => go(null)} className="flex items-center gap-2 text-left">
+          <span className="w-8 h-8 rounded-lg bg-indigo-600 text-white flex items-center justify-center"><Icon name="dashboard" size={17} /></span>
+          <span>
+            <span className="block text-sm font-bold text-slate-800 leading-tight">CS Program Tracker</span>
+            <span className="block text-[11px] text-slate-500 leading-tight">Continuing Studies · Langara</span>
+          </span>
+        </button>
+        <span className={`ml-2 inline-flex items-center gap-1 text-[11px] ${online ? 'text-emerald-600' : 'text-red-600'}`} title={online ? 'Live — changes sync as you make them' : 'Offline — changes will sync when you reconnect'}>
+          <span className={`w-2 h-2 rounded-full ${online ? 'bg-emerald-500' : 'bg-red-500'}`} />{online ? 'Live' : 'Offline'}
+        </span>
+        <div className="ml-auto flex items-center gap-1.5">
+          <a href={MAP_URL} className="inline-flex items-center gap-1.5 text-sm text-slate-600 hover:bg-slate-100 rounded-lg px-2.5 py-1.5"><Icon name="map" size={14} />Workflow Map</a>
+          <Btn variant="ghost" onClick={() => setModal('people')}><Icon name="roles" size={14} />People</Btn>
+          <Btn variant="ghost" title={'Sign out ' + (authUser.email || '')} onClick={() => getFbAuth().signOut()}><Icon name="signout" size={14} /></Btn>
+        </div>
+      </header>
+      <main className="flex-1 min-w-0">
+        {route && project
+          ? <ProjectView project={project} data={data} authUser={authUser} onBack={() => go(null)} />
+          : route
+            ? <div className="p-6 text-sm text-slate-500">That project no longer exists. <button className="text-indigo-600 underline" onClick={() => go(null)}>Back to the dashboard</button></div>
+            : <Dashboard data={data} authUser={authUser} onOpen={go} onNew={() => setModal('new')} />}
+      </main>
+      {modal === 'people' && <PeopleModal data={data} onClose={() => setModal(null)} />}
+      {modal === 'new' && <NewProjectModal data={data} authUser={authUser} onClose={() => setModal(null)} onCreated={id => { setModal(null); go(id); }} />}
+    </div>
+  );
+}
+
+function Root() {
+  const [authUser, setAuthUser] = useState(undefined);
+  useEffect(() => { getFbApp(); return getFbAuth().onAuthStateChanged(u => setAuthUser(u)); }, []);
+  if (authUser === undefined) return <div className="flex items-center justify-center h-screen text-slate-400 text-sm">Checking authentication…</div>;
+  if (!authUser) return <LoginScreen />;
+  return <App authUser={authUser} />;
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<Root />);
+</script>
+</body>
+</html>

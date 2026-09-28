@@ -34,6 +34,7 @@ npm run build        # just transpile — catches "blank page" errors early
                      # after every edit or you will be measuring stale output.
 npm run preview      # rebuild dev/.out/preview.html, openable in a browser
 npm run shot flow    # screenshot a view: documents | flow | rowlock | published
+npm run tracker      # build dev/.out/tracker.html and run the tracker checks
 ```
 
 `npm run shot published` also writes a PDF, so print output can be checked.

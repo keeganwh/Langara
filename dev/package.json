@@ -6,7 +6,8 @@
     "build": "node build.js",
     "preview": "node preview.js",
     "check": "node build.js && node preview.js && node checks.js",
-    "shot": "node screenshot.js"
+    "shot": "node screenshot.js",
+    "tracker": "node tracker-preview.js && node tracker-checks.js"
   },
   "dependencies": {
     "@babel/standalone": "7.23.10",
