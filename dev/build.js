@@ -5,12 +5,12 @@ const fs = require('fs');
 const path = require('path');
 const babel = require('@babel/standalone');
 
-const APP = path.join(__dirname, '..', 'pipeline-tool-v2.html');
+const APP = path.join(__dirname, '..', 'workflow-tool.html');
 const OUT = path.join(__dirname, '.out');
 
 const src = fs.readFileSync(APP, 'utf8');
 const m = src.match(/<script type="text\/babel">([\s\S]*?)<\/script>\s*<\/body>/);
-if (!m) { console.error('Could not find the app script block in pipeline-tool-v2.html'); process.exit(1); }
+if (!m) { console.error('Could not find the app script block in workflow-tool.html'); process.exit(1); }
 
 let code;
 try {

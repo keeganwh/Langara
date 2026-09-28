@@ -45,7 +45,7 @@ const cell = (d, docId, stepId) => {
   let t = await text(p);
   ok('boots to the dashboard', t.includes('Needs your attention') && t.includes('New project'));
   ok('asks an unlisted user to add themselves', t.includes('not on the People list'));
-  ok('links back to the Workflow Map', await p.evaluate(() => !!document.querySelector('a[href="pipeline-tool-v2.html"]')));
+  ok('links back to the Workflow Map', await p.evaluate(() => !!document.querySelector('a[href="workflow-tool.html"]')));
 
   console.log('\nPeople');
   await click(p, 'button', 'People'); await p.waitForTimeout(150);

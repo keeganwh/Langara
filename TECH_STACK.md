@@ -3,7 +3,7 @@
 ## Summary
 
 A **single-file, build-free React application**. One HTML document
-(`pipeline-tool-v2.html`) contains the markup, styles, and the entire
+(`workflow-tool.html`) contains the markup, styles, and the entire
 application source, compiled in the browser at load time. There is no
 `package.json`, no bundler, no test runner, and no CI. Deployment is
 "put the file somewhere and open it."

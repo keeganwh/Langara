@@ -37,10 +37,10 @@ const { useState, useEffect, useRef, useCallback, useMemo } = React;
 
 // ── Utilities ──────────────────────────────────────────────────────────────────
 // The tracker runs live workflows. The map it runs them from is the Workflow
-// Map (pipeline-tool-v2.html), read from `pipeline`; everything the tracker
+// Map (workflow-tool.html), read from `pipeline`; everything the tracker
 // writes lives under `tracker`. It never writes to `pipeline`.
 const uid = () => Math.random().toString(36).slice(2, 9);
-const MAP_URL = 'pipeline-tool-v2.html';
+const MAP_URL = 'workflow-tool.html';
 
 // ── Firebase config ────────────────────────────────────────────────────────────
 const FIREBASE_CONFIG = {

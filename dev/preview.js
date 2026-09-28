@@ -16,14 +16,14 @@ const R = p => fs.readFileSync(p, 'utf8');
 
 fs.mkdirSync(OUT, { recursive: true });
 
-const src = R(path.join(ROOT, 'pipeline-tool-v2.html'));
+const src = R(path.join(ROOT, 'workflow-tool.html'));
 const appCss = (src.match(/<style>([\s\S]*?)<\/style>/) || [, ''])[1];
 const bodyClass = (src.match(/<body class="([^"]*)"/) || [, ''])[1];
 
 // Tailwind, compiled against the app's own classes
 fs.writeFileSync(path.join(OUT, 'in.css'), '@tailwind base;@tailwind components;@tailwind utilities;');
 execFileSync('npx', ['tailwindcss', '-i', path.join(OUT, 'in.css'), '-o', path.join(OUT, 'tw.css'),
-  '--content', path.join(ROOT, 'pipeline-tool-v2.html'), '--minify'],
+  '--content', path.join(ROOT, 'workflow-tool.html'), '--minify'],
   { cwd: __dirname, stdio: ['ignore', 'ignore', 'inherit'] });
 
 // Optional: your own Backup & Restore export. Gitignored — see dev/README.md.
@@ -59,7 +59,7 @@ const stub = `
 
 const html = `<!DOCTYPE html>
 <html lang="en"><head><meta charset="UTF-8"/>
-<title>CS Pipeline Tool — local preview</title>
+<title>CS Workflow Tool — local preview</title>
 <style>${R(path.join(OUT, 'tw.css'))}</style>
 <style>${appCss}</style>
 <style>

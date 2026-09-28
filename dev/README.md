@@ -1,7 +1,7 @@
 # dev — local checking tools
 
 **This folder is not part of the app.** The app is still exactly one file,
-`pipeline-tool-v2.html`, and GitHub Pages serves only that. Nothing here is
+`workflow-tool.html`, and GitHub Pages serves only that. Nothing here is
 deployed, and you never need to touch it.
 
 ## What it's for

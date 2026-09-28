@@ -1,7 +1,7 @@
 {
   "name": "cs-pipeline-dev",
   "private": true,
-  "description": "Local checking tools for pipeline-tool-v2.html. Not part of the app.",
+  "description": "Local checking tools for workflow-tool.html. Not part of the app.",
   "scripts": {
     "build": "node build.js",
     "preview": "node preview.js",

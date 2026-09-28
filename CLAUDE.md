@@ -4,7 +4,7 @@ Guidance for Claude Code when working in this repository.
 
 ## What this is
 
-The **CS Pipeline Tool v2** — an internal workflow-mapping app for Langara
+The **CS Workflow Tool** (formerly CS Pipeline Tool v2) — an internal workflow-mapping app for Langara
 College's Continuing Studies department. It documents how curriculum
 documents (Concept Paper, Course Proposal, Program Proposal, Program
 Summary, Discontinuation Form) travel through the college's approval
@@ -19,7 +19,7 @@ process itself; it does not track individual in-flight programs.
 The Workflow Map is one file (the Program Tracker, `tracker.html`, is a
 second, separate page — see its section below):
 
-- `pipeline-tool-v2.html` — ~2,100 lines. HTML + Tailwind (CDN) + React 18
+- `workflow-tool.html` — ~3,800 lines. HTML + Tailwind (CDN) + React 18
   (UMD) + in-browser Babel + Firebase compat SDKs. No build step, no
   `package.json`, no tests, no CI.
 
@@ -393,7 +393,7 @@ wrong way at narrow widths.
 ## The Program Tracker (`tracker.html`)
 
 A second page, for **running** workflows rather than mapping them. The Workflow
-Map (`pipeline-tool-v2.html`) stays the reference/design tool; the tracker
+Map (`workflow-tool.html`) stays the reference/design tool; the tracker
 creates *projects* from its workflows and tracks each one's progress. Same
 stack, same sign-in, same Firebase project, same icon set (`ICON_PATHS` is
 copied into the tracker — keep the two in sync when adding glyphs).
@@ -523,8 +523,14 @@ A blank page almost always means a syntax or Babel-transform error —
 
 ## Deployment — read this before pushing
 
+**`pipeline-tool-v2.html` is a redirect, not the app.** The app was renamed to
+`workflow-tool.html`; the old file forwards to it with `location.replace`,
+carrying `location.search` and `location.hash` so old bookmarks and published
+links already sent (`?p=<slug>`) keep working. Keep the file; do not put app
+code back in it.
+
 The live app is served by **GitHub Pages** at
-<https://keeganwh.github.io/Langara/pipeline-tool-v2.html>, configured as
+<https://keeganwh.github.io/Langara/workflow-tool.html>, configured as
 *deploy from a branch*, so **a push to the deploy branch publishes to the live
 URL within about a minute.** There is no review gate.
 
@@ -533,7 +539,7 @@ The deploy branch is **`main`** (fast-forwarded to the old trunk on
 exists it is a dead pointer.
 
 The bare URL <https://keeganwh.github.io/Langara/> 404s, because there is no
-`index.html` at the repo root — only `pipeline-tool-v2.html`. That is expected,
+`index.html` at the repo root — only `workflow-tool.html`. That is expected,
 not a deploy fault.
 
 Consequences:
