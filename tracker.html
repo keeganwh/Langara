@@ -30,19 +30,20 @@
     .st-skipped { border-style: dashed !important; }
     /* Overview: each document's steps on one horizontal track. The current
        step is wide; done and upcoming steps are narrow either side. */
-    .trk-track { display: flex; gap: 8px; overflow-x: auto; scroll-behavior: auto; padding: 2px 2px 8px;
-                 cursor: grab; user-select: none; scrollbar-width: thin; }
+    .trk-track { display: flex; overflow-x: auto; cursor: grab; user-select: none; padding: 1px;
+                 scrollbar-width: none; }
+    .trk-track::-webkit-scrollbar { display: none; }
     .trk-track:active { cursor: grabbing; }
-    .trk-now  { flex: 0 0 min(460px, 78%); min-height: 190px; }
-    .trk-now-first { flex-basis: min(520px, 86%); }
-    .trk-side { flex: 0 0 118px; min-height: 190px; }
-    .trk-edge { position: absolute; top: 0; bottom: 8px; width: 40px; pointer-events: none; opacity: 0; transition: opacity .15s; }
+    .trk-now  { flex-grow: 0; flex-shrink: 0; min-height: 92px; }
+    .trk-side { flex-grow: 0; flex-shrink: 0; min-height: 92px; }
+    .trk-edge { position: absolute; top: 0; bottom: 0; width: 36px; pointer-events: none; opacity: 0; transition: opacity .15s; }
     .trk-edge.l { left: 0; background: linear-gradient(90deg, #fff, rgba(255,255,255,0)); }
     .trk-edge.r { right: 0; background: linear-gradient(270deg, #fff, rgba(255,255,255,0)); }
     .trk-edge.on { opacity: 1; }
-    .trk-nudge { position: absolute; top: calc(50% - 20px); width: 28px; height: 40px; border-radius: 8px; border: 1px solid #cbd5e1;
-                 background: #fff; color: #475569; display: flex; align-items: center; justify-content: center;
-                 box-shadow: 0 2px 8px rgba(15,23,42,.14); }
+    /* Same nudge button as the Workflow Map's canvas. */
+    .trk-nudge { position: absolute; top: 50%; transform: translateY(-50%); width: 26px; height: 40px; border-radius: 8px;
+                 border: 1px solid #cbd5e1; background: #fff; color: #475569; display: flex; align-items: center;
+                 justify-content: center; padding: 0; box-shadow: 0 2px 8px rgba(15,23,42,.14); z-index: 2; }
     .trk-nudge:hover { color: #0f172a; background: #f8fafc; }
     .trk-nudge.l { left: 2px; } .trk-nudge.r { right: 2px; }
     .line-clamp-2 { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
@@ -1119,13 +1120,14 @@ function PeopleLine({ ppl }) {
   if (!ppl.length) return <span className="text-xs text-slate-400">Nobody assigned</span>;
   return (
     <span className="flex items-center gap-1.5 min-w-0">
-      <span className="flex -space-x-1.5 flex-shrink-0">{ppl.slice(0, 3).map(p => <Avatar key={p.id} person={p} size={22} />)}</span>
+      <span className="flex -space-x-1.5 flex-shrink-0">{ppl.slice(0, 3).map(p => <Avatar key={p.id} person={p} size={20} />)}</span>
       <span className="text-xs text-slate-600 truncate">{ppl.map(p => p.name.split(' ')[0]).join(', ')}</span>
     </span>
   );
 }
 
-// The wide card: everything about the step being worked on now.
+// The current step's card: compact, three lines, so every document fits on
+// one screen. Previous and next steps sit either side as narrow cards.
 function NowCard({ project, doc, idx, people, onOpen }) {
   const step = doc.steps[idx];
   const c = cellOf(project, doc.id, step.id);
@@ -1138,90 +1140,94 @@ function NowCard({ project, doc, idx, people, onOpen }) {
   const upd = latestUpdate(c);
   return (
     <button onClick={() => onOpen(doc.id, step.id)} data-kind="now"
-      className="w-full h-full text-left bg-white rounded-xl border-2 px-4 py-3 shadow-sm hover:shadow-md transition-shadow flex flex-col gap-2"
+      className="w-full h-full text-left bg-white rounded-lg border-2 px-3 py-2 hover:shadow-md transition-shadow flex flex-col gap-1.5"
       style={{ borderColor: s.color }}>
-      <div className="flex items-center gap-2">
-        <span className="text-[11px] font-semibold text-slate-400">STEP {idx + 1}/{doc.steps.length}</span>
-        {c.round > 1 && <span className="text-[10px] font-semibold text-violet-700 bg-violet-50 border border-violet-200 rounded px-1">Round {c.round}</span>}
-        <span className="ml-auto"><StatusChip status={c.status} /></span>
+      <div className="flex items-center gap-2 min-w-0">
+        <span className="text-[10px] font-semibold text-slate-400 flex-shrink-0">{idx + 1}/{doc.steps.length}</span>
+        <span className="text-sm font-bold text-slate-800 truncate">{step.stageName}</span>
+        {c.round > 1 && <span className="text-[10px] font-semibold text-violet-700 bg-violet-50 border border-violet-200 rounded px-1 flex-shrink-0">Round {c.round}</span>}
+        <span className="ml-auto flex-shrink-0"><StatusChip status={c.status} sm /></span>
       </div>
-      <div className="text-base font-bold text-slate-800 leading-snug">{step.stageName}</div>
-      {c.status === 'held_up' && c.heldReason && <div className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-md px-2 py-1">{c.heldReason}</div>}
-
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-600">
-        {c.startDate && <span className="inline-flex items-center gap-1"><Icon name="clock" size={12} className="text-slate-400" />Started {fmtDate(c.startDate)}</span>}
-        {due ? <span className={`inline-flex items-center gap-1 border rounded-full px-2 ${TONE[due.tone]}`}>{due.text}</span>
-             : <span className="text-slate-400">No due date</span>}
-        {c.meetingDate && <span className="inline-flex items-center gap-1"><Icon name="t_meet" size={12} className="text-slate-400" />Meeting {fmtDate(c.meetingDate)}</span>}
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-slate-600">
+        {c.status === 'held_up' && c.heldReason && <span className="text-amber-800 bg-amber-50 border border-amber-200 rounded px-1.5 truncate max-w-full">{c.heldReason}</span>}
+        {due ? <span className={`border rounded-full px-1.5 ${TONE[due.tone]}`}>{due.text}</span> : <span className="text-slate-400">No due date</span>}
+        {c.meetingDate && <span className="inline-flex items-center gap-1"><Icon name="t_meet" size={11} className="text-slate-400" />{fmtDate(c.meetingDate)}</span>}
+        {cc.n > 0 && (
+          <span className="inline-flex items-center gap-1.5 min-w-0" data-testid="now-tasks">
+            <span className="flex gap-[2px] w-14 h-1.5 flex-shrink-0">{step.actions.map((a, i) => <span key={i} className="flex-1 rounded-full" style={{ background: rc['t' + i] ? '#059669' : '#e2e8f0' }} />)}</span>
+            <span className="font-medium">{cc.done}/{cc.n} tasks</span>
+            {nextTask >= 0 && <span className="text-slate-500 truncate">· Next: {step.actions[nextTask].label}{step.actions[nextTask].person ? ' ' + step.actions[nextTask].person : ''}</span>}
+          </span>
+        )}
       </div>
-
-      {cc.n > 0 && (
-        <div data-testid="now-tasks">
-          <div className="flex gap-[3px] h-1.5 mb-1">
-            {step.actions.map((a, i) => <span key={i} className="flex-1 rounded-full" style={{ background: rc['t' + i] ? '#059669' : '#e2e8f0' }} />)}
-          </div>
-          <div className="text-xs text-slate-600">
-            <span className="font-medium">{cc.done} of {cc.n} tasks</span>
-            {nextTask >= 0 && <span className="text-slate-500"> · Next: {step.actions[nextTask].label}{step.actions[nextTask].person ? ' ' + step.actions[nextTask].person : ''}</span>}
-          </div>
-        </div>
-      )}
-
-      <div className="mt-auto pt-2 border-t border-slate-100 flex items-center gap-3">
+      <div className="mt-auto flex items-center gap-3 min-w-0">
         <PeopleLine ppl={ppl} />
-        {upd && <span className="ml-auto text-[11px] text-slate-500 text-right truncate max-w-[55%]" title={upd.text + ' · ' + upd.by}>{upd.text} · {timeAgo(upd.at)}</span>}
+        {upd && <span className="ml-auto text-[11px] text-slate-400 truncate max-w-[55%]" title={upd.text + ' · ' + upd.by}>{upd.text} · {timeAgo(upd.at)}</span>}
       </div>
     </button>
   );
 }
 
-// Narrow cards either side of the current one.
 function SideCard({ project, doc, idx, kind, onOpen }) {
   const step = doc.steps[idx];
   const c = cellOf(project, doc.id, step.id);
   const s = STATUS[c.status];
-  const doneAt = kind === 'past' ? lastCompletedAt(c) : 0;
+  const doneAt = c.status === 'complete' ? lastCompletedAt(c) : 0;
   const due = kind === 'next' ? dueLabel(c.dueDate) : null;
   return (
     <button onClick={() => onOpen(doc.id, step.id)} data-kind={kind} title={(idx + 1) + '. ' + step.stageName + ' — ' + s.label}
-      className={`w-full h-full text-left rounded-lg px-2.5 py-2 flex flex-col gap-1 hover:shadow ${kind === 'past' ? 'bg-slate-50 border border-slate-200 opacity-70' : 'bg-white border border-dashed border-slate-300'}`}>
-      <span className="text-[10px] text-slate-400 font-semibold">{idx + 1}</span>
-      <span className="text-xs font-medium text-slate-700 leading-tight line-clamp-2">{step.stageName}</span>
+      className={`w-full h-full text-left rounded-lg px-2.5 py-1.5 flex flex-col gap-0.5 hover:shadow ${kind === 'past' ? 'bg-slate-50 border border-slate-200 opacity-75' : 'bg-white border border-dashed border-slate-300'}`}>
+      <span className="text-xs font-medium text-slate-700 leading-tight line-clamp-2"><span className="text-[10px] text-slate-400 font-semibold mr-1">{idx + 1}</span>{step.stageName}</span>
       <span className="mt-auto text-[10px] inline-flex items-center gap-1" style={{ color: s.color }}>
-        <Icon name={s.icon} size={11} />
-        {c.status === 'complete' ? (doneAt ? 'Done ' + timeAgo(doneAt) : 'Done') : s.label}
+        <Icon name={s.icon} size={11} />{c.status === 'complete' ? (doneAt ? 'Done ' + timeAgo(doneAt) : 'Done') : s.label}
+        {c.round > 1 && <span className="font-semibold text-violet-700 ml-1">R{c.round}</span>}
       </span>
       {due && <span className={`text-[10px] border rounded-full px-1.5 self-start ${TONE[due.tone]}`}>{due.text}</span>}
-      {c.round > 1 && <span className="text-[10px] font-semibold text-violet-700">R{c.round}</span>}
     </button>
   );
 }
+
+// Every step of a document on one row, laid out as fixed slots: a narrow
+// previous card, the wide current card, a narrow next card. Rows always open
+// aligned on that layout (a "start"/"end" placeholder fills a missing
+// neighbour), and can be dragged or stepped left and right to look further.
+const SIDE_W = 150, TRACK_GAP = 6;
 
 function StepTrack({ project, doc, people, onOpen }) {
   const ref = useRef(null);
   const nowRef = useRef(null);
   const drag = useRef({ down: false, x: 0, left: 0, moved: false });
   const first = useRef(true);
+  const [width, setWidth] = useState(0);
   const [edges, setEdges] = useState({ l: false, r: false });
   const cur = currentIndex(project, doc);
   const curKey = cur >= 0 ? doc.steps[cur].id : 'done';
+  const nowW = Math.max(240, width - 2 * SIDE_W - 2 * TRACK_GAP);
 
   const measure = () => {
     const el = ref.current;
     if (el) setEdges({ l: el.scrollLeft > 4, r: el.scrollLeft + el.clientWidth < el.scrollWidth - 4 });
   };
-  // Park the current step with a peek of the one before it. Smooth after the
-  // first render, so a step closing reads as the track sliding along.
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    setWidth(el.clientWidth);
+    if (typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(() => setWidth(el.clientWidth));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  // Park with the previous slot at the left edge. Smooth after the first
+  // render, so a step closing reads as the row sliding along.
   useEffect(() => {
     const el = ref.current, now = nowRef.current;
-    if (!el) return;
-    const left = now ? Math.max(0, now.offsetLeft - 64) : el.scrollWidth;
+    if (!el || !now || !width) return;
+    const left = Math.max(0, now.offsetLeft - SIDE_W - TRACK_GAP - el.firstChild.offsetLeft);
     if (el.scrollTo) el.scrollTo({ left, behavior: first.current ? 'auto' : 'smooth' }); else el.scrollLeft = left;
     first.current = false;
-    setTimeout(measure, 400);
-  }, [curKey]);
+    setTimeout(measure, 350);
+  }, [curKey, width]);
 
-  // Mouse drag to scroll. Touch and trackpads already scroll natively.
   const onDown = (e) => { if (e.pointerType !== 'mouse') return; drag.current = { down: true, x: e.clientX, left: ref.current.scrollLeft, moved: false }; };
   const onMove = (e) => {
     const d = drag.current;
@@ -1232,22 +1238,29 @@ function StepTrack({ project, doc, people, onOpen }) {
   };
   const onUp = () => { drag.current.down = false; };
   const onClickCapture = (e) => { if (drag.current.moved) { e.stopPropagation(); e.preventDefault(); drag.current.moved = false; } };
-  const nudge = (dir) => ref.current.scrollBy({ left: dir * ref.current.clientWidth * 0.6, behavior: 'smooth' });
+  const nudge = (dir) => ref.current.scrollBy({ left: dir * (SIDE_W + TRACK_GAP), behavior: 'smooth' });
+
+  const side = (key, child) => <div key={key} className="trk-side" style={{ flexBasis: SIDE_W }}>{child}</div>;
+  const placeholder = (key, text) => side(key, <div className="h-full rounded-lg border border-dashed border-slate-200 text-[11px] text-slate-300 flex items-center justify-center" data-kind="none">{text}</div>);
+  const items = [];
+  if (cur === 0) items.push(placeholder('start', 'Start'));
+  doc.steps.forEach((s, i) => {
+    if (i === cur) items.push(<div key={s.id} ref={nowRef} className="trk-now" style={{ flexBasis: nowW }}><NowCard project={project} doc={doc} idx={i} people={people} onOpen={onOpen} /></div>);
+    else items.push(side(s.id, <SideCard project={project} doc={doc} idx={i} kind={cur < 0 || i < cur ? 'past' : 'next'} onOpen={onOpen} />));
+  });
+  if (cur < 0) items.push(<div key="done" ref={nowRef} className="trk-now" style={{ flexBasis: nowW }}><div className="h-full rounded-lg border-2 border-emerald-300 bg-emerald-50 text-emerald-700 text-sm font-medium flex items-center justify-center gap-1.5"><Icon name="done" size={16} />All steps done</div></div>);
+  if (cur < 0 || cur === doc.steps.length - 1) items.push(placeholder('end', 'End'));
 
   return (
     <div className="relative min-w-0">
-      <div ref={ref} className="trk-track" data-testid="track"
+      <div ref={ref} className="trk-track" data-testid="track" style={{ gap: TRACK_GAP }}
         onScroll={measure} onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerLeave={onUp} onClickCapture={onClickCapture}>
-        {doc.steps.map((s, i) => {
-          if (i === cur) return <div key={s.id} ref={nowRef} className={'trk-now' + (i === 0 ? ' trk-now-first' : '')}><NowCard project={project} doc={doc} idx={i} people={people} onOpen={onOpen} /></div>;
-          return <div key={s.id} className="trk-side"><SideCard project={project} doc={doc} idx={i} kind={cur < 0 || i < cur ? 'past' : 'next'} onOpen={onOpen} /></div>;
-        })}
-        {cur < 0 && <div className="trk-now flex items-center justify-center rounded-xl border-2 border-emerald-300 bg-emerald-50 text-emerald-700 text-sm font-medium gap-1.5"><Icon name="done" size={16} />All steps done</div>}
+        {items}
       </div>
       <div className={'trk-edge l' + (edges.l ? ' on' : '')} />
       <div className={'trk-edge r' + (edges.r ? ' on' : '')} />
-      {edges.l && <button className="trk-nudge l" aria-label="Earlier steps" onClick={() => nudge(-1)}><Icon name="chev_l" size={16} /></button>}
-      {edges.r && <button className="trk-nudge r" aria-label="Later steps" onClick={() => nudge(1)}><Icon name="chev_r" size={16} /></button>}
+      {edges.l && <button className="trk-nudge l" aria-label="Previous step" onClick={() => nudge(-1)}><Icon name="chev_l" size={15} /></button>}
+      {edges.r && <button className="trk-nudge r" aria-label="Next step" onClick={() => nudge(1)}><Icon name="chev_r" size={15} /></button>}
     </div>
   );
 }
@@ -1320,16 +1333,16 @@ function Overview({ project, data, authUser, onOpen }) {
   const linkDoc = linkFor && project.documents.find(d => d.id === linkFor);
   return (
     <div data-testid="overview">
-      <div className="bg-white border rounded-xl px-4 py-3 mb-4">
-        <div className="grid grid-cols-1 md:grid-cols-[auto_auto_auto_1fr] gap-x-8 gap-y-3">
+      <div className="bg-white border rounded-xl px-4 py-3 mb-3">
+        <div className="grid grid-cols-2 md:grid-cols-[1fr_1fr_1fr_2fr] gap-x-6 gap-y-3">
           <Stat label="Complete" value={stats.pct + '%'} sub={stats.closed + ' of ' + stats.total + ' steps'} />
           <Stat label="Held up" value={stats.held} tone={stats.held ? 'amber' : null} />
           <Stat label="Sent back" value={stats.sentBack} sub="being reworked" tone={stats.sentBack ? 'violet' : null} />
-          <div className="min-w-0" data-testid="upcoming">
+          <div className="min-w-0 col-span-2 md:col-span-1" data-testid="upcoming">
             <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 mb-1">Upcoming dates</div>
             {!dates.length && <div className="text-xs text-slate-400">No due or meeting dates on open steps.</div>}
             <div className="flex flex-wrap gap-1.5">
-              {dates.slice(0, 5).map((it, i) => {
+              {dates.slice(0, 4).map((it, i) => {
                 const tone = it.days < 0 ? 'red' : it.days <= 7 ? 'amber' : 'slate';
                 return (
                   <button key={i} onClick={() => onOpen(it.doc.id, it.step.id)} className={`text-[11px] border rounded-full pl-1.5 pr-2 py-0.5 inline-flex items-center gap-1 ${TONE[tone]}`}>
@@ -1339,33 +1352,40 @@ function Overview({ project, data, authUser, onOpen }) {
                   </button>
                 );
               })}
-              {dates.length > 5 && <span className="text-[11px] text-slate-400 self-center">+{dates.length - 5} more</span>}
+              {dates.length > 4 && <span className="text-[11px] text-slate-400 self-center">+{dates.length - 4} more</span>}
             </div>
           </div>
         </div>
         <Timeline project={project} stats={stats} />
       </div>
 
-      <div className="space-y-3">
+      {/* One table-like block: documents share a header and are separated by rules. */}
+      <div className="bg-white border rounded-xl overflow-hidden">
+        <div className="grid grid-cols-[200px_minmax(0,1fr)] bg-slate-50 border-b text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+          <div className="px-3 py-1.5">Document</div>
+          <div className="grid py-1.5 px-1" style={{ gridTemplateColumns: SIDE_W + 'px 1fr ' + SIDE_W + 'px', gap: TRACK_GAP }}>
+            <span className="px-1">Previous</span><span className="px-1">Now</span><span className="px-1">Next</span>
+          </div>
+        </div>
         {project.documents.map(doc => {
           const w = docWindow(project, doc);
           const link = project.links[doc.id];
           return (
-            <div key={doc.id} className="bg-white border rounded-xl p-3 grid grid-cols-1 md:grid-cols-[210px_1fr] gap-3 items-stretch" data-testid="ov-doc">
-              <div className="flex flex-col gap-2 min-w-0">
-                <div className="flex items-center gap-2"><span className="w-3 h-3 rounded-full flex-shrink-0" style={{ background: doc.color }} /><span className="text-sm font-bold text-slate-800">{doc.name}</span></div>
-                <div className="text-xs text-slate-500">{w.cur < 0 ? 'All ' + w.total + ' steps done' : 'Step ' + (w.cur + 1) + ' of ' + w.total + ' · ' + w.pct + '% done'}</div>
+            <div key={doc.id} className="grid grid-cols-[200px_minmax(0,1fr)] border-b last:border-b-0" data-testid="ov-doc">
+              <div className="px-3 py-2 flex flex-col gap-1.5 min-w-0 border-r" style={{ boxShadow: 'inset 3px 0 0 ' + doc.color }}>
+                <div className="text-sm font-bold text-slate-800 truncate">{doc.name}</div>
+                <div className="text-[11px] text-slate-500">{w.cur < 0 ? 'All ' + w.total + ' steps done' : 'Step ' + (w.cur + 1) + ' of ' + w.total + ' · ' + w.pct + '%'}</div>
                 <StepSegments project={project} doc={doc} cur={w.cur} onOpen={onOpen} />
-                <div className="mt-auto flex items-center gap-1.5 text-xs" data-testid="doc-link">
-                  <Icon name="storage" size={13} className="text-slate-400" />
+                <div className="flex items-center gap-1.5 text-[11px]" data-testid="doc-link">
+                  <Icon name="storage" size={12} className="text-slate-400" />
                   {link && link.url
                     ? <><a href={link.url} target="_blank" rel="noopener" className="text-indigo-600 hover:underline truncate">Open file</a>
                         <span className="text-slate-400">v{link.version || 1}</span>
-                        <button onClick={() => setLinkFor(doc.id)} className="text-slate-400 hover:text-slate-700 ml-auto" title="Update link"><Icon name="edit" size={12} /></button></>
+                        <button onClick={() => setLinkFor(doc.id)} className="text-slate-400 hover:text-slate-700 ml-auto" title="Update link"><Icon name="edit" size={11} /></button></>
                     : <button onClick={() => setLinkFor(doc.id)} className="text-slate-500 hover:text-indigo-600">Add file link</button>}
                 </div>
               </div>
-              <StepTrack project={project} doc={doc} people={data.people} onOpen={onOpen} />
+              <div className="px-1 py-1.5 min-w-0"><StepTrack project={project} doc={doc} people={data.people} onOpen={onOpen} /></div>
             </div>
           );
         })}
@@ -1492,15 +1512,28 @@ function Panel({ title, icon, children, testid, right, accent = '#64748b', count
 
 // One row per project. Left: what it is and when it's due. Right: overall
 // progress, and one chip per document filled to its own progress.
-function ProjectRow({ project, onOpen }) {
+function ProjectRow({ project, people, onOpen }) {
   const st = projectStats(project);
+  // Everyone on any step, through a role or tagged directly.
+  const pids = new Set();
+  project.documents.forEach(d => d.steps.forEach(s => stepPeople(project, people, s, cellOf(project, d.id, s.id)).forEach(id => pids.add(id))));
+  const ppl = [...pids].map(id => personById(people, id)).filter(Boolean);
   const due = !st.done ? dueLabel(project.dueDate) : null;
   const stale = !project.archived && !st.done && (Date.now() - st.lastAt) > STALE_DAYS * 86400000;
   const updated = new Date(st.lastAt).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
   return (
     <button onClick={() => onOpen(project.id)} className="w-full text-left grid grid-cols-1 md:grid-cols-[minmax(240px,1fr)_minmax(0,1.3fr)] gap-x-6 gap-y-2 px-4 py-3 border-b last:border-b-0 hover:bg-slate-50" data-testid="project-row">
       <div className="min-w-0">
-        <div className="text-[15px] font-bold text-slate-800 truncate">{project.name}</div>
+        <div className="flex items-center gap-1.5 min-w-0">
+          <span className="text-[15px] font-bold text-slate-800 truncate">{project.name}</span>
+          {st.held > 0 && <span className="text-amber-600 flex-shrink-0" title={st.held + (st.held === 1 ? ' step' : ' steps') + ' held up'} data-testid="flag-held"><Icon name="held" size={15} /></span>}
+          {st.sentBack > 0 && <span className="text-violet-600 flex-shrink-0" title={st.sentBack + (st.sentBack === 1 ? ' step' : ' steps') + ' sent back for another round'}><Icon name="ret" size={15} /></span>}
+          {stale && <span className="text-slate-400 flex-shrink-0" title={'No activity in ' + STALE_DAYS + '+ days'}><Icon name="clock" size={15} /></span>}
+          {ppl.length > 0 && <span className="ml-auto flex -space-x-1.5 flex-shrink-0 pl-2" data-testid="project-people">
+            {ppl.slice(0, 5).map(p => <Avatar key={p.id} person={p} size={24} />)}
+            {ppl.length > 5 && <span className="w-6 h-6 rounded-full bg-slate-100 text-slate-600 text-[10px] font-semibold flex items-center justify-center border border-white">+{ppl.length - 5}</span>}
+          </span>}
+        </div>
         <div className="text-xs text-slate-500 mt-0.5">
           {project.workflowName}
           {' · '}
@@ -1509,17 +1542,13 @@ function ProjectRow({ project, onOpen }) {
             : 'No due date'}
           {' · '}Updated: {updated}
         </div>
-        {(st.held > 0 || st.sentBack > 0 || stale) && <div className="flex items-center gap-1.5 flex-wrap mt-1">
-          {st.held > 0 && <span className="text-[10px] font-semibold border rounded-full px-1.5 bg-amber-50 text-amber-800 border-amber-200 inline-flex items-center gap-0.5"><Icon name="held" size={10} />{st.held} held up</span>}
-          {st.sentBack > 0 && <span className="text-[10px] font-semibold border rounded-full px-1.5 bg-violet-50 text-violet-700 border-violet-200 inline-flex items-center gap-0.5"><Icon name="ret" size={10} />{st.sentBack} sent back</span>}
-          {stale && <span className="text-[10px] font-semibold border rounded-full px-1.5 bg-slate-100 text-slate-600 border-slate-300">Stale</span>}
-        </div>}
       </div>
       <div className="min-w-0">
-        <div className="relative h-5 bg-slate-100 rounded-full overflow-hidden" data-testid="overall-bar">
-          <div className="absolute inset-y-0 left-0 bg-emerald-500 rounded-full transition-all" style={{ width: st.pct + '%' }} />
+        <div className="relative h-5 bg-white border border-slate-300 rounded-full overflow-hidden" data-testid="overall-bar">
+          <div className="absolute inset-y-0 left-0 bg-emerald-500 transition-all" style={{ width: st.pct + '%' }} />
+          {/* The % sits at the end of the fill: inside it once there is room, just past it before then. */}
           <span className={`absolute inset-y-0 flex items-center text-[11px] font-bold ${st.pct >= 12 ? 'text-white' : 'text-slate-600'}`}
-            style={st.pct >= 12 ? { left: 8 } : { left: 'calc(' + st.pct + '% + 6px)' }}>{st.pct}%</span>
+            style={st.pct >= 12 ? { right: 'calc(' + (100 - st.pct) + '% + 6px)' } : { left: 'calc(' + st.pct + '% + 6px)' }}>{st.pct}%</span>
         </div>
         <div className="flex flex-wrap gap-1.5 mt-1.5" data-testid="doc-chips">
           {project.documents.map(d => {
@@ -1690,6 +1719,7 @@ function Dashboard({ data, authUser, onOpen, onNew }) {
       <div className="grid lg:grid-cols-3 gap-4 items-start">
         <div className="lg:col-span-2 space-y-4 min-w-0">
           <Panel title="Needs your attention" icon="t_cust" testid="attention" accent="#4f46e5" count={attention.length}>
+            <p className="text-xs text-slate-500 -mt-1 mb-2">Steps you are on — through a role or tagged directly — that are in progress, held up, or next in line.</p>
             {!me && <p className="text-sm text-slate-600">Your sign-in ({authUser.email}) is not on the People list yet, so nothing can be assigned to you. Add yourself under <strong>People</strong>.</p>}
             {me && !attention.length && <p className="text-sm text-slate-500">Nothing pending for you.</p>}
             {me && attention.length > 0 && <div className="divide-y -mx-1">
@@ -1726,7 +1756,7 @@ function Dashboard({ data, authUser, onOpen, onNew }) {
             {!list.length && <div className="text-sm text-slate-500 px-4 py-6 text-center">
               {data.projects.length ? 'No projects match.' : 'No projects yet. Start one from a workflow with New project.'}
             </div>}
-            {list.map(p => <ProjectRow key={p.id} project={p} onOpen={onOpen} />)}
+            {list.map(p => <ProjectRow key={p.id} project={p} people={data.people} onOpen={onOpen} />)}
           </section>
 
           <Panel title="Held up or sent back" icon="warn" testid="report-flagged" accent="#d97706" count={flagged.length}>

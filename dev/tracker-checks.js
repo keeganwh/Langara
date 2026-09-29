@@ -72,6 +72,9 @@ const cell = (d, docId, stepId) => {
   ok('each document has a step track with a wide current card', await p.evaluate(() => document.querySelectorAll('[data-testid=track] [data-kind=now]').length === 2));
   ok('current card is wider than the side cards', await p.evaluate(() => { const n = document.querySelector('.trk-now'), s = document.querySelector('.trk-side'); return n.offsetWidth > s.offsetWidth * 2.5; }));
   ok('upcoming dates sit in the summary, not a panel below', await p.evaluate(() => !!document.querySelector('[data-testid=upcoming]')));
+  ok('rows open aligned: every current card starts at the same x', await p.evaluate(() => { const xs = [...document.querySelectorAll('.trk-now')].map(n => Math.round(n.getBoundingClientRect().left)); return xs.length === 2 && Math.abs(xs[0] - xs[1]) <= 1; }));
+  ok('a first step gets a start placeholder so it stays aligned', await p.evaluate(() => !!document.querySelector('[data-kind=none]')));
+  ok('row tracks show no scrollbar', await p.evaluate(() => { const tr = document.querySelector('[data-testid=track]'); return tr.offsetHeight === tr.clientHeight; }));
   ok('segmented bar has one segment per step', await p.evaluate(() => document.querySelector('[data-testid=segments]').children.length === 4));
 
   console.log('\nDocument links');
@@ -142,7 +145,8 @@ const cell = (d, docId, stepId) => {
   t = await text(p);
   ok('dashboard lists the step assigned through a role', await p.evaluate(() => { const a = document.querySelector('[data-testid=attention]'); return !!a && a.innerText.includes('JCCS'); }));
   ok('summary tiles count held up steps', await p.evaluate(() => /2\s*Held up/.test(document.querySelector('[data-testid=tiles]').innerText)));
-  ok('project row shows workflow, due and updated under the title', t.includes('2 held up') && /New Program · (No due date|Due:)[^\n]*· Updated:/.test(t));
+  ok('project row shows workflow, due and updated under the title', await p.evaluate(() => !!document.querySelector('[data-testid=flag-held]')) && /New Program · (No due date|Due:)[^\n]*· Updated:/.test(t));
+  ok('project row shows who is on it', await p.evaluate(() => document.querySelector('[data-testid=project-people]').innerText.includes('YP')));
   ok('overall bar carries its % inside', await p.evaluate(() => /\d+%/.test(document.querySelector('[data-testid=overall-bar]').innerText)));
   ok('one progress chip per document, named', await p.evaluate(() => { const c = document.querySelector('[data-testid=doc-chips]'); return c.children.length === 2 && c.innerText.includes('Program Proposal'); }));
   ok('held up report names the reason', await p.evaluate(() => document.querySelector('[data-testid=report-flagged]').innerText.includes('Waiting on the Dean')));

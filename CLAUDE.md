@@ -453,12 +453,16 @@ tracker
 - **Project → Overview** (default) — a summary (complete, held up, sent back,
   upcoming dates as chips, timeline) then one card per document: name,
   "Step n of m", a segmented bar (one segment per step), the document's file
-  link, and a **step track** (`StepTrack`): every step on one horizontal
-  scroller, done steps narrow on the left, the current step wide (`NowCard`:
-  dates, task progress and next task, people, latest update), upcoming steps
-  narrow on the right. It parks on the current step with a peek of the one
-  before, scrolls smoothly when the current step changes, and can be
-  mouse-dragged (touch scrolls natively) or nudged with the edge buttons.
+  link, and a **step track** (`StepTrack`). Documents share one bordered
+  block with a Previous / Now / Next header. Each track holds every step as
+  fixed slots — `SIDE_W` (150px) side cards and a current card sized to fill
+  the rest (`ResizeObserver`) — and always **opens aligned**: previous slot at
+  the left edge, with a Start / End placeholder where a neighbour is missing,
+  so every row's Now column lines up. It slides smoothly when the current step
+  changes, and can be mouse-dragged (touch scrolls natively) or stepped one
+  card at a time with the edge buttons. No visible scrollbar, by request.
+  `NowCard` is three compact lines (title + status; dates, held reason and
+  task progress; people + latest update) so a whole project fits on screen.
 - **Document file links** — `links/<docId>` { url, label, version, at, by,
   history/<push> }. Saving a new link keeps the previous one in `history`.
 - **Project → Full flow** — the Step-Flow-style grid (`FlowGrid`). The chosen
@@ -485,7 +489,7 @@ pending); the steps a send-back reset to pending still show their round badge.
   next for their document, sorted by due date.
 - Routing is the hash (`#/p/<id>`), so projects can be linked directly.
 
-Checks: `cd dev && npm run tracker` (44 checks, own Firebase stub with nested
+Checks: `cd dev && npm run tracker` (48 checks, own Firebase stub with nested
 paths and live listeners — see `dev/tracker-preview.js`).
 
 ## Conventions to follow
