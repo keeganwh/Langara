@@ -415,7 +415,8 @@ tracker
     │     { status, round, startDate, dueDate, meetingDate,
     │       assignees[], notes, heldReason, history/<push>,
     │       checks/r<round>/t<actionIndex> { at, by } }
-    └── activity/<push>  { at, by, text }
+    ├── links/<docId>  { url, label, version, at, by, history/<push> }
+    └── activity/<push>  { at, by, text, kind, docId, step, status }
 ```
 
 - **Writes go to the narrowest path** (`update` on one cell, `push` for history
@@ -438,16 +439,28 @@ tracker
 
 ### Views
 
-- **Dashboard** — summary tiles (active, held up, sent back, overdue, stale),
-  Needs your attention, a compact project list (click the chevron for
-  per-document detail), and reports: held up or sent back, next 14 days of
-  dates, stale projects (no activity in `STALE_DAYS`, 14), recent updates.
-  "Last updated" is the newest activity entry, so any logged change counts.
-- **Project → Overview** (default) — one row per document with a sliding
-  last done / now / up next strip (`docWindow()`); the strip is keyed on the
-  current step id, so it re-mounts and slides in when a step closes. Plus a
-  timeline (start → target, today marker, % time used vs % steps done) and
-  upcoming dates.
+- **Dashboard** — coloured summary tiles, Needs your attention, the project
+  list, and reports: held up or sent back, next 14 days, stale projects (no
+  activity in `STALE_DAYS`, 14), recent updates. Each project row is title +
+  "workflow · Due · Updated" on the left, and on the right a wide overall bar
+  with the % inside plus one chip per document filled to its own progress.
+  "Last updated" is the newest activity entry.
+- **Recent updates** are grouped by project and thinned (`recentByProject`):
+  only the newest checklist tick per project, and entries with the same kind,
+  step and status within 10 minutes (the meeting shortcut) collapse into one
+  line listing their documents. Activity entries carry `kind`, `docId`,
+  `step`, `status`; `activityKind()` infers them for older entries from text.
+- **Project → Overview** (default) — a summary (complete, held up, sent back,
+  upcoming dates as chips, timeline) then one card per document: name,
+  "Step n of m", a segmented bar (one segment per step), the document's file
+  link, and a **step track** (`StepTrack`): every step on one horizontal
+  scroller, done steps narrow on the left, the current step wide (`NowCard`:
+  dates, task progress and next task, people, latest update), upcoming steps
+  narrow on the right. It parks on the current step with a peek of the one
+  before, scrolls smoothly when the current step changes, and can be
+  mouse-dragged (touch scrolls natively) or nudged with the edge buttons.
+- **Document file links** — `links/<docId>` { url, label, version, at, by,
+  history/<push> }. Saving a new link keeps the previous one in `history`.
 - **Project → Full flow** — the Step-Flow-style grid (`FlowGrid`). The chosen
   view is a per-viewer preference in `localStorage` (`cs_tracker_project_view_v1`).
 - **Step panel** — status, the step's map actions as a **checklist**
@@ -472,7 +485,7 @@ pending); the steps a send-back reset to pending still show their round badge.
   next for their document, sorted by due date.
 - Routing is the hash (`#/p/<id>`), so projects can be linked directly.
 
-Checks: `cd dev && npm run tracker` (38 checks, own Firebase stub with nested
+Checks: `cd dev && npm run tracker` (44 checks, own Firebase stub with nested
 paths and live listeners — see `dev/tracker-preview.js`).
 
 ## Conventions to follow

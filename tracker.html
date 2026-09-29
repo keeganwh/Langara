@@ -28,13 +28,24 @@
     .trk-line.half-l { right: 50%; }
     .trk-node { position: relative; z-index: 1; }
     .st-skipped { border-style: dashed !important; }
-    /* Overview: document column + a three-card strip (last / now / next). */
-    .ov-grid { display: grid; grid-template-columns: 230px 1fr 1.25fr 1fr; }
-    .ov-strip { animation: ovSlide .35s ease; }
-    @keyframes ovSlide { from { opacity: .2; transform: translateX(28px); } to { opacity: 1; transform: none; } }
-    /* The step just done fades out to the left, under the document column. */
-    .ov-fade { -webkit-mask-image: linear-gradient(90deg, rgba(0,0,0,.25), #000 55%);
-               mask-image: linear-gradient(90deg, rgba(0,0,0,.25), #000 55%); }
+    /* Overview: each document's steps on one horizontal track. The current
+       step is wide; done and upcoming steps are narrow either side. */
+    .trk-track { display: flex; gap: 8px; overflow-x: auto; scroll-behavior: auto; padding: 2px 2px 8px;
+                 cursor: grab; user-select: none; scrollbar-width: thin; }
+    .trk-track:active { cursor: grabbing; }
+    .trk-now  { flex: 0 0 min(460px, 78%); min-height: 190px; }
+    .trk-now-first { flex-basis: min(520px, 86%); }
+    .trk-side { flex: 0 0 118px; min-height: 190px; }
+    .trk-edge { position: absolute; top: 0; bottom: 8px; width: 40px; pointer-events: none; opacity: 0; transition: opacity .15s; }
+    .trk-edge.l { left: 0; background: linear-gradient(90deg, #fff, rgba(255,255,255,0)); }
+    .trk-edge.r { right: 0; background: linear-gradient(270deg, #fff, rgba(255,255,255,0)); }
+    .trk-edge.on { opacity: 1; }
+    .trk-nudge { position: absolute; top: calc(50% - 20px); width: 28px; height: 40px; border-radius: 8px; border: 1px solid #cbd5e1;
+                 background: #fff; color: #475569; display: flex; align-items: center; justify-content: center;
+                 box-shadow: 0 2px 8px rgba(15,23,42,.14); }
+    .trk-nudge:hover { color: #0f172a; background: #f8fafc; }
+    .trk-nudge.l { left: 2px; } .trk-nudge.r { right: 2px; }
+    .line-clamp-2 { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
   </style>
 </head>
 <body class="bg-slate-100 min-h-screen">
@@ -296,7 +307,7 @@ function normalizeProject(id, p) {
   })) }));
   return {
     ...p, id, name: p.name || 'Untitled project', documents: docs,
-    roleAssignments: p.roleAssignments || {}, progress: p.progress || {}, activity: p.activity || {},
+    roleAssignments: p.roleAssignments || {}, progress: p.progress || {}, activity: p.activity || {}, links: p.links || {},
     syncGroupMeta: p.syncGroupMeta || {}, notes: p.notes || '', archived: !!p.archived,
     startDate: p.startDate || '', dueDate: p.dueDate || '',
   };
@@ -428,9 +439,12 @@ function attentionFor(projects, people, me) {
 }
 
 // ── Activity log ───────────────────────────────────────────────────────────────
-function logActivity(projectId, authUser, text) {
+// `meta` is structured detail for the dashboard (kind, docId, step, status),
+// so it can group and colour entries without parsing the text. Entries
+// written before meta existed fall back to activityKind().
+function logActivity(projectId, authUser, text, meta = {}) {
   return trkRef('projects/' + projectId + '/activity').push({
-    at: firebase.database.ServerValue.TIMESTAMP, by: (authUser && authUser.email) || '', text,
+    at: firebase.database.ServerValue.TIMESTAMP, by: (authUser && authUser.email) || '', text, ...meta,
   });
 }
 function pushHistory(path, authUser, entry) {
@@ -665,7 +679,7 @@ function NewProjectModal({ data, authUser, onCreated, onClose }) {
       name: name.trim(), workflowId: wf.id, workflowName: wf.name || '', sourceHash: docsHash(docs),
       documents: docs, syncGroupMeta, startDate, dueDate, notes: '', archived: false,
       createdAt: Date.now(), createdBy: authUser.email || '', updatedAt: Date.now(),
-    }).then(() => { logActivity(id, authUser, 'Created from the "' + (wf.name || '') + '" workflow'); onCreated(id); });
+    }).then(() => { logActivity(id, authUser, 'Created from the "' + (wf.name || '') + '" workflow', { kind: 'created' }); onCreated(id); });
   };
   return (
     <Modal title="New project" onClose={onClose} footer={<>
@@ -706,12 +720,12 @@ function ProjectSettingsModal({ project, data, authUser, onDeleted, onClose }) {
     const ra = {};
     Object.entries(roles).forEach(([k, v]) => { if (v) ra[k] = v.length ? v : 'none'; });
     dbUpdate(base, { ...form, roleAssignments: Object.keys(ra).length ? ra : null, updatedAt: Date.now() });
-    logActivity(project.id, authUser, 'Edited project details');
+    logActivity(project.id, authUser, 'Edited project details', { kind: 'project' });
     onClose();
   };
   const toggleArchive = () => {
     dbUpdate(base, { archived: !project.archived, updatedAt: Date.now() });
-    logActivity(project.id, authUser, project.archived ? 'Restored from archive' : 'Archived the project');
+    logActivity(project.id, authUser, project.archived ? 'Restored from archive' : 'Archived the project', { kind: 'project' });
     onClose();
   };
   const del = () => {
@@ -781,7 +795,7 @@ function applyWorkflowUpdate(project, data, drift, authUser) {
   const syncGroupMeta = { ...project.syncGroupMeta };
   drift.latest.forEach(d => d.steps.forEach(s => { if (s.syncGroupId && data.syncGroupMeta[s.syncGroupId]) syncGroupMeta[s.syncGroupId] = data.syncGroupMeta[s.syncGroupId]; }));
   dbUpdate('projects/' + project.id, { documents: drift.latest, sourceHash: docsHash(drift.latest), syncGroupMeta, workflowName: drift.wf.name || '', updatedAt: Date.now() });
-  logActivity(project.id, authUser, 'Updated to the latest version of the workflow');
+  logActivity(project.id, authUser, 'Updated to the latest version of the workflow', { kind: 'project' });
 }
 
 // ── Step panel ─────────────────────────────────────────────────────────────────
@@ -808,7 +822,8 @@ function StepModal({ project, doc, step, data, authUser, onClose }) {
       if (status === 'in_progress' && !c.startDate) upd.startDate = todayStr();
       dbUpdate(p, upd);
       pushHistory(p, authUser, { type: status === 'skipped' ? 'skipped' : 'status', to: status, round: c.round, reason: reason || null });
-      logActivity(project.id, authUser, t.doc.name + ' · ' + t.step.stageName + ': ' + STATUS[status].label + (reason ? ' — ' + reason : ''));
+      logActivity(project.id, authUser, t.doc.name + ' · ' + t.step.stageName + ': ' + STATUS[status].label + (reason ? ' — ' + reason : ''),
+        { kind: 'status', status, docId: t.doc.id, step: t.step.stageName });
     });
   };
   const choose = (status) => {
@@ -821,7 +836,7 @@ function StepModal({ project, doc, step, data, authUser, onClose }) {
     const fanOut = field === 'meetingDate' ? targets : [{ doc, step }];
     fanOut.forEach(t => dbUpdate(cellPath(project.id, t.doc.id, t.step.id), { [field]: value || null }));
     const label = { startDate: 'start date', dueDate: 'due date', meetingDate: 'meeting date' }[field];
-    logActivity(project.id, authUser, doc.name + ' · ' + step.stageName + ': ' + (value ? label + ' set to ' + fmtDate(value) : label + ' cleared'));
+    logActivity(project.id, authUser, doc.name + ' · ' + step.stageName + ': ' + (value ? label + ' set to ' + fmtDate(value) : label + ' cleared'), { kind: 'date', docId: doc.id, step: step.stageName });
   };
   const rc = roundChecks(cell);
   const toggleCheck = (i) => {
@@ -829,7 +844,7 @@ function StepModal({ project, doc, step, data, authUser, onClose }) {
     const a = step.actions[i];
     if (rc['t' + i]) dbRemove(p);
     else dbSet(p, { at: firebase.database.ServerValue.TIMESTAMP, by: who });
-    logActivity(project.id, authUser, doc.name + ' · ' + step.stageName + ': ' + (rc['t' + i] ? 'unticked' : 'ticked') + ' "' + (a.label + (a.person ? ' ' + a.person : '')).trim() + '"');
+    logActivity(project.id, authUser, doc.name + ' · ' + step.stageName + ': ' + (rc['t' + i] ? 'unticked' : 'ticked') + ' "' + (a.label + (a.person ? ' ' + a.person : '')).trim() + '"', { kind: 'tick', docId: doc.id, step: step.stageName });
   };
 
   // Send back: the target step opens a new round; every step after it that
@@ -847,7 +862,7 @@ function StepModal({ project, doc, step, data, authUser, onClose }) {
       dbUpdate(p, { status: i === targetIdx ? 'in_progress' : 'pending', round, heldReason: null });
       pushHistory(p, authUser, { type: 'sent_back', to: i === targetIdx ? 'in_progress' : 'pending', round, from: step.stageName, reason });
     }
-    logActivity(project.id, authUser, doc.name + ' sent back from ' + step.stageName + ' to ' + target.stageName + ' — ' + reason);
+    logActivity(project.id, authUser, doc.name + ' sent back from ' + step.stageName + ' to ' + target.stageName + ' — ' + reason, { kind: 'sentback', docId: doc.id, step: target.stageName });
     onClose();
   };
   const [backTo, setBackTo] = useState(stepIdx > 0 ? stepIdx - 1 : -1);
@@ -929,12 +944,12 @@ function StepModal({ project, doc, step, data, authUser, onClose }) {
           {!assigned.length && <span className="text-xs text-slate-400">Nobody yet.</span>}
         </div>
         <div className="text-xs font-semibold text-slate-500 mb-1">Tagged directly</div>
-        <PeoplePicker people={data.people} value={cell.assignees} onChange={v => { dbSet(path + '/assignees', v.length ? v : null); logActivity(project.id, authUser, doc.name + ' · ' + step.stageName + ': tagged ' + (v.map(id => (personById(data.people, id) || {}).name).filter(Boolean).join(', ') || 'nobody')); }} />
+        <PeoplePicker people={data.people} value={cell.assignees} onChange={v => { dbSet(path + '/assignees', v.length ? v : null); logActivity(project.id, authUser, doc.name + ' · ' + step.stageName + ': tagged ' + (v.map(id => (personById(data.people, id) || {}).name).filter(Boolean).join(', ') || 'nobody'), { kind: 'people', docId: doc.id, step: step.stageName }); }} />
       </Field>
 
       <Field label="Notes" hint="Shared with everyone. Saved when you click away.">
         <textarea rows={3} className={textareaCls} value={notes} onChange={e => setNotes(e.target.value)}
-          onBlur={() => { if (notes !== cell.notes) { dbUpdate(path, { notes }); logActivity(project.id, authUser, doc.name + ' · ' + step.stageName + ': edited notes'); } }} />
+          onBlur={() => { if (notes !== cell.notes) { dbUpdate(path, { notes }); logActivity(project.id, authUser, doc.name + ' · ' + step.stageName + ': edited notes', { kind: 'notes', docId: doc.id, step: step.stageName }); } }} />
       </Field>
 
       {stepIdx > 0 && (
@@ -1053,62 +1068,227 @@ function FlowGrid({ project, data, spine, onOpen }) {
   );
 }
 
-// ── Overview: one row per document, sliding window of last / now / next ────────
-// The at-a-glance view. Each row shows the step last completed (fading out to
-// the left), the current step, and the next one. When a step closes the window
-// moves along and the strip slides in from the right (keyed on the step id).
+// ── Overview: one row per document, a sliding track of its steps ───────────────
+// The at-a-glance view. Each document's steps sit on one horizontal track:
+// done steps narrow and faded to the left, the current step wide in the
+// middle, upcoming steps narrow to the right. The track scrolls itself to the
+// current step (smoothly, when a step closes, so it slides along) and can be
+// dragged or swiped to look back or ahead.
 const VIEW_KEY = 'cs_tracker_project_view_v1';
 
-function MiniCard({ project, doc, idx, kind, people, onOpen }) {
-  if (idx < 0) {
-    const empty = { last: 'Nothing completed yet', now: 'All steps done', next: 'No further steps' }[kind];
-    return <div className={`h-full rounded-lg border border-dashed border-slate-200 px-3 py-2 text-xs text-slate-400 flex items-center ${kind === 'now' ? 'bg-emerald-50/40' : ''}`}>
-      {kind === 'now' && <span className="text-emerald-700 inline-flex items-center gap-1"><Icon name="done" size={13} />{empty}</span>}{kind !== 'now' && empty}
-    </div>;
-  }
+const timeAgo = (ms) => {
+  if (!ms) return '';
+  const s = (Date.now() - ms) / 1000;
+  if (s < 60) return 'just now';
+  if (s < 3600) return Math.floor(s / 60) + 'm ago';
+  if (s < 86400) return Math.floor(s / 3600) + 'h ago';
+  if (s < 7 * 86400) return Math.floor(s / 86400) + 'd ago';
+  return new Date(ms).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+};
+const shortWho = (email) => (email || '').split('@')[0];
+
+// The newest history entry on a step, as a sentence.
+function latestUpdate(cell) {
+  const h = Object.values(cell.history).sort((a, b) => (b.at || 0) - (a.at || 0))[0];
+  if (!h) return null;
+  const what = h.type === 'sent_back' ? (h.to === 'pending' ? 'Reset by a send-back from ' + h.from : 'Sent back from ' + h.from)
+    : h.type === 'skipped' ? 'Skipped' : 'Marked ' + ((STATUS[h.to] || {}).label || '').toLowerCase();
+  return { text: what + (h.reason ? ' — ' + h.reason : ''), by: shortWho(h.by), at: h.at };
+}
+function lastCompletedAt(cell) {
+  return Object.values(cell.history).filter(h => h.to === 'complete').reduce((m, h) => Math.max(m, h.at || 0), 0);
+}
+
+// Segmented bar: one segment per step, filled by status, current one ringed.
+function StepSegments({ project, doc, onOpen, cur }) {
+  return (
+    <div className="flex gap-[2px] h-2.5" data-testid="segments">
+      {doc.steps.map((s, i) => {
+        const c = cellOf(project, doc.id, s.id);
+        const st = STATUS[c.status];
+        const fill = c.status === 'complete' ? doc.color : c.status === 'pending' ? '#e2e8f0' : c.status === 'skipped' ? '#f1f5f9' : st.color;
+        return <button key={s.id} onClick={() => onOpen(doc.id, s.id)} title={(i + 1) + '. ' + s.stageName + ' — ' + st.label}
+          className={`flex-1 rounded-sm ${i === cur ? 'ring-2 ring-offset-1 ring-slate-500' : ''} ${c.status === 'skipped' ? 'border border-dashed border-slate-300' : ''}`}
+          style={{ background: fill, minWidth: 6 }} />;
+      })}
+    </div>
+  );
+}
+
+function PeopleLine({ ppl }) {
+  if (!ppl.length) return <span className="text-xs text-slate-400">Nobody assigned</span>;
+  return (
+    <span className="flex items-center gap-1.5 min-w-0">
+      <span className="flex -space-x-1.5 flex-shrink-0">{ppl.slice(0, 3).map(p => <Avatar key={p.id} person={p} size={22} />)}</span>
+      <span className="text-xs text-slate-600 truncate">{ppl.map(p => p.name.split(' ')[0]).join(', ')}</span>
+    </span>
+  );
+}
+
+// The wide card: everything about the step being worked on now.
+function NowCard({ project, doc, idx, people, onOpen }) {
   const step = doc.steps[idx];
   const c = cellOf(project, doc.id, step.id);
   const s = STATUS[c.status];
-  const due = kind !== 'last' ? dueLabel(c.dueDate) : null;
+  const due = dueLabel(c.dueDate);
   const ppl = stepPeople(project, people, step, c).map(id => personById(people, id)).filter(Boolean);
   const cc = checkCount(step, c);
-  const doneAt = kind === 'last' ? Object.values(c.history).filter(h => h.to === 'complete').reduce((m, h) => Math.max(m, h.at || 0), 0) : 0;
+  const rc = roundChecks(c);
+  const nextTask = step.actions.findIndex((a, i) => !rc['t' + i]);
+  const upd = latestUpdate(c);
   return (
-    <button onClick={() => onOpen(doc.id, step.id)} data-kind={kind}
-      className={`w-full h-full text-left rounded-lg px-3 py-2 transition-shadow hover:shadow-md ov-card ov-${kind} ${kind === 'now' ? 'bg-white border-2' : kind === 'next' ? 'bg-white border border-dashed border-slate-300' : 'bg-slate-50 border border-slate-200'}`}
-      style={kind === 'now' ? { borderColor: s.color } : {}}>
-      <div className="flex items-center gap-1.5">
-        <span className="text-[10px] text-slate-400 font-semibold">{idx + 1}</span>
-        <span className={`text-sm truncate flex-1 ${kind === 'now' ? 'font-semibold text-slate-800' : 'text-slate-600'}`}>{step.stageName}</span>
-        {c.round > 1 && <span className="text-[10px] font-semibold text-violet-700 bg-violet-50 border border-violet-200 rounded px-1">R{c.round}</span>}
+    <button onClick={() => onOpen(doc.id, step.id)} data-kind="now"
+      className="w-full h-full text-left bg-white rounded-xl border-2 px-4 py-3 shadow-sm hover:shadow-md transition-shadow flex flex-col gap-2"
+      style={{ borderColor: s.color }}>
+      <div className="flex items-center gap-2">
+        <span className="text-[11px] font-semibold text-slate-400">STEP {idx + 1}/{doc.steps.length}</span>
+        {c.round > 1 && <span className="text-[10px] font-semibold text-violet-700 bg-violet-50 border border-violet-200 rounded px-1">Round {c.round}</span>}
+        <span className="ml-auto"><StatusChip status={c.status} /></span>
       </div>
-      <div className="flex items-center gap-1.5 flex-wrap mt-1">
-        {kind === 'last' && <span className="text-[11px] text-slate-500 inline-flex items-center gap-1"><Icon name="done" size={11} style={{ color: '#059669' }} />Done{doneAt ? ' ' + fmtStamp(doneAt) : ''}</span>}
-        {kind === 'now' && <StatusChip status={c.status} sm />}
-        {kind === 'now' && cc.n > 0 && <span className="text-[10px] text-slate-500 inline-flex items-center gap-0.5"><Icon name="check" size={10} />{cc.done}/{cc.n}</span>}
-        {due && <span className={`text-[10px] border rounded-full px-1.5 ${TONE[due.tone]}`}>{due.text}</span>}
-        {kind !== 'last' && c.meetingDate && <span className="text-[10px] text-slate-500 inline-flex items-center gap-0.5"><Icon name="calendar" size={10} />{fmtDate(c.meetingDate)}</span>}
-        {kind === 'now' && ppl.length > 0 && <span className="flex -space-x-1 ml-auto">{ppl.slice(0, 3).map(p => <Avatar key={p.id} person={p} size={18} />)}</span>}
+      <div className="text-base font-bold text-slate-800 leading-snug">{step.stageName}</div>
+      {c.status === 'held_up' && c.heldReason && <div className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-md px-2 py-1">{c.heldReason}</div>}
+
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-600">
+        {c.startDate && <span className="inline-flex items-center gap-1"><Icon name="clock" size={12} className="text-slate-400" />Started {fmtDate(c.startDate)}</span>}
+        {due ? <span className={`inline-flex items-center gap-1 border rounded-full px-2 ${TONE[due.tone]}`}>{due.text}</span>
+             : <span className="text-slate-400">No due date</span>}
+        {c.meetingDate && <span className="inline-flex items-center gap-1"><Icon name="t_meet" size={12} className="text-slate-400" />Meeting {fmtDate(c.meetingDate)}</span>}
       </div>
-      {kind === 'now' && c.status === 'held_up' && c.heldReason && <div className="text-[11px] text-amber-800 mt-1 truncate" title={c.heldReason}>{c.heldReason}</div>}
+
+      {cc.n > 0 && (
+        <div data-testid="now-tasks">
+          <div className="flex gap-[3px] h-1.5 mb-1">
+            {step.actions.map((a, i) => <span key={i} className="flex-1 rounded-full" style={{ background: rc['t' + i] ? '#059669' : '#e2e8f0' }} />)}
+          </div>
+          <div className="text-xs text-slate-600">
+            <span className="font-medium">{cc.done} of {cc.n} tasks</span>
+            {nextTask >= 0 && <span className="text-slate-500"> · Next: {step.actions[nextTask].label}{step.actions[nextTask].person ? ' ' + step.actions[nextTask].person : ''}</span>}
+          </div>
+        </div>
+      )}
+
+      <div className="mt-auto pt-2 border-t border-slate-100 flex items-center gap-3">
+        <PeopleLine ppl={ppl} />
+        {upd && <span className="ml-auto text-[11px] text-slate-500 text-right truncate max-w-[55%]" title={upd.text + ' · ' + upd.by}>{upd.text} · {timeAgo(upd.at)}</span>}
+      </div>
     </button>
   );
 }
 
-// All of a document's steps as a row of dots: where it has been and how far to go.
-function StepDots({ project, doc, onOpen }) {
-  const cur = currentIndex(project, doc);
+// Narrow cards either side of the current one.
+function SideCard({ project, doc, idx, kind, onOpen }) {
+  const step = doc.steps[idx];
+  const c = cellOf(project, doc.id, step.id);
+  const s = STATUS[c.status];
+  const doneAt = kind === 'past' ? lastCompletedAt(c) : 0;
+  const due = kind === 'next' ? dueLabel(c.dueDate) : null;
   return (
-    <div className="flex items-center gap-[3px] flex-wrap">
-      {doc.steps.map((s, i) => {
-        const c = cellOf(project, doc.id, s.id);
-        const st = STATUS[c.status];
-        const filled = c.status === 'complete' || c.status === 'in_progress' || c.status === 'held_up';
-        return <button key={s.id} title={(i + 1) + '. ' + s.stageName + ' — ' + st.label} onClick={() => onOpen(doc.id, s.id)}
-          className={`rounded-full ${c.status === 'skipped' ? 'border border-dashed' : 'border-2'} ${i === cur ? 'ring-2 ring-offset-1 ring-indigo-300' : ''}`}
-          style={{ width: 10, height: 10, borderColor: st.color, background: filled ? st.color : 'transparent' }} />;
-      })}
+    <button onClick={() => onOpen(doc.id, step.id)} data-kind={kind} title={(idx + 1) + '. ' + step.stageName + ' — ' + s.label}
+      className={`w-full h-full text-left rounded-lg px-2.5 py-2 flex flex-col gap-1 hover:shadow ${kind === 'past' ? 'bg-slate-50 border border-slate-200 opacity-70' : 'bg-white border border-dashed border-slate-300'}`}>
+      <span className="text-[10px] text-slate-400 font-semibold">{idx + 1}</span>
+      <span className="text-xs font-medium text-slate-700 leading-tight line-clamp-2">{step.stageName}</span>
+      <span className="mt-auto text-[10px] inline-flex items-center gap-1" style={{ color: s.color }}>
+        <Icon name={s.icon} size={11} />
+        {c.status === 'complete' ? (doneAt ? 'Done ' + timeAgo(doneAt) : 'Done') : s.label}
+      </span>
+      {due && <span className={`text-[10px] border rounded-full px-1.5 self-start ${TONE[due.tone]}`}>{due.text}</span>}
+      {c.round > 1 && <span className="text-[10px] font-semibold text-violet-700">R{c.round}</span>}
+    </button>
+  );
+}
+
+function StepTrack({ project, doc, people, onOpen }) {
+  const ref = useRef(null);
+  const nowRef = useRef(null);
+  const drag = useRef({ down: false, x: 0, left: 0, moved: false });
+  const first = useRef(true);
+  const [edges, setEdges] = useState({ l: false, r: false });
+  const cur = currentIndex(project, doc);
+  const curKey = cur >= 0 ? doc.steps[cur].id : 'done';
+
+  const measure = () => {
+    const el = ref.current;
+    if (el) setEdges({ l: el.scrollLeft > 4, r: el.scrollLeft + el.clientWidth < el.scrollWidth - 4 });
+  };
+  // Park the current step with a peek of the one before it. Smooth after the
+  // first render, so a step closing reads as the track sliding along.
+  useEffect(() => {
+    const el = ref.current, now = nowRef.current;
+    if (!el) return;
+    const left = now ? Math.max(0, now.offsetLeft - 64) : el.scrollWidth;
+    if (el.scrollTo) el.scrollTo({ left, behavior: first.current ? 'auto' : 'smooth' }); else el.scrollLeft = left;
+    first.current = false;
+    setTimeout(measure, 400);
+  }, [curKey]);
+
+  // Mouse drag to scroll. Touch and trackpads already scroll natively.
+  const onDown = (e) => { if (e.pointerType !== 'mouse') return; drag.current = { down: true, x: e.clientX, left: ref.current.scrollLeft, moved: false }; };
+  const onMove = (e) => {
+    const d = drag.current;
+    if (!d.down) return;
+    const dx = e.clientX - d.x;
+    if (Math.abs(dx) > 5) d.moved = true;
+    if (d.moved) ref.current.scrollLeft = d.left - dx;
+  };
+  const onUp = () => { drag.current.down = false; };
+  const onClickCapture = (e) => { if (drag.current.moved) { e.stopPropagation(); e.preventDefault(); drag.current.moved = false; } };
+  const nudge = (dir) => ref.current.scrollBy({ left: dir * ref.current.clientWidth * 0.6, behavior: 'smooth' });
+
+  return (
+    <div className="relative min-w-0">
+      <div ref={ref} className="trk-track" data-testid="track"
+        onScroll={measure} onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerLeave={onUp} onClickCapture={onClickCapture}>
+        {doc.steps.map((s, i) => {
+          if (i === cur) return <div key={s.id} ref={nowRef} className={'trk-now' + (i === 0 ? ' trk-now-first' : '')}><NowCard project={project} doc={doc} idx={i} people={people} onOpen={onOpen} /></div>;
+          return <div key={s.id} className="trk-side"><SideCard project={project} doc={doc} idx={i} kind={cur < 0 || i < cur ? 'past' : 'next'} onOpen={onOpen} /></div>;
+        })}
+        {cur < 0 && <div className="trk-now flex items-center justify-center rounded-xl border-2 border-emerald-300 bg-emerald-50 text-emerald-700 text-sm font-medium gap-1.5"><Icon name="done" size={16} />All steps done</div>}
+      </div>
+      <div className={'trk-edge l' + (edges.l ? ' on' : '')} />
+      <div className={'trk-edge r' + (edges.r ? ' on' : '')} />
+      {edges.l && <button className="trk-nudge l" aria-label="Earlier steps" onClick={() => nudge(-1)}><Icon name="chev_l" size={16} /></button>}
+      {edges.r && <button className="trk-nudge r" aria-label="Later steps" onClick={() => nudge(1)}><Icon name="chev_r" size={16} /></button>}
     </div>
+  );
+}
+
+// The document's file: one current link, with earlier versions kept.
+function DocLinkModal({ project, doc, authUser, onClose }) {
+  const cur = project.links[doc.id] || null;
+  const [url, setUrl] = useState('');
+  const [label, setLabel] = useState('');
+  const base = 'projects/' + project.id + '/links/' + doc.id;
+  const valid = /^https?:\/\//i.test(url.trim());
+  const save = () => {
+    if (!valid) return;
+    const who = (authUser && authUser.email) || '';
+    if (cur && cur.url) trkRef(base + '/history').push({ url: cur.url, label: cur.label || '', at: cur.at || null, by: cur.by || '' });
+    dbUpdate(base, { url: url.trim(), label: label.trim(), at: firebase.database.ServerValue.TIMESTAMP, by: who, version: (cur && cur.version ? cur.version : 0) + 1 });
+    logActivity(project.id, authUser, doc.name + ': ' + (cur ? 'updated the file link' : 'added a file link') + (label.trim() ? ' (' + label.trim() + ')' : ''), { kind: 'link', docId: doc.id });
+    onClose();
+  };
+  const history = cur ? Object.values(cur.history || {}).sort((a, b) => (b.at || 0) - (a.at || 0)) : [];
+  return (
+    <Modal title={doc.name + ' · File link'} onClose={onClose} footer={<>
+      <Btn variant="secondary" onClick={onClose}>Close</Btn>
+      <Btn disabled={!valid} onClick={save}>{cur ? 'Save as latest version' : 'Add link'}</Btn>
+    </>}>
+      {cur && <div className="bg-slate-50 border rounded-lg px-3 py-2 mb-4 text-sm">
+        <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 mb-0.5">Current · v{cur.version || 1}</div>
+        <a href={cur.url} target="_blank" rel="noopener" className="text-indigo-600 underline break-all">{cur.label || cur.url}</a>
+        <div className="text-[11px] text-slate-500">{shortWho(cur.by)} · {fmtStamp(cur.at)}</div>
+      </div>}
+      <Field label={cur ? 'New version link' : 'Link'} hint="SharePoint, OneDrive or any web address.">
+        <input autoFocus className={inputCls} placeholder="https://" value={url} onChange={e => setUrl(e.target.value)} />
+      </Field>
+      <Field label="Version note (optional)"><input className={inputCls} placeholder="e.g. after JCCS feedback" value={label} onChange={e => setLabel(e.target.value)} /></Field>
+      {history.length > 0 && <div>
+        <div className="text-sm font-semibold text-slate-700 mb-1">Earlier versions</div>
+        <ul className="space-y-1">{history.map((h, i) => (
+          <li key={i} className="text-xs text-slate-600"><a href={h.url} target="_blank" rel="noopener" className="text-indigo-600 underline break-all">{h.label || h.url}</a> <span className="text-slate-400">· {shortWho(h.by)} · {fmtStamp(h.at)}</span></li>
+        ))}</ul>
+      </div>}
+    </Modal>
   );
 }
 
@@ -1133,53 +1313,64 @@ function Timeline({ project, stats }) {
   );
 }
 
-function Overview({ project, data, onOpen }) {
+function Overview({ project, data, authUser, onOpen }) {
+  const [linkFor, setLinkFor] = useState(null);
   const stats = projectStats(project);
-  const dates = upcomingDates([project], 60);
+  const dates = upcomingDates([project], null);
+  const linkDoc = linkFor && project.documents.find(d => d.id === linkFor);
   return (
     <div data-testid="overview">
       <div className="bg-white border rounded-xl px-4 py-3 mb-4">
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <div className="grid grid-cols-1 md:grid-cols-[auto_auto_auto_1fr] gap-x-8 gap-y-3">
           <Stat label="Complete" value={stats.pct + '%'} sub={stats.closed + ' of ' + stats.total + ' steps'} />
           <Stat label="Held up" value={stats.held} tone={stats.held ? 'amber' : null} />
           <Stat label="Sent back" value={stats.sentBack} sub="being reworked" tone={stats.sentBack ? 'violet' : null} />
-          <Stat label="Next date" value={stats.nextDue ? fmtDate(stats.nextDue) : '—'} tone={stats.overdue ? 'red' : null} sub={stats.overdue ? stats.overdue + ' overdue' : ''} />
+          <div className="min-w-0" data-testid="upcoming">
+            <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 mb-1">Upcoming dates</div>
+            {!dates.length && <div className="text-xs text-slate-400">No due or meeting dates on open steps.</div>}
+            <div className="flex flex-wrap gap-1.5">
+              {dates.slice(0, 5).map((it, i) => {
+                const tone = it.days < 0 ? 'red' : it.days <= 7 ? 'amber' : 'slate';
+                return (
+                  <button key={i} onClick={() => onOpen(it.doc.id, it.step.id)} className={`text-[11px] border rounded-full pl-1.5 pr-2 py-0.5 inline-flex items-center gap-1 ${TONE[tone]}`}>
+                    <span className="w-2 h-2 rounded-full" style={{ background: it.doc.color }} />
+                    <span className="font-semibold">{fmtDate(it.date).replace(/, \d{4}$/, '')}</span>
+                    <span>{it.step.stageName} {it.kind === 'meeting' ? 'meeting' : 'due'}</span>
+                  </button>
+                );
+              })}
+              {dates.length > 5 && <span className="text-[11px] text-slate-400 self-center">+{dates.length - 5} more</span>}
+            </div>
+          </div>
         </div>
         <Timeline project={project} stats={stats} />
       </div>
 
-      <div className="bg-white border rounded-xl overflow-x-auto">
-        <div className="ov-grid min-w-[760px]">
-          {['Document', 'Last done', 'Now', 'Up next'].map(h => <div key={h} className="px-3 py-2 bg-slate-50 border-b text-[10px] font-semibold uppercase tracking-wider text-slate-400">{h}</div>)}
-          {project.documents.map(doc => {
-            const w = docWindow(project, doc);
-            const curId = w.cur >= 0 ? doc.steps[w.cur].id : 'done';
-            return (
-              <React.Fragment key={doc.id}>
-                <div className="px-3 py-3 border-b" data-testid="ov-doc">
-                  <div className="flex items-center gap-2"><span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: doc.color }} /><span className="text-sm font-semibold text-slate-800">{doc.name}</span></div>
-                  <div className="flex items-center gap-2 mt-1.5 pl-[18px]">
-                    <div className="flex-1 h-1.5 bg-slate-100 rounded-full overflow-hidden"><div className="h-full rounded-full" style={{ width: w.pct + '%', background: doc.color }} /></div>
-                    <span className="text-[11px] text-slate-500">{w.closed}/{w.total}</span>
-                  </div>
-                  <div className="mt-1.5 pl-[18px]"><StepDots project={project} doc={doc} onOpen={onOpen} /></div>
+      <div className="space-y-3">
+        {project.documents.map(doc => {
+          const w = docWindow(project, doc);
+          const link = project.links[doc.id];
+          return (
+            <div key={doc.id} className="bg-white border rounded-xl p-3 grid grid-cols-1 md:grid-cols-[210px_1fr] gap-3 items-stretch" data-testid="ov-doc">
+              <div className="flex flex-col gap-2 min-w-0">
+                <div className="flex items-center gap-2"><span className="w-3 h-3 rounded-full flex-shrink-0" style={{ background: doc.color }} /><span className="text-sm font-bold text-slate-800">{doc.name}</span></div>
+                <div className="text-xs text-slate-500">{w.cur < 0 ? 'All ' + w.total + ' steps done' : 'Step ' + (w.cur + 1) + ' of ' + w.total + ' · ' + w.pct + '% done'}</div>
+                <StepSegments project={project} doc={doc} cur={w.cur} onOpen={onOpen} />
+                <div className="mt-auto flex items-center gap-1.5 text-xs" data-testid="doc-link">
+                  <Icon name="storage" size={13} className="text-slate-400" />
+                  {link && link.url
+                    ? <><a href={link.url} target="_blank" rel="noopener" className="text-indigo-600 hover:underline truncate">Open file</a>
+                        <span className="text-slate-400">v{link.version || 1}</span>
+                        <button onClick={() => setLinkFor(doc.id)} className="text-slate-400 hover:text-slate-700 ml-auto" title="Update link"><Icon name="edit" size={12} /></button></>
+                    : <button onClick={() => setLinkFor(doc.id)} className="text-slate-500 hover:text-indigo-600">Add file link</button>}
                 </div>
-                {/* The strip re-mounts when the current step changes, so it slides along. */}
-                <div key={curId} className="ov-strip col-span-3 grid gap-2 px-2 py-3 border-b" style={{ gridTemplateColumns: "1fr 1.25fr 1fr" }}>
-                  <div className="ov-fade"><MiniCard project={project} doc={doc} idx={w.last} kind="last" people={data.people} onOpen={onOpen} /></div>
-                  <MiniCard project={project} doc={doc} idx={w.cur} kind="now" people={data.people} onOpen={onOpen} />
-                  <MiniCard project={project} doc={doc} idx={w.next} kind="next" people={data.people} onOpen={onOpen} />
-                </div>
-              </React.Fragment>
-            );
-          })}
-        </div>
+              </div>
+              <StepTrack project={project} doc={doc} people={data.people} onOpen={onOpen} />
+            </div>
+          );
+        })}
       </div>
-
-      <div className="bg-white border rounded-xl px-4 py-3 mt-4">
-        <h3 className="text-sm font-bold text-slate-700 mb-2 flex items-center gap-1.5"><Icon name="calendar" size={14} />Upcoming dates</h3>
-        <DateList items={dates} onOpen={(it) => onOpen(it.doc.id, it.step.id)} showProject={false} empty="No dates set on open steps. Add due or meeting dates from a step." />
-      </div>
+      {linkDoc && <DocLinkModal project={project} doc={linkDoc} authUser={authUser} onClose={() => setLinkFor(null)} />}
     </div>
   );
 }
@@ -1273,7 +1464,7 @@ function ProjectView({ project, data, authUser, onBack }) {
         ? <div className="text-sm text-slate-500 bg-white border rounded-lg p-6">This workflow had no documents when the project was created.</div>
         : view === 'flow'
           ? <FlowGrid project={project} data={data} spine={spine} onOpen={(d, s) => setOpen({ docId: d, stepId: s })} />
-          : <Overview project={project} data={data} onOpen={(d, s) => setOpen({ docId: d, stepId: s })} />}
+          : <Overview project={project} data={data} authUser={authUser} onOpen={(d, s) => setOpen({ docId: d, stepId: s })} />}
 
       {openStep && <StepModal key={open.docId + open.stepId} project={project} doc={openDoc} step={openStep} data={data} authUser={authUser} onClose={() => setOpen(null)} />}
       {modal === 'settings' && <ProjectSettingsModal project={project} data={data} authUser={authUser} onDeleted={onBack} onClose={() => setModal(null)} />}
@@ -1285,69 +1476,163 @@ function ProjectView({ project, data, authUser, onBack }) {
 // ── Dashboard ──────────────────────────────────────────────────────────────────
 const STALE_DAYS = 14;
 
-function Panel({ title, icon, children, testid, right }) {
+function Panel({ title, icon, children, testid, right, accent = '#64748b', count }) {
   return (
-    <section className="bg-white border rounded-xl px-4 py-3" data-testid={testid}>
-      <h2 className="text-sm font-bold text-slate-700 mb-2 flex items-center gap-1.5"><Icon name={icon} size={14} />{title}<span className="ml-auto font-normal">{right}</span></h2>
-      {children}
+    <section className="bg-white border rounded-xl overflow-hidden" data-testid={testid}>
+      <h2 className="text-sm font-bold text-slate-800 px-4 py-2.5 flex items-center gap-2 border-b" style={{ borderTop: '3px solid ' + accent }}>
+        <span className="w-6 h-6 rounded-md flex items-center justify-center" style={{ background: accent + '1a', color: accent }}><Icon name={icon} size={14} /></span>
+        {title}
+        {count > 0 && <span className="text-[11px] font-bold rounded-full px-1.5 text-white" style={{ background: accent }}>{count}</span>}
+        <span className="ml-auto font-normal">{right}</span>
+      </h2>
+      <div className="px-4 py-3">{children}</div>
     </section>
   );
 }
 
-// One compact row per project; the per-document detail opens on click.
-function ProjectRow({ project, people, onOpen }) {
-  const [open, setOpen] = useState(false);
+// One row per project. Left: what it is and when it's due. Right: overall
+// progress, and one chip per document filled to its own progress.
+function ProjectRow({ project, onOpen }) {
   const st = projectStats(project);
   const due = !st.done ? dueLabel(project.dueDate) : null;
   const stale = !project.archived && !st.done && (Date.now() - st.lastAt) > STALE_DAYS * 86400000;
+  const updated = new Date(st.lastAt).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
   return (
-    <div className="border-b last:border-b-0" data-testid="project-row">
-      <div className="flex items-center gap-3 px-3 py-2.5 hover:bg-slate-50">
-        <button onClick={() => setOpen(!open)} className="text-slate-400 hover:text-slate-700" aria-label={open ? 'Hide documents' : 'Show documents'} data-testid="expand">
-          <Icon name={open ? 'chev_d' : 'chev_r'} size={14} />
-        </button>
-        <button onClick={() => onOpen(project.id)} className="flex-1 min-w-0 text-left">
-          <div className="text-sm font-semibold text-slate-800 truncate">{project.name}</div>
-          <div className="text-[11px] text-slate-500 truncate">{project.workflowName} · updated {fmtStamp(st.lastAt)}</div>
-        </button>
-        <div className="hidden sm:flex items-center gap-1" title="Documents">
-          {project.documents.map(d => {
-            const w = docWindow(project, d);
-            const c = w.cur >= 0 ? cellOf(project, d.id, d.steps[w.cur].id) : null;
-            const col = c ? STATUS[c.status].color : '#059669';
-            return <span key={d.id} title={d.name + ': ' + (c ? d.steps[w.cur].stageName + ' — ' + STATUS[c.status].label : 'done')}
-              className="w-3 h-3 rounded-full border-2" style={{ borderColor: d.color, background: c && c.status === 'held_up' ? '#d97706' : w.cur < 0 ? d.color : 'white' }} />;
-          })}
+    <button onClick={() => onOpen(project.id)} className="w-full text-left grid grid-cols-1 md:grid-cols-[minmax(240px,1fr)_minmax(0,1.3fr)] gap-x-6 gap-y-2 px-4 py-3 border-b last:border-b-0 hover:bg-slate-50" data-testid="project-row">
+      <div className="min-w-0">
+        <div className="text-[15px] font-bold text-slate-800 truncate">{project.name}</div>
+        <div className="text-xs text-slate-500 mt-0.5">
+          {project.workflowName}
+          {' · '}
+          {st.done ? <span className="text-emerald-700 font-medium">Complete</span>
+            : project.dueDate ? <span className={due && due.tone !== 'slate' ? (due.tone === 'red' ? 'text-red-700 font-medium' : 'text-amber-700 font-medium') : ''}>Due: {fmtDate(project.dueDate)}{due && due.tone !== 'slate' ? ' (' + due.text.toLowerCase() + ')' : ''}</span>
+            : 'No due date'}
+          {' · '}Updated: {updated}
         </div>
-        <div className="w-28 hidden md:block">
-          <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden"><div className="h-full bg-emerald-500" style={{ width: st.pct + '%' }} /></div>
-          <div className="text-[10px] text-slate-500 mt-0.5 text-right">{st.pct}%</div>
-        </div>
-        <div className="flex items-center gap-1 text-[11px] w-44 justify-end flex-wrap">
-          {stale && <span className="border rounded-full px-1.5 bg-slate-50 text-slate-600 border-slate-300">Stale</span>}
-          {st.held > 0 && <span className="border rounded-full px-1.5 bg-amber-50 text-amber-800 border-amber-200">{st.held} held</span>}
-          {st.sentBack > 0 && <span className="border rounded-full px-1.5 bg-violet-50 text-violet-700 border-violet-200">{st.sentBack} sent back</span>}
-          {st.done ? <StatusChip status="complete" sm /> : due && <span className={`border rounded-full px-1.5 ${TONE[due.tone]}`}>{due.text}</span>}
-        </div>
+        {(st.held > 0 || st.sentBack > 0 || stale) && <div className="flex items-center gap-1.5 flex-wrap mt-1">
+          {st.held > 0 && <span className="text-[10px] font-semibold border rounded-full px-1.5 bg-amber-50 text-amber-800 border-amber-200 inline-flex items-center gap-0.5"><Icon name="held" size={10} />{st.held} held up</span>}
+          {st.sentBack > 0 && <span className="text-[10px] font-semibold border rounded-full px-1.5 bg-violet-50 text-violet-700 border-violet-200 inline-flex items-center gap-0.5"><Icon name="ret" size={10} />{st.sentBack} sent back</span>}
+          {stale && <span className="text-[10px] font-semibold border rounded-full px-1.5 bg-slate-100 text-slate-600 border-slate-300">Stale</span>}
+        </div>}
       </div>
-      {open && (
-        <div className="pl-10 pr-3 pb-3 space-y-1.5" data-testid="project-docs">
+      <div className="min-w-0">
+        <div className="relative h-5 bg-slate-100 rounded-full overflow-hidden" data-testid="overall-bar">
+          <div className="absolute inset-y-0 left-0 bg-emerald-500 rounded-full transition-all" style={{ width: st.pct + '%' }} />
+          <span className={`absolute inset-y-0 flex items-center text-[11px] font-bold ${st.pct >= 12 ? 'text-white' : 'text-slate-600'}`}
+            style={st.pct >= 12 ? { left: 8 } : { left: 'calc(' + st.pct + '% + 6px)' }}>{st.pct}%</span>
+        </div>
+        <div className="flex flex-wrap gap-1.5 mt-1.5" data-testid="doc-chips">
           {project.documents.map(d => {
             const w = docWindow(project, d);
             const c = w.cur >= 0 ? cellOf(project, d.id, d.steps[w.cur].id) : null;
+            const held = c && c.status === 'held_up';
             return (
-              <div key={d.id} className="flex items-center gap-2 text-xs text-slate-600">
-                <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: d.color }} />
-                <span className="font-medium w-40 truncate">{d.name}</span>
-                <span className="w-16 text-slate-400">{w.closed}/{w.total}</span>
-                {c ? <><span className="truncate">{d.steps[w.cur].stageName}</span><StatusChip status={c.status} sm />
-                  {w.next >= 0 && <span className="text-slate-400 truncate">then {d.steps[w.next].stageName}</span>}</>
-                  : <span className="text-emerald-700">done</span>}
-              </div>
+              <span key={d.id} className="relative overflow-hidden rounded-full border text-[11px] font-medium px-2 py-0.5 text-slate-800 inline-flex items-center gap-1"
+                style={{ borderColor: held ? '#d97706' : d.color }}
+                title={d.name + ' — ' + (c ? 'at ' + d.steps[w.cur].stageName + ' (' + STATUS[c.status].label + ')' : 'done') + ', ' + w.closed + ' of ' + w.total + ' steps'}>
+                <span className="absolute inset-y-0 left-0" style={{ width: w.pct + '%', background: d.color, opacity: .28 }} />
+                {held && <span className="relative text-amber-700"><Icon name="held" size={10} /></span>}
+                {w.cur < 0 && <span className="relative" style={{ color: d.color }}><Icon name="check" size={10} /></span>}
+                <span className="relative">{d.name}</span>
+              </span>
             );
           })}
         </div>
-      )}
+      </div>
+    </button>
+  );
+}
+
+// Recent activity, grouped by project and thinned out: only the newest
+// checklist tick per project, and a change applied to several documents at
+// once (the meeting shortcut) collapses into one line.
+const KIND_STYLE = {
+  created:  { icon: 'plus',    color: '#4f46e5' },
+  status:   { icon: 'pending', color: '#64748b' },
+  tick:     { icon: 'check',   color: '#059669' },
+  sentback: { icon: 'ret',     color: '#7c3aed' },
+  date:     { icon: 'calendar',color: '#0284c7' },
+  people:   { icon: 'user',    color: '#475569' },
+  notes:    { icon: 'notes',   color: '#475569' },
+  link:     { icon: 'storage', color: '#0284c7' },
+  project:  { icon: 'settings',color: '#475569' },
+};
+function activityKind(a, project) {
+  let kind = a.kind, status = a.status, docId = a.docId, step = a.step;
+  const t = a.text || '';
+  if (!kind) {
+    if (/^Created from/.test(t)) kind = 'created';
+    else if (/: (un)?ticked /.test(t)) kind = 'tick';
+    else if (/ sent back from /.test(t)) kind = 'sentback';
+    else if (/ (set to|cleared)/.test(t)) kind = 'date';
+    else if (/: tagged /.test(t)) kind = 'people';
+    else if (/: edited notes/.test(t)) kind = 'notes';
+    else {
+      const m = t.match(/: (Pending|In progress|Held up|Complete|Skipped)\b/);
+      if (m) { kind = 'status'; status = (STATUSES.find(s => s.label === m[1]) || {}).id; } else kind = 'project';
+    }
+  }
+  if (!docId) { const d = project.documents.find(d => t.indexOf(d.name + ' ') === 0 || t.indexOf(d.name + ':') === 0); if (d) docId = d.id; }
+  const doc = project.documents.find(d => d.id === docId);
+  // Drop the "Document · " prefix: the row shows the document as a colour.
+  const short = doc ? t.replace(doc.name + ' · ', '').replace(doc.name + ': ', '') : t;
+  return { ...a, kind, status, doc, step, short };
+}
+function recentByProject(projects, maxProjects = 6, perProject = 3) {
+  const groups = projects.map(project => {
+    const items = Object.values(project.activity).map(a => activityKind(a, project)).sort((a, b) => (b.at || 0) - (a.at || 0));
+    const out = [];
+    let tickSeen = false;
+    items.forEach(it => {
+      if (it.kind === 'tick') { if (tickSeen) return; tickSeen = true; }
+      const prev = out[out.length - 1];
+      if (prev && prev.kind === it.kind && it.kind !== 'project' && prev.step && prev.step === it.step && prev.status === it.status && Math.abs((prev.at || 0) - (it.at || 0)) < 10 * 60000) {
+        if (it.doc && !prev.docs.some(d => d.id === it.doc.id)) prev.docs.push(it.doc);
+        return;
+      }
+      out.push({ ...it, docs: it.doc ? [it.doc] : [] });
+    });
+    return { project, items: out.slice(0, perProject), lastAt: items.length ? items[0].at || 0 : 0 };
+  }).filter(g => g.items.length);
+  return groups.sort((a, b) => b.lastAt - a.lastAt).slice(0, maxProjects);
+}
+
+function RecentUpdates({ projects, onOpen }) {
+  const groups = recentByProject(projects);
+  if (!groups.length) return <p className="text-xs text-slate-400">No activity yet.</p>;
+  return (
+    <div className="space-y-3">
+      {groups.map(g => (
+        <button key={g.project.id} onClick={() => onOpen(g.project.id)} className="w-full text-left block hover:bg-slate-50 rounded-lg -mx-1 px-1 py-1" data-testid="recent-group">
+          <div className="flex items-baseline gap-2">
+            <span className="text-sm font-bold text-slate-800 truncate">{g.project.name}</span>
+            <span className="ml-auto text-[10px] text-slate-400 whitespace-nowrap">{timeAgo(g.lastAt)}</span>
+          </div>
+          <ul className="mt-1 space-y-1">
+            {g.items.map((it, i) => {
+              const ks = KIND_STYLE[it.kind] || KIND_STYLE.project;
+              const st = it.kind === 'status' && it.status ? STATUS[it.status] : null;
+              const color = st ? st.color : ks.color;
+              const multi = it.docs.length > 1;
+              const text = multi && it.step && st ? it.step + ': ' + st.label : it.short;
+              return (
+                <li key={i} className="flex items-start gap-2 text-xs">
+                  <span className="w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: color + '1a', color }}>
+                    <Icon name={st ? st.icon : ks.icon} size={11} />
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="text-slate-700">{text}</span>
+                    <span className="flex items-center gap-1 mt-0.5 flex-wrap">
+                      {it.docs.map(d => <span key={d.id} className="inline-flex items-center gap-1 text-[10px] text-slate-500"><span className="w-1.5 h-1.5 rounded-full" style={{ background: d.color }} />{d.name}</span>)}
+                      <span className="text-[10px] text-slate-400">{it.docs.length ? '· ' : ''}{shortWho(it.by)} · {timeAgo(it.at)}</span>
+                    </span>
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
+        </button>
+      ))}
     </div>
   );
 }
@@ -1378,24 +1663,33 @@ function Dashboard({ data, authUser, onOpen, onNew }) {
   })));
   const stale = stats.filter(x => !x.st.done && (Date.now() - x.st.lastAt) > STALE_DAYS * 86400000).sort((a, b) => a.st.lastAt - b.st.lastAt);
   const dates = upcomingDates(active, 14);
-  const recent = active.flatMap(p => Object.values(p.activity).map(a => ({ ...a, project: p }))).sort((a, b) => (b.at || 0) - (a.at || 0)).slice(0, 12);
   const tiles = [
-    { label: 'Active projects', value: active.length },
-    { label: 'Held up', value: flagged.filter(f => f.cell.status === 'held_up').length, tone: 'amber' },
-    { label: 'Sent back', value: flagged.filter(f => f.cell.round > 1 && f.cell.status !== 'pending').length, tone: 'violet' },
-    { label: 'Overdue', value: stats.reduce((n, x) => n + x.st.overdue, 0), tone: 'red' },
-    { label: 'Stale', value: stale.length, sub: 'no activity in ' + STALE_DAYS + 'd' },
+    { label: 'Active projects', value: active.length, icon: 'dashboard', color: '#4f46e5', sub: stats.filter(x => x.st.done).length + ' complete' },
+    { label: 'Held up', value: flagged.filter(f => f.cell.status === 'held_up').length, icon: 'held', color: '#d97706', sub: 'steps waiting' },
+    { label: 'Sent back', value: flagged.filter(f => f.cell.round > 1 && f.cell.status !== 'pending').length, icon: 'ret', color: '#7c3aed', sub: 'being reworked' },
+    { label: 'Overdue', value: stats.reduce((n, x) => n + x.st.overdue, 0), icon: 'warn', color: '#dc2626', sub: dates.filter(d => d.days >= 0 && d.days <= 7).length + ' due this week' },
+    { label: 'Stale', value: stale.length, icon: 'clock', color: '#64748b', sub: 'quiet ' + STALE_DAYS + '+ days' },
   ];
 
   return (
     <div className="p-4 sm:p-6 max-w-7xl mx-auto">
       <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-4" data-testid="tiles">
-        {tiles.map(t => <div key={t.label} className="bg-white border rounded-xl px-4 py-3"><Stat label={t.label} value={t.value} sub={t.sub} tone={t.value ? t.tone : null} /></div>)}
+        {tiles.map(t => (
+          <div key={t.label} className="bg-white border rounded-xl px-4 py-3 flex items-center gap-3 relative overflow-hidden" style={{ opacity: t.value || t.label === 'Active projects' ? 1 : .7 }}>
+            <span className="absolute inset-y-0 left-0 w-1" style={{ background: t.value ? t.color : '#e2e8f0' }} />
+            <span className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: (t.value ? t.color : '#94a3b8') + '1a', color: t.value ? t.color : '#94a3b8' }}><Icon name={t.icon} size={19} /></span>
+            <span className="min-w-0">
+              <span className="block text-2xl font-bold leading-none" style={{ color: t.value ? t.color : '#94a3b8' }}>{t.value}</span>
+              <span className="block text-xs font-semibold text-slate-700 mt-1">{t.label}</span>
+              <span className="block text-[11px] text-slate-400">{t.sub}</span>
+            </span>
+          </div>
+        ))}
       </div>
 
       <div className="grid lg:grid-cols-3 gap-4 items-start">
         <div className="lg:col-span-2 space-y-4 min-w-0">
-          <Panel title="Needs your attention" icon="t_cust" testid="attention">
+          <Panel title="Needs your attention" icon="t_cust" testid="attention" accent="#4f46e5" count={attention.length}>
             {!me && <p className="text-sm text-slate-600">Your sign-in ({authUser.email}) is not on the People list yet, so nothing can be assigned to you. Add yourself under <strong>People</strong>.</p>}
             {me && !attention.length && <p className="text-sm text-slate-500">Nothing pending for you.</p>}
             {me && attention.length > 0 && <div className="divide-y -mx-1">
@@ -1432,10 +1726,10 @@ function Dashboard({ data, authUser, onOpen, onNew }) {
             {!list.length && <div className="text-sm text-slate-500 px-4 py-6 text-center">
               {data.projects.length ? 'No projects match.' : 'No projects yet. Start one from a workflow with New project.'}
             </div>}
-            {list.map(p => <ProjectRow key={p.id} project={p} people={data.people} onOpen={onOpen} />)}
+            {list.map(p => <ProjectRow key={p.id} project={p} onOpen={onOpen} />)}
           </section>
 
-          <Panel title="Held up or sent back" icon="warn" testid="report-flagged">
+          <Panel title="Held up or sent back" icon="warn" testid="report-flagged" accent="#d97706" count={flagged.length}>
             {!flagged.length && <p className="text-xs text-slate-400">Nothing held up or on a repeat round.</p>}
             <ul className="divide-y">
               {flagged.map((f, i) => (
@@ -1455,10 +1749,10 @@ function Dashboard({ data, authUser, onOpen, onNew }) {
         </div>
 
         <div className="space-y-4 min-w-0">
-          <Panel title="Next 14 days" icon="calendar" testid="report-dates">
+          <Panel title="Next 14 days" icon="calendar" testid="report-dates" accent="#0284c7" count={dates.length}>
             <DateList items={dates} onOpen={it => onOpen(it.project.id)} empty="No due or meeting dates coming up." />
           </Panel>
-          <Panel title="Stale projects" icon="clock" testid="report-stale">
+          <Panel title="Stale projects" icon="clock" testid="report-stale" accent="#64748b" count={stale.length}>
             {!stale.length && <p className="text-xs text-slate-400">Every active project has had activity in the last {STALE_DAYS} days.</p>}
             <ul className="divide-y">
               {stale.map(({ p, st }) => (
@@ -1469,16 +1763,8 @@ function Dashboard({ data, authUser, onOpen, onNew }) {
               ))}
             </ul>
           </Panel>
-          <Panel title="Recent updates" icon="history" testid="recent">
-            {!recent.length && <p className="text-xs text-slate-400">No activity yet.</p>}
-            <ul className="space-y-2">
-              {recent.map((a, i) => (
-                <li key={i}><button onClick={() => onOpen(a.project.id)} className="w-full text-left hover:bg-slate-50 rounded">
-                  <div className="text-xs text-slate-700">{a.text}</div>
-                  <div className="text-[10px] text-slate-400">{a.project.name} · {(a.by || '').split('@')[0]} · {fmtStamp(a.at)}</div>
-                </button></li>
-              ))}
-            </ul>
+          <Panel title="Recent updates" icon="history" testid="recent" accent="#0f766e">
+            <RecentUpdates projects={active} onOpen={onOpen} />
           </Panel>
         </div>
       </div>

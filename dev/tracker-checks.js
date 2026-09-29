@@ -69,8 +69,23 @@ const cell = (d, docId, stepId) => {
   ok('project created with a workflow snapshot', proj && proj.documents.length === 2 && proj.sourceHash);
   t = await text(p);
   ok('opens on the Overview, one row per document', await p.evaluate(() => document.querySelectorAll('[data-testid=ov-doc]').length === 2));
-  ok('overview shows now and up next', t.includes('LAST DONE') || t.includes('Last done'));
-  ok('overview row starts with nothing completed', t.includes('Nothing completed yet'));
+  ok('each document has a step track with a wide current card', await p.evaluate(() => document.querySelectorAll('[data-testid=track] [data-kind=now]').length === 2));
+  ok('current card is wider than the side cards', await p.evaluate(() => { const n = document.querySelector('.trk-now'), s = document.querySelector('.trk-side'); return n.offsetWidth > s.offsetWidth * 2.5; }));
+  ok('upcoming dates sit in the summary, not a panel below', await p.evaluate(() => !!document.querySelector('[data-testid=upcoming]')));
+  ok('segmented bar has one segment per step', await p.evaluate(() => document.querySelector('[data-testid=segments]').children.length === 4));
+
+  console.log('\nDocument links');
+  await click(p, '[data-testid=doc-link] button', 'Add file link'); await p.waitForTimeout(100);
+  await fill(p, '.fixed input >> nth=0', 'https://example.com/v1');
+  await click(p, '.fixed button', 'Add link'); await p.waitForTimeout(150);
+  await click(p, '[data-testid=doc-link] button[title="Update link"]'); await p.waitForTimeout(100);
+  await fill(p, '.fixed input >> nth=0', 'https://example.com/v2');
+  await fill(p, '.fixed input >> nth=1', 'after review');
+  await click(p, '.fixed button', 'Save as latest version'); await p.waitForTimeout(150);
+  d = await db(p);
+  const lk = Object.values(d.tracker.projects)[0].links.d1;
+  ok('a new file version replaces the link and keeps the old one', lk.url === 'https://example.com/v2' && lk.version === 2 && Object.values(lk.history).some(h => h.url === 'https://example.com/v1'));
+  ok('the document shows its file link', await p.evaluate(() => /Open file\s*v2/.test(document.querySelector('[data-testid=doc-link]').innerText)));
   await p.screenshot({ path: path.join(SHOTS, 'tracker-overview.png') });
   await click(p, 'button[data-view=flow]'); await p.waitForTimeout(150);
   t = await text(p);
@@ -126,13 +141,14 @@ const cell = (d, docId, stepId) => {
   await click(p, 'button', 'Dashboard'); await p.waitForTimeout(200);
   t = await text(p);
   ok('dashboard lists the step assigned through a role', await p.evaluate(() => { const a = document.querySelector('[data-testid=attention]'); return !!a && a.innerText.includes('JCCS'); }));
-  ok('summary tiles count held up steps', await p.evaluate(() => /HELD UP\s*2|Held up\s*2/i.test(document.querySelector('[data-testid=tiles]').innerText)));
-  ok('project row is compact until expanded', !t.includes('then EDCO') && t.includes('2 held'));
-  await click(p, '[data-testid=expand]'); await p.waitForTimeout(100);
-  ok('expanding a row shows each document', await p.evaluate(() => { const d = document.querySelector('[data-testid=project-docs]'); return !!d && d.innerText.includes('Program Proposal'); }));
+  ok('summary tiles count held up steps', await p.evaluate(() => /2\s*Held up/.test(document.querySelector('[data-testid=tiles]').innerText)));
+  ok('project row shows workflow, due and updated under the title', t.includes('2 held up') && /New Program · (No due date|Due:)[^\n]*· Updated:/.test(t));
+  ok('overall bar carries its % inside', await p.evaluate(() => /\d+%/.test(document.querySelector('[data-testid=overall-bar]').innerText)));
+  ok('one progress chip per document, named', await p.evaluate(() => { const c = document.querySelector('[data-testid=doc-chips]'); return c.children.length === 2 && c.innerText.includes('Program Proposal'); }));
   ok('held up report names the reason', await p.evaluate(() => document.querySelector('[data-testid=report-flagged]').innerText.includes('Waiting on the Dean')));
-  ok('recent updates list activity', await p.evaluate(() => document.querySelector('[data-testid=recent]').innerText.includes('Held up')));
-  await click(p, '[data-testid=project-row] button:nth-child(2)'); await p.waitForTimeout(200);
+  ok('recent updates are grouped under the project', await p.evaluate(() => document.querySelectorAll('[data-testid=recent-group]').length === 1 && document.querySelector('[data-testid=recent-group]').innerText.startsWith('Certificate in Testing')));
+  ok('a change applied at a meeting collapses to one line', await p.evaluate(() => (document.querySelector('[data-testid=recent]').innerText.match(/JCCS: Held up/g) || []).length === 1));
+  await click(p, '[data-testid=project-row]'); await p.waitForTimeout(200);
 
   console.log('\nSkip');
   await openStep('Concept Paper', 'Dean Review');
@@ -162,12 +178,12 @@ const cell = (d, docId, stepId) => {
   t = await text(p);
   ok('round badge shows on the track', t.includes('R2'));
   await click(p, 'button[data-view=overview]'); await p.waitForTimeout(150);
-  ok('overview now slides to the reopened step', await p.evaluate(() => { const n = document.querySelector('[data-kind=now]'); return !!n && n.innerText.includes('Draft') && n.innerText.includes('R2'); }));
+  ok('overview now slides to the reopened step', await p.evaluate(() => { const n = document.querySelector('[data-kind=now]'); return !!n && n.innerText.includes('Draft') && n.innerText.includes('Round 2'); }));
   await p.screenshot({ path: path.join(SHOTS, 'tracker-overview-2.png') });
   await p.goto(PAGE); await p.waitForTimeout(400);
   ok('sent back report shows the new round', await p.evaluate(() => document.querySelector('[data-testid=report-flagged]').innerText.includes('Round 2')));
   await p.screenshot({ path: path.join(SHOTS, 'tracker-dashboard.png'), fullPage: true });
-  await click(p, '[data-testid=project-row] button:nth-child(2)'); await p.waitForTimeout(200);
+  await click(p, '[data-testid=project-row]'); await p.waitForTimeout(200);
   await click(p, 'button[data-view=flow]'); await p.waitForTimeout(150);
 
   console.log('\nWorkflow update');
