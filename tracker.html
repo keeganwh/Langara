@@ -34,7 +34,8 @@
                  scrollbar-width: none; }
     .trk-track::-webkit-scrollbar { display: none; }
     .trk-track:active { cursor: grabbing; }
-    .trk-now  { flex-grow: 0; flex-shrink: 0; min-height: 92px; }
+    .trk-now  { flex-grow: 0; flex-shrink: 0; min-height: 92px; scroll-snap-align: start; scroll-margin-left: 156px; }
+    .trk-track.snap { scroll-snap-type: x proximity; }
     .trk-side { flex-grow: 0; flex-shrink: 0; min-height: 92px; }
     .trk-edge { position: absolute; top: 0; bottom: 0; width: 36px; pointer-events: none; opacity: 0; transition: opacity .15s; }
     .trk-edge.l { left: 0; background: linear-gradient(90deg, #fff, rgba(255,255,255,0)); }
@@ -407,7 +408,10 @@ function stepPeople(project, people, step, cell) {
 const personById = (people, id) => people.find(p => p.id === id);
 const meOf = (people, authUser) => authUser && authUser.email
   ? people.find(p => (p.email || '').trim().toLowerCase() === authUser.email.toLowerCase()) || null : null;
-const initials = (name) => (name || '?').split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase();
+const initials = (name) => {
+  const w = (name || '?').trim().split(/\s+/).filter(Boolean);
+  return (w.length > 1 ? w[0][0] + w[w.length - 1][0] : (w[0] || '?').slice(0, 2)).toUpperCase();
+};
 
 function Avatar({ person, size = 22 }) {
   return (
@@ -1228,7 +1232,9 @@ function StepTrack({ project, doc, people, onOpen }) {
     setTimeout(measure, 350);
   }, [curKey, width]);
 
-  const onDown = (e) => { if (e.pointerType !== 'mouse') return; drag.current = { down: true, x: e.clientX, left: ref.current.scrollLeft, moved: false }; };
+  // Snapping is off while dragging (it would fight the pointer) and back on at
+  // release, which is when a nearly-parked Now card settles into place.
+  const onDown = (e) => { if (e.pointerType !== 'mouse') return; ref.current.classList.remove('snap'); drag.current = { down: true, x: e.clientX, left: ref.current.scrollLeft, moved: false }; };
   const onMove = (e) => {
     const d = drag.current;
     if (!d.down) return;
@@ -1236,7 +1242,7 @@ function StepTrack({ project, doc, people, onOpen }) {
     if (Math.abs(dx) > 5) d.moved = true;
     if (d.moved) ref.current.scrollLeft = d.left - dx;
   };
-  const onUp = () => { drag.current.down = false; };
+  const onUp = () => { if (drag.current.down) ref.current.classList.add('snap'); drag.current.down = false; };
   const onClickCapture = (e) => { if (drag.current.moved) { e.stopPropagation(); e.preventDefault(); drag.current.moved = false; } };
   const nudge = (dir) => ref.current.scrollBy({ left: dir * (SIDE_W + TRACK_GAP), behavior: 'smooth' });
 
@@ -1253,7 +1259,7 @@ function StepTrack({ project, doc, people, onOpen }) {
 
   return (
     <div className="relative min-w-0">
-      <div ref={ref} className="trk-track" data-testid="track" style={{ gap: TRACK_GAP }}
+      <div ref={ref} className="trk-track snap" data-testid="track" style={{ gap: TRACK_GAP }}
         onScroll={measure} onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerLeave={onUp} onClickCapture={onClickCapture}>
         {items}
       </div>
@@ -1496,12 +1502,13 @@ function ProjectView({ project, data, authUser, onBack }) {
 // ── Dashboard ──────────────────────────────────────────────────────────────────
 const STALE_DAYS = 14;
 
-function Panel({ title, icon, children, testid, right, accent = '#64748b', count }) {
+function Panel({ title, icon, children, testid, right, accent = '#64748b', count, sub }) {
   return (
     <section className="bg-white border rounded-xl overflow-hidden" data-testid={testid}>
       <h2 className="text-sm font-bold text-slate-800 px-4 py-2.5 flex items-center gap-2 border-b" style={{ borderTop: '3px solid ' + accent }}>
         <span className="w-6 h-6 rounded-md flex items-center justify-center" style={{ background: accent + '1a', color: accent }}><Icon name={icon} size={14} /></span>
         {title}
+        {sub && <span className="text-xs font-normal text-slate-500 truncate">{sub}</span>}
         {count > 0 && <span className="text-[11px] font-bold rounded-full px-1.5 text-white" style={{ background: accent }}>{count}</span>}
         <span className="ml-auto font-normal">{right}</span>
       </h2>
@@ -1529,10 +1536,6 @@ function ProjectRow({ project, people, onOpen }) {
           {st.held > 0 && <span className="text-amber-600 flex-shrink-0" title={st.held + (st.held === 1 ? ' step' : ' steps') + ' held up'} data-testid="flag-held"><Icon name="held" size={15} /></span>}
           {st.sentBack > 0 && <span className="text-violet-600 flex-shrink-0" title={st.sentBack + (st.sentBack === 1 ? ' step' : ' steps') + ' sent back for another round'}><Icon name="ret" size={15} /></span>}
           {stale && <span className="text-slate-400 flex-shrink-0" title={'No activity in ' + STALE_DAYS + '+ days'}><Icon name="clock" size={15} /></span>}
-          {ppl.length > 0 && <span className="ml-auto flex -space-x-1.5 flex-shrink-0 pl-2" data-testid="project-people">
-            {ppl.slice(0, 5).map(p => <Avatar key={p.id} person={p} size={24} />)}
-            {ppl.length > 5 && <span className="w-6 h-6 rounded-full bg-slate-100 text-slate-600 text-[10px] font-semibold flex items-center justify-center border border-white">+{ppl.length - 5}</span>}
-          </span>}
         </div>
         <div className="text-xs text-slate-500 mt-0.5">
           {project.workflowName}
@@ -1542,9 +1545,12 @@ function ProjectRow({ project, people, onOpen }) {
             : 'No due date'}
           {' · '}Updated: {updated}
         </div>
+        {ppl.length > 0 && <div className="flex items-center gap-1 flex-wrap mt-1.5" data-testid="project-people">
+          {ppl.map(p => <Avatar key={p.id} person={p} size={24} />)}
+        </div>}
       </div>
       <div className="min-w-0">
-        <div className="relative h-5 bg-white border border-slate-300 rounded-full overflow-hidden" data-testid="overall-bar">
+        <div className="relative h-5 bg-slate-100 border border-slate-300 rounded-full overflow-hidden" data-testid="overall-bar">
           <div className="absolute inset-y-0 left-0 bg-emerald-500 transition-all" style={{ width: st.pct + '%' }} />
           {/* The % sits at the end of the fill: inside it once there is room, just past it before then. */}
           <span className={`absolute inset-y-0 flex items-center text-[11px] font-bold ${st.pct >= 12 ? 'text-white' : 'text-slate-600'}`}
@@ -1718,8 +1724,7 @@ function Dashboard({ data, authUser, onOpen, onNew }) {
 
       <div className="grid lg:grid-cols-3 gap-4 items-start">
         <div className="lg:col-span-2 space-y-4 min-w-0">
-          <Panel title="Needs your attention" icon="t_cust" testid="attention" accent="#4f46e5" count={attention.length}>
-            <p className="text-xs text-slate-500 -mt-1 mb-2">Steps you are on — through a role or tagged directly — that are in progress, held up, or next in line.</p>
+          <Panel title="Needs your attention" icon="t_cust" testid="attention" accent="#4f46e5" sub="Your steps (by role or tag) that are active or next in line">
             {!me && <p className="text-sm text-slate-600">Your sign-in ({authUser.email}) is not on the People list yet, so nothing can be assigned to you. Add yourself under <strong>People</strong>.</p>}
             {me && !attention.length && <p className="text-sm text-slate-500">Nothing pending for you.</p>}
             {me && attention.length > 0 && <div className="divide-y -mx-1">
@@ -1759,7 +1764,7 @@ function Dashboard({ data, authUser, onOpen, onNew }) {
             {list.map(p => <ProjectRow key={p.id} project={p} people={data.people} onOpen={onOpen} />)}
           </section>
 
-          <Panel title="Held up or sent back" icon="warn" testid="report-flagged" accent="#d97706" count={flagged.length}>
+          <Panel title="Held up or sent back" icon="warn" testid="report-flagged" accent="#d97706">
             {!flagged.length && <p className="text-xs text-slate-400">Nothing held up or on a repeat round.</p>}
             <ul className="divide-y">
               {flagged.map((f, i) => (
