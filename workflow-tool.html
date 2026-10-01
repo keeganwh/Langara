@@ -3412,6 +3412,11 @@ function usePresence(authUser) {
 }
 
 // ── App ────────────────────────────────────────────────────────────────────────
+// The brand block (above the sidebar) and the top bar share one fixed height,
+// so their bottom borders meet in a single line. Sized by content they were
+// 0.7px apart.
+const CHROME_BAR_H = 68;
+
 function App({ authUser }) {
   const [store, updateStore, syncStatus, refreshStore] = useStore();
   const activeUsers = usePresence(authUser);
@@ -3542,7 +3547,8 @@ function App({ authUser }) {
             somewhere to go. It deliberately does nothing for now. */}
         <button
           onClick={() => { /* reserved: home / dashboard */ }}
-          className="w-full text-left p-4 border-b border-slate-200 hover:bg-slate-50 transition-colors"
+          className="w-full text-left px-4 border-b border-slate-200 hover:bg-slate-50 transition-colors flex flex-col justify-center shrink-0"
+          style={{ height: CHROME_BAR_H }}
           title="Workflow Tool">
           <div className="font-bold text-slate-800 text-sm leading-tight">Workflow Tool</div>
           <div className="text-xs text-slate-400 mt-0.5">Langara Continuing Studies</div>
@@ -3639,7 +3645,7 @@ function App({ authUser }) {
         {/* Top bar. Everything that is not about *this workflow* has moved:
             collapse into the sidebar, view toggle and Save as Template into the
             toolbar below, account into Settings. */}
-        <header className="bg-white border-b border-slate-200 px-4 py-2 flex items-center gap-3 shrink-0 no-print">
+        <header className="bg-white border-b border-slate-200 px-4 flex items-center gap-3 shrink-0 no-print" style={{ height: CHROME_BAR_H }}>
           {!sidebarOpen && (
             <button onClick={() => setSidebarOpen(true)}
               className="text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded p-1.5 transition-colors shrink-0"
