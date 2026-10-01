@@ -227,9 +227,6 @@ const cell = (d, docId, stepId) => {
   await p.evaluate(() => { if (!document.querySelector('[data-testid=changes-drawer]')) document.querySelector('[data-testid=changes-btn]').click(); }); await p.waitForTimeout(100);
   await click(p, '[data-testid=changes-drawer] button[data-tab=workflow]'); await p.waitForTimeout(150);
   ok('the drawer still lists the minor change, marked minor', await p.evaluate(() => /Draft: changed notes\s*· minor/.test(document.querySelector('[data-testid=workflow-diff]').innerText)));
-  await p.evaluate(() => { const db = window.__stubDb(); db.pipelineLog = { wf1: { a: { at: Date.now(), by: 'k@x', changes: [{ major: true, text: 'Step added: Board', doc: 'Concept Paper' }] } } }; });
-  await p.evaluate(() => firebase.database().ref('tracker/ping').set(4)); await p.waitForTimeout(150);
-  ok('the drawer shows the Workflow Map history', await p.evaluate(() => document.querySelector('[data-testid=workflow-log]').innerText.includes('Step added: Board')));
 
   console.log('\nIcons');
   ok('no emoji in the rendered page', await p.evaluate(() => !/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/u.test(document.body.innerText)));

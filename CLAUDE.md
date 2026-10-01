@@ -307,8 +307,8 @@ logs as a change (an early version logged "changed storage link" on every step
 because `''` and a missing field compared unequal). `major` marks substantial
 changes (steps, documents, tasks, presenters/carriers, meeting group);
 notes, storage and trigger wording are minor. A **History** button in the top
-bar, left of Publish, opens `WorkflowHistory`, a drawer of the log. The
-Program Tracker reads the same log. Covered by the `auth != null` rules.
+bar, left of Publish, opens `WorkflowHistory`, a drawer of the log. Only the
+Workflow Map shows it. Covered by the `auth != null` rules.
 
 ## Publishing (read-only pages)
 
@@ -511,9 +511,11 @@ reorders the list — the likeliest source of false alarms, since the stored
 hash is order-sensitive). The pill shows only for **substantial** changes
 (steps, documents, tasks, roles, meeting group, information only); notes,
 storage and trigger wording are listed in the drawer as minor. The drawer's
-Workflow tab also shows the Workflow Map's history log for that workflow,
-marking edits made after the project's copy (`project.syncedAt`, set on create
-and on update; older projects fall back to `createdAt`).
+Workflow update tab lists only what this project's copy is missing, with the
+Update button. The workflow's full edit history lives on the Workflow Map
+(History, beside Publish) — by request the tracker shows project-level
+changes only. `project.syncedAt` (set on create and update) records when the
+copy was taken.
 
 "Sent back" counts only a later-round step that is being reworked (not
 pending); the steps a send-back reset to pending still show their round badge.
@@ -533,7 +535,7 @@ pending); the steps a send-back reset to pending still show their round badge.
   next for their document, sorted by due date.
 - Routing is the hash (`#/p/<id>`), so projects can be linked directly.
 
-Checks: `cd dev && npm run tracker` (58 checks, own Firebase stub with nested
+Checks: `cd dev && npm run tracker` (57 checks, own Firebase stub with nested
 paths and live listeners — see `dev/tracker-preview.js`).
 
 ## Conventions to follow

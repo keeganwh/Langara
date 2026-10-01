@@ -1065,31 +1065,16 @@ function Drawer({ title, onClose, children, testid }) {
     </div>, document.body);
 }
 
-// The Workflow Map's change log for one workflow (written by workflow-tool.html
-// on every save, under pipelineLog/<workflowId>).
-function useWorkflowLog(workflowId) {
-  const [entries, setEntries] = useState(null);
-  useEffect(() => {
-    const ref = getFbDb().ref('pipelineLog/' + workflowId);
-    const q = ref.limitToLast ? ref.limitToLast(80) : ref;
-    const cb = q.on('value', s => setEntries(Object.values(s.val() || {}).sort((a, b) => (b.at || 0) - (a.at || 0))), () => setEntries([]));
-    return () => q.off('value', cb);
-  }, [workflowId]);
-  return entries;
-}
-
 function ChangesDrawer({ project, data, authUser, tab, onTab, onClose }) {
-  const log = useWorkflowLog(project.workflowId);
   const items = Object.values(project.activity).map(a => activityKind(a, project)).sort((a, b) => (b.at || 0) - (a.at || 0));
   const sum = driftSummary(project, data);
   const drift = sum && sum.drift;
   const diff = sum ? sum.diff : [];
-  const syncedAt = project.syncedAt || project.createdAt || 0;
   const DIFF_STYLE = { add: ['plus', '#059669'], remove: ['x', '#dc2626'], edit: ['edit', '#0284c7'] };
   return (
     <Drawer title="Changes" onClose={onClose} testid="changes-drawer">
       <div className="flex gap-1 px-4 py-2 border-b border-slate-200 shrink-0">
-        {[['activity', 'Project activity'], ['workflow', 'Workflow changes' + (diff.length ? ' · ' + diff.length : '')]].map(([id, label]) => (
+        {[['activity', 'Project activity'], ['workflow', 'Workflow update' + (diff.length ? ' · ' + diff.length : '')]].map(([id, label]) => (
           <button key={id} onClick={() => onTab(id)} data-tab={id}
             className={`text-xs font-medium px-3 py-1.5 rounded-md ${tab === id ? 'bg-indigo-50 text-indigo-700' : 'text-slate-500 hover:bg-slate-100'}`}>{label}</button>
         ))}
@@ -1138,27 +1123,6 @@ function ChangesDrawer({ project, data, authUser, tab, onTab, onClose }) {
             <p className="text-[11px] text-slate-400 mt-1.5">Progress on steps that still exist is kept. Minor changes (notes, storage, trigger wording) are listed but don't raise the Workflow changed warning.</p>
           </div>}
 
-          <SectionLabel>Workflow history</SectionLabel>
-          {log === null && <p className="text-xs text-slate-400">Loading…</p>}
-          {log && !log.length && <p className="text-xs text-slate-400">No edits recorded yet. The Workflow Map records every edit from now on.</p>}
-          <div data-testid="workflow-log">
-            {(log || []).map((e, i) => {
-              const after = (e.at || 0) > syncedAt;
-              return (
-                <div key={i} className={`mb-2.5 pl-2 border-l-2 ${after ? 'border-amber-300' : 'border-slate-200'}`}>
-                  <div className="text-[11px] text-slate-500 mb-0.5">{shortWho(e.by) || 'Someone'} · {fmtStamp(e.at)}{after && <span className="text-amber-700 font-medium"> · after this project's copy</span>}</div>
-                  <ul className="space-y-0.5">
-                    {(e.changes || []).map((c, j) => (
-                      <li key={j} className={`flex items-start gap-1.5 text-xs ${c.major ? 'text-slate-700' : 'text-slate-400'}`}>
-                        <span className="mt-1 w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: c.color || '#cbd5e1' }} />
-                        <span>{c.doc ? c.doc + ': ' : ''}{c.text}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              );
-            })}
-          </div>
         </>}
       </div>
     </Drawer>
