@@ -414,8 +414,8 @@ creates *projects* from its workflows and tracks each one's progress. Same
 stack, same sign-in, same Firebase project, same icon set (`ICON_PATHS` is
 copied into the tracker — keep the two in sync when adding glyphs).
 
-**Status: hidden.** It is live at `/Langara/tracker.html`, but the Workflow Map
-does not link to it yet. Adding that link is the "go live" step.
+**Status: live.** `/Langara/tracker.html`. The Workflow Map's sidebar links to
+it (Program Tracker, above Settings) and the tracker's sidebar links back.
 
 ### Data (`tracker/` in Firebase — never writes to `pipeline`)
 

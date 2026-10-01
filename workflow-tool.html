@@ -3744,7 +3744,11 @@ function App({ authUser }) {
         </div>
 
         {/* Everything that used to live here now sits behind Settings */}
-        <div className="p-3 border-t border-slate-200">
+        <div className="p-3 border-t border-slate-200 space-y-1.5">
+          <a href="tracker.html" data-testid="tracker-link"
+            className="w-full px-3 py-2.5 rounded-lg text-sm text-slate-700 border border-slate-200 hover:bg-slate-50 flex items-center gap-2.5 transition-colors">
+            <Icon name="v_docs" size={16} className="text-slate-500" /> Program Tracker
+          </a>
           <button onClick={() => setModal('settings')}
             className="w-full px-3 py-2.5 rounded-lg text-sm text-slate-700 border border-slate-200 hover:bg-slate-50 flex items-center gap-2.5 transition-colors">
             <Icon name="settings" size={16} className="text-slate-500" /> Settings
