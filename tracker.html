@@ -1320,7 +1320,9 @@ function NowCard({ project, doc, idx, data, authUser, onOpen }) {
           <SectionLabel>Tasks{cc.n ? ' · ' + cc.done + ' of ' + cc.n : ''}</SectionLabel>
           {!cc.n && <div className="text-[11px] text-slate-400">No tasks on this step.</div>}
           <ul className="space-y-0.5">
-            {step.actions.slice(0, MAX_TASKS).map((a, i) => (
+            {/* Every task still to do is always shown. Done ones fold into one
+                line once the list is long, so they never push a to-do out of view. */}
+            {step.actions.map((a, i) => ({ a, i })).filter(x => !rc['t' + x.i] || cc.n <= MAX_TASKS).map(({ a, i }) => (
               <li key={i}>
                 <label onClick={stop} className="flex items-start gap-1.5 text-[11px] cursor-pointer hover:bg-slate-50 rounded px-0.5">
                   <input type="checkbox" className="mt-0.5" checked={!!rc['t' + i]} onChange={() => toggleTask(project, doc, step, c, i, authUser)} data-testid="card-task" />
@@ -1329,7 +1331,9 @@ function NowCard({ project, doc, idx, data, authUser, onOpen }) {
               </li>
             ))}
           </ul>
-          {cc.n > MAX_TASKS && <div className="text-[10px] text-slate-400 mt-0.5">+{cc.n - MAX_TASKS} more in the step</div>}
+          {cc.n > MAX_TASKS && cc.done > 0 && <div className="text-[10px] text-emerald-700 mt-0.5 inline-flex items-center gap-1" data-testid="done-tasks"
+            title={step.actions.filter((a, i) => rc['t' + i]).map(a => a.label + (a.person ? ' ' + a.person : '')).join('\n')}>
+            <Icon name="check" size={10} />{cc.done} done</div>}
         </div>
         <div className="px-3 py-2 min-w-0">
           <SectionLabel>People</SectionLabel>
