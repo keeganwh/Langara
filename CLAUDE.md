@@ -468,7 +468,8 @@ than replace every class, a `<script id="tw-brand">` block remaps Tailwind's
 buttons, where white text needs the extra contrast), so `indigo-*` classes in
 `tracker.html` mean brand orange. `dev/tracker-preview.js` reads that block to
 compile the offline preview with the same theme. Violet stays the "sent back"
-status colour. The Workflow Tool still uses Tailwind's real indigo.
+status colour. The Workflow Tool carries the identical `tw-brand` block (read by
+`dev/preview.js`); keep the two in sync.
 
 - **Dashboard** — compact one-line tiles (click one to filter to it), then the
   project list with search and three checkable dropdowns (`MultiSelect`):

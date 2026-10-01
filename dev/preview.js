@@ -22,8 +22,13 @@ const bodyClass = (src.match(/<body class="([^"]*)"/) || [, ''])[1];
 
 // Tailwind, compiled against the app's own classes
 fs.writeFileSync(path.join(OUT, 'in.css'), '@tailwind base;@tailwind components;@tailwind utilities;');
-execFileSync('npx', ['tailwindcss', '-i', path.join(OUT, 'in.css'), '-o', path.join(OUT, 'tw.css'),
-  '--content', path.join(ROOT, 'workflow-tool.html'), '--minify'],
+// The app remaps Tailwind colours in a <script id="tw-brand"> block for the
+// CDN build; compile the preview with the same theme.
+const brand = (src.match(/<script id="tw-brand">([\s\S]*?)<\/script>/) || [, ''])[1];
+const theme = brand ? new Function('const tailwind = {}; ' + brand + '; return tailwind.config.theme;')() : {};
+fs.writeFileSync(path.join(OUT, 'tw.config.js'), 'module.exports = ' + JSON.stringify({ content: [path.join(ROOT, 'workflow-tool.html')], theme }) + ';');
+execFileSync('npx', ['tailwindcss', '-c', path.join(OUT, 'tw.config.js'), '-i', path.join(OUT, 'in.css'), '-o', path.join(OUT, 'tw.css'),
+  '--minify'],
   { cwd: __dirname, stdio: ['ignore', 'ignore', 'inherit'] });
 
 // Optional: your own Backup & Restore export. Gitignored — see dev/README.md.

@@ -5,6 +5,15 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>CS Workflow Tool</title>
   <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Brand colour: Langara orange #F15A22 (500). Tailwind's indigo scale is
+       remapped to it, so every indigo-* class is the brand colour. Same block
+       as tracker.html; dev/preview.js reads it to build the offline preview. -->
+  <script id="tw-brand">
+    tailwind.config = { theme: { extend: { colors: { indigo: {
+      50: '#FEF4EF', 100: '#FDE4D8', 200: '#FBC6AE', 300: '#F89F7A', 400: '#F47A48',
+      500: '#F15A22', 600: '#DD4513', 700: '#B83611', 800: '#932D15', 900: '#772814', 950: '#411208',
+    } } } } };
+  </script>
   <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
   <script src="https://unpkg.com/@babel/standalone@7.23.10/babel.min.js"></script>
@@ -21,7 +30,7 @@
     .step-controls { opacity: 0; transition: opacity 0.1s; }
     .step-card:hover .step-controls { opacity: 1; }
     .step-card { transition: box-shadow 0.15s, border-color 0.15s; }
-    input:focus, select:focus, textarea:focus { outline: 2px solid #6366f1; outline-offset: 1px; }
+    input:focus, select:focus, textarea:focus { outline: 2px solid #F15A22; outline-offset: 1px; }
     .fade-in { animation: fadeIn 0.15s ease; }
     @keyframes fadeIn { from { opacity:0; transform:translateY(-4px); } to { opacity:1; transform:translateY(0); } }
     ::-webkit-scrollbar { width:6px; height:6px; }
@@ -121,9 +130,9 @@
                padding:10px 20px; display:flex; align-items:center; gap:16px; }
     .pub-bar-t { font-weight:700; color:#1e293b; font-size:15px; }
     .pub-bar-s { font-size:12px; color:#94a3b8; }
-    .pub-print { margin-left:auto; background:#4f46e5; color:#fff; border:0; border-radius:8px;
+    .pub-print { margin-left:auto; background:#DD4513; color:#fff; border:0; border-radius:8px;
                  padding:8px 14px; font-size:13px; font-weight:600; cursor:pointer; }
-    .pub-print:hover { background:#4338ca; }
+    .pub-print:hover { background:#B83611; }
 
     /* One continuous page. cqw sizing means the same markup scales on screen
        and at print width without a second set of rules. */
