@@ -43,6 +43,8 @@ const stub = `
                                              val:function(){return _data[path]} }); },
     set:function(v){ _data[path]=v; persist(); return Promise.resolve(); },
     remove:function(){ delete _data[path]; persist(); return Promise.resolve(); },
+    push:function(v){ var o=_data[path]||{}; o['k'+Date.now().toString(36)+Math.random().toString(36).slice(2,6)]=JSON.parse(JSON.stringify(v)); _data[path]=o; persist(); return Promise.resolve(); },
+    limitToLast:function(){ return refFor(path); },
     onDisconnect:function(){ return { remove:function(){ return Promise.resolve(); } }; },
     on:function(ev,cb){ cb({ val:function(){ return _data[path]; } }); return cb; },
     off:function(){}

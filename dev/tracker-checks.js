@@ -219,6 +219,17 @@ const cell = (d, docId, stepId) => {
   d = await db(p);
   const pr2 = Object.values(d.tracker.projects)[0];
   ok('update pulls in new steps and keeps progress', pr2.documents[0].steps.some(s => s.id === 's5') && cell(d, 'd1', 's1').round === 2);
+  await p.evaluate(() => { const db = window.__stubDb(); const s = db.pipeline.projectTypes[0].documents[0].steps[0]; s.notes = 'Use the 2027 template.'; s.presenterIds = ['r1']; });
+  await p.evaluate(() => firebase.database().ref('tracker/ping').set(2)); await p.waitForTimeout(150);
+  ok('a notes-only edit does not raise the Workflow changed pill', await p.evaluate(() => !document.querySelector('[data-testid=drift-pill]')));
+  await p.evaluate(() => { const db = window.__stubDb(); const s = db.pipeline.projectTypes[0].documents[1].steps[1]; s.presenterIds = ['r2']; });
+  await p.evaluate(() => firebase.database().ref('tracker/ping').set(3)); await p.waitForTimeout(150);
+  await p.evaluate(() => { if (!document.querySelector('[data-testid=changes-drawer]')) document.querySelector('[data-testid=changes-btn]').click(); }); await p.waitForTimeout(100);
+  await click(p, '[data-testid=changes-drawer] button[data-tab=workflow]'); await p.waitForTimeout(150);
+  ok('the drawer still lists the minor change, marked minor', await p.evaluate(() => /Draft: changed notes\s*· minor/.test(document.querySelector('[data-testid=workflow-diff]').innerText)));
+  await p.evaluate(() => { const db = window.__stubDb(); db.pipelineLog = { wf1: { a: { at: Date.now(), by: 'k@x', changes: [{ major: true, text: 'Step added: Board', doc: 'Concept Paper' }] } } }; });
+  await p.evaluate(() => firebase.database().ref('tracker/ping').set(4)); await p.waitForTimeout(150);
+  ok('the drawer shows the Workflow Map history', await p.evaluate(() => document.querySelector('[data-testid=workflow-log]').innerText.includes('Step added: Board')));
 
   console.log('\nIcons');
   ok('no emoji in the rendered page', await p.evaluate(() => !/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/u.test(document.body.innerText)));

@@ -294,6 +294,22 @@ to **off**; the bare view shows only presence/absence, which is the point.
 If these should ever become shared team settings, they move into `store` and
 need a `normalizeStore` default.
 
+## Change history
+
+Every save appends what changed to `pipelineLog/<workflowId>/<push>`
+`{ at, by, name, changes: [{ major, text, doc, color }] }`
+(`logWorkflowChanges` / `describeWorkflowChanges`, in `useStore`). The diff is
+taken against a **baseline** — the last version this tab loaded or saved — and
+the baseline is reset on every load and refresh, so a colleague's edits pulled
+in by a refresh are never logged as yours. Empty string, null, false and `[]`
+all count as "not set", and action ids are ignored, so normalising data never
+logs as a change (an early version logged "changed storage link" on every step
+because `''` and a missing field compared unequal). `major` marks substantial
+changes (steps, documents, tasks, presenters/carriers, meeting group);
+notes, storage and trigger wording are minor. A **History** button in the top
+bar, left of Publish, opens `WorkflowHistory`, a drawer of the log. The
+Program Tracker reads the same log. Covered by the `auth != null` rules.
+
 ## Publishing (read-only pages)
 
 `?p=<slug>` renders `PublishedView` instead of the app — **no auth gate**, so
@@ -488,10 +504,16 @@ toolbar row of `tb-btn` buttons with the same `ViewToggle` pill.
   round), the map's trigger, storage and notes (snapshotted), dates, people,
   shared notes, send back, history.
 
-**Why "Workflow changed" appears:** the project's copy is compared with the
-map's current version of *every field the snapshot copies* — any edit to a
-used step's tasks, roles, notes, storage or trigger counts, not just added or
-removed steps. The drawer lists exactly what differs.
+**"Workflow changed"** compares the project's copy with the map's current
+version through `driftSummary()` / `workflowDiff()`, which ignore empty-vs-unset
+differences and the **order of a step's roles** (toggling a role off and on
+reorders the list — the likeliest source of false alarms, since the stored
+hash is order-sensitive). The pill shows only for **substantial** changes
+(steps, documents, tasks, roles, meeting group, information only); notes,
+storage and trigger wording are listed in the drawer as minor. The drawer's
+Workflow tab also shows the Workflow Map's history log for that workflow,
+marking edits made after the project's copy (`project.syncedAt`, set on create
+and on update; older projects fall back to `createdAt`).
 
 "Sent back" counts only a later-round step that is being reworked (not
 pending); the steps a send-back reset to pending still show their round badge.
@@ -511,7 +533,7 @@ pending); the steps a send-back reset to pending still show their round badge.
   next for their document, sorted by due date.
 - Routing is the hash (`#/p/<id>`), so projects can be linked directly.
 
-Checks: `cd dev && npm run tracker` (55 checks, own Firebase stub with nested
+Checks: `cd dev && npm run tracker` (58 checks, own Firebase stub with nested
 paths and live listeners — see `dev/tracker-preview.js`).
 
 ## Conventions to follow

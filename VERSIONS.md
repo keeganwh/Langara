@@ -42,6 +42,15 @@ about to do something risky, take both.
 
 ## Released versions
 
+### v2.4 — workflow change history
+Archive branch: `archive/v2.4-pre-history`
+
+The Workflow Tool now records every save's changes per workflow under
+`pipelineLog/` in Firebase and shows them in a History drawer; the Program
+Tracker reads the same log. This changes the Workflow Tool's save path (it
+adds a write after each save; the save itself is unchanged). Roll back by
+reverting the commit; the log data can be deleted from the Firebase console.
+
 ### v2.3 — Program Tracker (hidden)
 Archive branch: `archive/v2.3-pre-tracker` · branch `feature/tracker`
 

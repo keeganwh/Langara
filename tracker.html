@@ -686,7 +686,7 @@ function NewProjectModal({ data, authUser, onCreated, onClose }) {
     dbSet('projects/' + id, {
       name: name.trim(), workflowId: wf.id, workflowName: wf.name || '', sourceHash: docsHash(docs),
       documents: docs, syncGroupMeta, startDate, dueDate, notes: '', archived: false,
-      createdAt: Date.now(), createdBy: authUser.email || '', updatedAt: Date.now(),
+      createdAt: Date.now(), createdBy: authUser.email || '', updatedAt: Date.now(), syncedAt: Date.now(),
     }).then(() => { logActivity(id, authUser, 'Created from the "' + (wf.name || '') + '" workflow', { kind: 'created' }); onCreated(id); });
   };
   return (
@@ -802,7 +802,7 @@ function applyWorkflowUpdate(project, data, drift, authUser) {
   if (!confirm(msg)) return;
   const syncGroupMeta = { ...project.syncGroupMeta };
   drift.latest.forEach(d => d.steps.forEach(s => { if (s.syncGroupId && data.syncGroupMeta[s.syncGroupId]) syncGroupMeta[s.syncGroupId] = data.syncGroupMeta[s.syncGroupId]; }));
-  dbUpdate('projects/' + project.id, { documents: drift.latest, sourceHash: docsHash(drift.latest), syncGroupMeta, workflowName: drift.wf.name || '', updatedAt: Date.now() });
+  dbUpdate('projects/' + project.id, { documents: drift.latest, sourceHash: docsHash(drift.latest), syncGroupMeta, workflowName: drift.wf.name || '', updatedAt: Date.now(), syncedAt: Date.now() });
   logActivity(project.id, authUser, 'Updated to the latest version of the workflow', { kind: 'project' });
 }
 
@@ -995,37 +995,61 @@ function StepModal({ project, doc, step, data, authUser, onClose }) {
 // What differs between the project's copy of the workflow and the map's
 // current version, as readable lines. This is what "the workflow has changed"
 // means, spelled out, so nobody has to guess what triggered it.
+// [field, label, substantial]. Substantial changes affect what the project
+// tracks (steps, tasks, people, meetings) and raise the "Workflow changed"
+// pill; the rest are wording and reference details, listed but not flagged.
 const DIFF_FIELDS = [
-  ['actions', 'tasks'], ['roleIds', 'roles'], ['notes', 'notes'], ['storageLocation', 'storage location'],
-  ['storageUrl', 'storage link'], ['fileOperation', 'file handling'], ['triggerType', 'trigger'],
-  ['triggerLabel', 'trigger'], ['informationOnly', 'information only'], ['syncGroupId', 'meeting group'],
+  ['actions', 'tasks', true], ['roleIds', 'roles', true], ['syncGroupId', 'meeting group', true],
+  ['informationOnly', 'information only', true],
+  ['notes', 'notes', false], ['storageLocation', 'storage location', false], ['storageUrl', 'storage link', false],
+  ['fileOperation', 'file handling', false], ['triggerType', 'trigger', false], ['triggerLabel', 'trigger', false],
 ];
+// Compare values the way a person would: empty string, null, false and an
+// empty list all mean "not set", and the order of a step's roles is not a
+// change (toggling a role off and on again reorders the list).
+const diffNorm = (k, v) => {
+  if (v === null || v === undefined || v === false || v === '') return '';
+  if (Array.isArray(v)) { if (!v.length) return ''; return stableStringify(k === 'roleIds' ? [...v].sort() : v); }
+  return stableStringify(v);
+};
 function workflowDiff(oldDocs, newDocs) {
   const out = [];
   const oldById = new Map(oldDocs.map(d => [d.id, d]));
   const newById = new Map(newDocs.map(d => [d.id, d]));
-  newDocs.forEach(d => { if (!oldById.has(d.id)) out.push({ kind: 'add', text: 'New document: ' + d.name }); });
-  oldDocs.forEach(d => { if (!newById.has(d.id)) out.push({ kind: 'remove', text: 'Document removed: ' + d.name }); });
+  newDocs.forEach(d => { if (!oldById.has(d.id)) out.push({ kind: 'add', major: true, text: 'New document: ' + d.name }); });
+  oldDocs.forEach(d => { if (!newById.has(d.id)) out.push({ kind: 'remove', major: true, text: 'Document removed: ' + d.name }); });
   newDocs.forEach(nd => {
     const od = oldById.get(nd.id);
     if (!od) return;
-    if (od.name !== nd.name) out.push({ kind: 'edit', text: 'Document renamed: ' + od.name + ' → ' + nd.name });
+    if (od.name !== nd.name) out.push({ kind: 'edit', major: true, text: 'Document renamed: ' + od.name + ' → ' + nd.name });
     const os = new Map(od.steps.map((s, i) => [s.id, { s, i }]));
     const ns = new Map(nd.steps.map((s, i) => [s.id, { s, i }]));
-    nd.steps.forEach(s => { if (!os.has(s.id)) out.push({ kind: 'add', doc: nd, text: 'New step: ' + s.stageName }); });
-    od.steps.forEach(s => { if (!ns.has(s.id)) out.push({ kind: 'remove', doc: nd, text: 'Step removed: ' + s.stageName }); });
+    nd.steps.forEach(s => { if (!os.has(s.id)) out.push({ kind: 'add', major: true, doc: nd, text: 'New step: ' + s.stageName }); });
+    od.steps.forEach(s => { if (!ns.has(s.id)) out.push({ kind: 'remove', major: true, doc: nd, text: 'Step removed: ' + s.stageName }); });
     let moved = false;
     nd.steps.forEach((s, i) => {
       const o = os.get(s.id);
       if (!o) return;
       if (o.i !== i) moved = true;
-      if (o.s.stageName !== s.stageName) out.push({ kind: 'edit', doc: nd, text: 'Step renamed: ' + o.s.stageName + ' → ' + s.stageName });
-      const fields = [...new Set(DIFF_FIELDS.filter(([k]) => stableStringify(o.s[k] === undefined ? null : o.s[k]) !== stableStringify(s[k] === undefined ? null : s[k])).map(([, l]) => l))];
-      if (fields.length) out.push({ kind: 'edit', doc: nd, text: s.stageName + ': changed ' + fields.join(', ') });
+      if (o.s.stageName !== s.stageName) out.push({ kind: 'edit', major: true, doc: nd, text: 'Step renamed: ' + o.s.stageName + ' → ' + s.stageName });
+      const changed = DIFF_FIELDS.filter(([k]) => diffNorm(k, o.s[k]) !== diffNorm(k, s[k]));
+      const major = [...new Set(changed.filter(f => f[2]).map(f => f[1]))];
+      const minor = [...new Set(changed.filter(f => !f[2]).map(f => f[1]))];
+      if (major.length) out.push({ kind: 'edit', major: true, doc: nd, text: s.stageName + ': changed ' + major.join(', ') });
+      if (minor.length) out.push({ kind: 'edit', major: false, doc: nd, text: s.stageName + ': changed ' + minor.join(', ') });
     });
-    if (moved) out.push({ kind: 'edit', doc: nd, text: 'Steps reordered' });
+    if (moved) out.push({ kind: 'edit', major: true, doc: nd, text: 'Steps reordered' });
   });
   return out;
+}
+
+// What the project's copy is missing: { drift, diff, major } or null when the
+// copy is current. The pill only shows when something substantial changed.
+function driftSummary(project, data) {
+  const drift = workflowDrift(project, data);
+  if (!drift || drift.missing) return drift ? { drift, diff: [], major: false } : null;
+  const diff = workflowDiff(project.documents, drift.latest);
+  return { drift, diff, major: diff.some(d => d.major) };
 }
 
 function Drawer({ title, onClose, children, testid }) {
@@ -1041,10 +1065,26 @@ function Drawer({ title, onClose, children, testid }) {
     </div>, document.body);
 }
 
+// The Workflow Map's change log for one workflow (written by workflow-tool.html
+// on every save, under pipelineLog/<workflowId>).
+function useWorkflowLog(workflowId) {
+  const [entries, setEntries] = useState(null);
+  useEffect(() => {
+    const ref = getFbDb().ref('pipelineLog/' + workflowId);
+    const q = ref.limitToLast ? ref.limitToLast(80) : ref;
+    const cb = q.on('value', s => setEntries(Object.values(s.val() || {}).sort((a, b) => (b.at || 0) - (a.at || 0))), () => setEntries([]));
+    return () => q.off('value', cb);
+  }, [workflowId]);
+  return entries;
+}
+
 function ChangesDrawer({ project, data, authUser, tab, onTab, onClose }) {
+  const log = useWorkflowLog(project.workflowId);
   const items = Object.values(project.activity).map(a => activityKind(a, project)).sort((a, b) => (b.at || 0) - (a.at || 0));
-  const drift = workflowDrift(project, data);
-  const diff = drift && !drift.missing ? workflowDiff(project.documents, drift.latest) : [];
+  const sum = driftSummary(project, data);
+  const drift = sum && sum.drift;
+  const diff = sum ? sum.diff : [];
+  const syncedAt = project.syncedAt || project.createdAt || 0;
   const DIFF_STYLE = { add: ['plus', '#059669'], remove: ['x', '#dc2626'], edit: ['edit', '#0284c7'] };
   return (
     <Drawer title="Changes" onClose={onClose} testid="changes-drawer">
@@ -1078,28 +1118,47 @@ function ChangesDrawer({ project, data, authUser, tab, onTab, onClose }) {
           </ul>
         </>}
         {tab === 'workflow' && <>
-          {drift && drift.missing && <p className="text-sm text-slate-500">The workflow this project was created from no longer exists in the Workflow Map.</p>}
-          {!drift && <p className="text-sm text-slate-500">This project matches the current "{project.workflowName}" workflow.</p>}
-          {diff.length > 0 && <>
-            <p className="text-xs text-slate-500 mb-3">How the "{drift.wf.name}" workflow in the Workflow Map now differs from this project's copy. Any edit to a step it uses — its tasks, roles, notes, storage or trigger — counts.</p>
-            <ul className="space-y-1.5 mb-4" data-testid="workflow-diff">
-              {diff.map((d, i) => {
+          {drift && drift.missing && <p className="text-sm text-slate-500 mb-3">The workflow this project was created from no longer exists in the Workflow Map.</p>}
+          {!drift && <p className="text-sm text-slate-500 mb-3">This project matches the current "{project.workflowName}" workflow.</p>}
+          {drift && !drift.missing && <div className="mb-5">
+            <SectionLabel>Not yet in this project</SectionLabel>
+            {!diff.length && <p className="text-xs text-slate-500 mb-2">Nothing this project uses has changed — the stored copy is only formatted differently.</p>}
+            <ul className="space-y-1.5 mb-3" data-testid="workflow-diff">
+              {[...diff.filter(d => d.major), ...diff.filter(d => !d.major)].map((d, i) => {
                 const [icon, color] = DIFF_STYLE[d.kind];
                 return (
-                  <li key={i} className="flex items-start gap-2 text-xs text-slate-700">
-                    <span className="mt-0.5" style={{ color }}><Icon name={icon} size={12} /></span>
-                    <span>{d.doc && <span className="inline-flex items-center gap-1 text-slate-500 mr-1"><span className="w-1.5 h-1.5 rounded-full" style={{ background: d.doc.color }} />{d.doc.name}:</span>}{d.text}</span>
+                  <li key={i} className={`flex items-start gap-2 text-xs ${d.major ? 'text-slate-800' : 'text-slate-400'}`} data-major={d.major ? 'yes' : 'no'}>
+                    <span className="mt-0.5" style={{ color: d.major ? color : '#cbd5e1' }}><Icon name={icon} size={12} /></span>
+                    <span>{d.doc && <span className="inline-flex items-center gap-1 text-slate-500 mr-1"><span className="w-1.5 h-1.5 rounded-full" style={{ background: d.doc.color }} />{d.doc.name}:</span>}{d.text}{!d.major && <span className="text-[10px] text-slate-400"> · minor</span>}</span>
                   </li>
                 );
               })}
             </ul>
-            <Btn sm onClick={() => applyWorkflowUpdate(project, data, drift, authUser)}><Icon name="sync" size={13} />Update to latest workflow</Btn>
-            <p className="text-[11px] text-slate-400 mt-2">Progress on steps that still exist is kept.</p>
-          </>}
-          {drift && !drift.missing && !diff.length && <>
-            <p className="text-sm text-slate-500 mb-3">The workflow's details were reformatted but nothing this project uses has changed.</p>
-            <Btn sm variant="secondary" onClick={() => applyWorkflowUpdate(project, data, drift, authUser)}>Mark as up to date</Btn>
-          </>}
+            <Btn sm variant={sum.major ? 'primary' : 'secondary'} onClick={() => applyWorkflowUpdate(project, data, drift, authUser)}><Icon name="sync" size={13} />{diff.length ? 'Update to latest workflow' : 'Mark as up to date'}</Btn>
+            <p className="text-[11px] text-slate-400 mt-1.5">Progress on steps that still exist is kept. Minor changes (notes, storage, trigger wording) are listed but don't raise the Workflow changed warning.</p>
+          </div>}
+
+          <SectionLabel>Workflow history</SectionLabel>
+          {log === null && <p className="text-xs text-slate-400">Loading…</p>}
+          {log && !log.length && <p className="text-xs text-slate-400">No edits recorded yet. The Workflow Map records every edit from now on.</p>}
+          <div data-testid="workflow-log">
+            {(log || []).map((e, i) => {
+              const after = (e.at || 0) > syncedAt;
+              return (
+                <div key={i} className={`mb-2.5 pl-2 border-l-2 ${after ? 'border-amber-300' : 'border-slate-200'}`}>
+                  <div className="text-[11px] text-slate-500 mb-0.5">{shortWho(e.by) || 'Someone'} · {fmtStamp(e.at)}{after && <span className="text-amber-700 font-medium"> · after this project's copy</span>}</div>
+                  <ul className="space-y-0.5">
+                    {(e.changes || []).map((c, j) => (
+                      <li key={j} className={`flex items-start gap-1.5 text-xs ${c.major ? 'text-slate-700' : 'text-slate-400'}`}>
+                        <span className="mt-1 w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: c.color || '#cbd5e1' }} />
+                        <span>{c.doc ? c.doc + ': ' : ''}{c.text}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              );
+            })}
+          </div>
         </>}
       </div>
     </Drawer>
@@ -1685,7 +1744,7 @@ function ProjectView({ project, data, authUser, online, onBack }) {
   const setView = (v) => { setViewState(v); try { localStorage.setItem(VIEW_KEY, v); } catch (e) {} };
   const spine = useMemo(() => buildStepSpine(project.documents), [project.documents]);
   const stats = projectStats(project);
-  const drift = workflowDrift(project, data);
+  const driftSum = driftSummary(project, data);
   const openDoc = open && project.documents.find(d => d.id === open.docId);
   const openStep = openDoc && openDoc.steps.find(s => s.id === open.stepId);
   const pdue = !stats.done ? dueLabel(project.dueDate) : null;
@@ -1703,7 +1762,7 @@ function ProjectView({ project, data, authUser, online, onBack }) {
           {pdue && pdue.tone !== 'slate' ? ' (' + pdue.text.toLowerCase() + ')' : ''}
         </SyncLine>}>
         {ppl.length > 0 && <div className="flex items-center gap-1 shrink-0" data-testid="header-people">{ppl.slice(0, 6).map(p => <Avatar key={p.id} person={p} size={26} />)}</div>}
-        {drift && !drift.missing && (
+        {driftSum && driftSum.major && (
           <button onClick={() => setDrawer('workflow')} data-testid="drift-pill"
             className="shrink-0 inline-flex items-center gap-1.5 text-xs font-semibold rounded-lg px-3 py-2 border bg-amber-50 text-amber-700 border-amber-300"
             title="The workflow in the Workflow Map has changed since this project copied it">
