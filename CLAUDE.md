@@ -456,8 +456,8 @@ tracker
 ### Views
 
 The tracker uses the **Workflow Tool's chrome**: brand block above a white
-sidebar (Dashboard, the active projects with their %, then Workflow Map /
-People / Sign out at the foot), a top bar of the same fixed `CHROME_BAR_H`
+sidebar (Dashboard, the active projects with their %, then Workflow Tool /
+Settings — People and Sign out sit inside it, as in the Workflow Tool — at the foot), a top bar of the same fixed `CHROME_BAR_H`
 (68px, so the brand's and top bar's bottom borders meet in one line — the
 Workflow Tool had a 0.7px step there until it got the same constant), and a
 toolbar row of `tb-btn` buttons with the same `ViewToggle` pill.

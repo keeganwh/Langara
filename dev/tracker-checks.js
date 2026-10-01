@@ -48,7 +48,8 @@ const cell = (d, docId, stepId) => {
   ok('links back to the Workflow Map', await p.evaluate(() => !!document.querySelector('a[href="workflow-tool.html"]')));
 
   console.log('\nPeople');
-  await click(p, 'button', 'People'); await p.waitForTimeout(150);
+  await click(p, '[data-testid=settings-btn]'); await p.waitForTimeout(150);
+  await click(p, '.fixed button', 'People'); await p.waitForTimeout(150);
   await click(p, 'button', 'Add person');
   await fill(p, '.fixed input >> nth=0', 'You Person');
   await fill(p, '.fixed input >> nth=1', 'you@langara.ca');

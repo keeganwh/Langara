@@ -2234,6 +2234,30 @@ function Dashboard({ data, authUser, online, onOpen, onNew }) {
 // Routing is the URL hash (#/p/<id>), so a project can be linked to directly.
 const readRoute = () => { const m = location.hash.match(/^#\/p\/([\w-]+)/); return m ? m[1] : null; };
 
+// Same layout as the Workflow Tool's Settings modal.
+function SettingsModal({ authUser, onOpen, onClose }) {
+  const Row = ({ icon, title, sub, onClick }) => (
+    <button onClick={onClick}
+      className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg border text-left transition-colors mb-2 border-slate-200 text-slate-700 hover:bg-slate-50">
+      <Icon name={icon} size={16} className="text-slate-500" />
+      <span className="min-w-0">
+        <span className="block text-sm">{title}</span>
+        <span className="block text-xs text-slate-400">{sub}</span>
+      </span>
+    </button>
+  );
+  return (
+    <Modal title="Settings" onClose={onClose}>
+      <Row icon="roles" title="People" sub="Who can be assigned, and their default roles" onClick={() => onOpen('people')} />
+      <div className="text-[10px] font-bold tracking-[.1em] uppercase text-slate-400 mt-4 mb-2">Account</div>
+      <Row icon="signout" title="Sign out" sub={authUser ? authUser.email : ''} onClick={() => getFbAuth().signOut()} />
+      <div className="flex justify-end mt-4">
+        <Btn variant="secondary" onClick={onClose}>Close</Btn>
+      </div>
+    </Modal>
+  );
+}
+
 function Sidebar({ data, route, go, authUser, onModal }) {
   const projects = data.projects.filter(p => !p.archived);
   const item = (active) => `group flex items-center gap-2 px-2 py-2 rounded-lg cursor-pointer mb-1 transition-colors ${active ? 'bg-indigo-600 text-white' : 'text-slate-700 hover:bg-slate-100'}`;
@@ -2267,14 +2291,11 @@ function Sidebar({ data, route, go, authUser, onModal }) {
         })}
       </div>
       <div className="p-3 border-t border-slate-200 space-y-1.5">
-        <a href={MAP_URL} className="w-full px-3 py-2 rounded-lg text-sm text-slate-700 border border-slate-200 hover:bg-slate-50 flex items-center gap-2.5 transition-colors">
-          <Icon name="map" size={16} className="text-slate-500" /> Workflow Map
+        <a href={MAP_URL} className="w-full px-3 py-2.5 rounded-lg text-sm text-slate-700 border border-slate-200 hover:bg-slate-50 flex items-center gap-2.5 transition-colors">
+          <Icon name="map" size={16} className="text-slate-500" /> Workflow Tool
         </a>
-        <button onClick={() => onModal('people')} className="w-full px-3 py-2 rounded-lg text-sm text-slate-700 border border-slate-200 hover:bg-slate-50 flex items-center gap-2.5 transition-colors">
-          <Icon name="roles" size={16} className="text-slate-500" /> People
-        </button>
-        <button onClick={() => getFbAuth().signOut()} title={authUser.email || ''} className="w-full px-3 py-1.5 rounded-lg text-xs text-slate-500 hover:bg-slate-50 flex items-center gap-2.5 transition-colors">
-          <Icon name="signout" size={14} /> <span className="truncate">Sign out {authUser.email ? '· ' + authUser.email : ''}</span>
+        <button onClick={() => onModal('settings')} data-testid="settings-btn" className="w-full px-3 py-2.5 rounded-lg text-sm text-slate-700 border border-slate-200 hover:bg-slate-50 flex items-center gap-2.5 transition-colors">
+          <Icon name="settings" size={16} className="text-slate-500" /> Settings
         </button>
       </div>
     </aside>
@@ -2305,6 +2326,7 @@ function App({ authUser }) {
             ? <><TopBar eyebrow="Project" title="Not found" /><div className="p-6 text-sm text-slate-500">That project no longer exists. <button className="text-indigo-600 underline" onClick={() => go(null)}>Back to the dashboard</button></div></>
             : <Dashboard data={data} authUser={authUser} online={online} onOpen={go} onNew={() => setModal('new')} />}
       </div>
+      {modal === 'settings' && <SettingsModal authUser={authUser} onOpen={setModal} onClose={() => setModal(null)} />}
       {modal === 'people' && <PeopleModal data={data} onClose={() => setModal(null)} />}
       {modal === 'new' && <NewProjectModal data={data} authUser={authUser} onClose={() => setModal(null)} onCreated={id => { setModal(null); go(id); }} />}
     </div>
