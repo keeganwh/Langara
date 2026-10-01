@@ -439,37 +439,59 @@ tracker
 
 ### Views
 
-- **Dashboard** — coloured summary tiles, Needs your attention, the project
-  list, and reports: held up or sent back, next 14 days, stale projects (no
-  activity in `STALE_DAYS`, 14), recent updates. Each project row is title +
-  "workflow · Due · Updated" on the left, and on the right a wide overall bar
-  with the % inside plus one chip per document filled to its own progress.
-  "Last updated" is the newest activity entry.
+The tracker uses the **Workflow Tool's chrome**: brand block above a white
+sidebar (Dashboard, the active projects with their %, then Workflow Map /
+People / Sign out at the foot), a top bar of the same fixed `CHROME_BAR_H`
+(68px, so the brand's and top bar's bottom borders meet in one line — the
+Workflow Tool had a 0.7px step there until it got the same constant), and a
+toolbar row of `tb-btn` buttons with the same `ViewToggle` pill.
+
+- **Dashboard** — compact one-line tiles (click one to filter to it), then the
+  project list with search and three checkable dropdowns (`MultiSelect`):
+  **Status** (project flags from `projectFlags()`; complete and archived hidden
+  by default), **People** (you first; Only me / Everyone), **Type** (workflow).
+  The old "held up or sent back" and "stale" panels are folded into the Status
+  filter. Right column: Needs your attention, a **project status donut**
+  (`StatusDonut`, each project counted once by `donutCategory()`, range all /
+  12 / 6 months, legend with counts), next 14 days, recent updates.
+- **Project rows** — title, "workflow · Due · Updated", the people on it as
+  separate initials; a wide outlined bar with the % at the end of the fill and
+  document chips in an equal grid, each filled to its own progress.
 - **Recent updates** are grouped by project and thinned (`recentByProject`):
   only the newest checklist tick per project, and entries with the same kind,
-  step and status within 10 minutes (the meeting shortcut) collapse into one
-  line listing their documents. Activity entries carry `kind`, `docId`,
-  `step`, `status`; `activityKind()` infers them for older entries from text.
-- **Project → Overview** (default) — a summary (complete, held up, sent back,
-  upcoming dates as chips, timeline) then one card per document: name,
-  "Step n of m", a segmented bar (one segment per step), the document's file
-  link, and a **step track** (`StepTrack`). Documents share one bordered
-  block with a Previous / Now / Next header. Each track holds every step as
-  fixed slots — `SIDE_W` (150px) side cards and a current card sized to fill
-  the rest (`ResizeObserver`) — and always **opens aligned**: previous slot at
-  the left edge, with a Start / End placeholder where a neighbour is missing,
-  so every row's Now column lines up. It slides smoothly when the current step
-  changes, and can be mouse-dragged (touch scrolls natively) or stepped one
-  card at a time with the edge buttons. No visible scrollbar, by request.
-  `NowCard` is three compact lines (title + status; dates, held reason and
-  task progress; people + latest update) so a whole project fits on screen.
+  step and status within 10 minutes collapse into one line. Activity entries
+  carry `kind`, `docId`, `step`, `status`; `activityKind()` infers them for
+  older entries from text.
+- **Project** — top bar: eyebrow, name, sync line with dates, the project's
+  people, and an amber **Workflow changed** pill. Toolbar: view toggle,
+  **Changes** (a right-hand drawer: project activity, and a readable diff of the
+  workflow from `workflowDiff()` with the Update button), Project settings.
+  A one-line `SummaryBand` holds %, held up, sent back, upcoming dates and the
+  timeline.
+- **Overview** — documents share one block under a Previous / Now / Up next
+  header. Each `StepTrack` holds every step: `SIDE_W` (180px) side cards, a
+  current `NowCard` up to `NOW_MAX` (860px; width measured once in `Overview`
+  and shared, so every row and the header line up), and upcoming cards after
+  it. Rows always **open aligned** (a Start / End placeholder fills a missing
+  neighbour), drag or step with the edge buttons, no visible scrollbar, and the
+  Now card **snaps** back when dropped near its place (`scroll-snap` proximity,
+  turned off mid-drag). `NowCard` has a header line then three sections:
+  status & dates (incl. days on step), tasks **tickable on the card**
+  (`toggleTask`, shared with the step panel), people with their role plus the
+  latest two updates and notes. **Finished documents collapse** to one
+  "Complete" line in the document's colour; Show steps expands them.
 - **Document file links** — `links/<docId>` { url, label, version, at, by,
   history/<push> }. Saving a new link keeps the previous one in `history`.
-- **Project → Full flow** — the Step-Flow-style grid (`FlowGrid`). The chosen
-  view is a per-viewer preference in `localStorage` (`cs_tracker_project_view_v1`).
-- **Step panel** — status, the step's map actions as a **checklist**
-  (`checks/r<round>/t<index>`, fresh each round), the map's trigger, storage and
-  notes (snapshotted), dates, people, shared notes, send back, history.
+- **Full flow** — the Step-Flow-style grid (`FlowGrid`). The chosen view is a
+  per-viewer preference in `localStorage` (`cs_tracker_project_view_v1`).
+- **Step panel** — status, checklist (`checks/r<round>/t<index>`, fresh each
+  round), the map's trigger, storage and notes (snapshotted), dates, people,
+  shared notes, send back, history.
+
+**Why "Workflow changed" appears:** the project's copy is compared with the
+map's current version of *every field the snapshot copies* — any edit to a
+used step's tasks, roles, notes, storage or trigger counts, not just added or
+removed steps. The drawer lists exactly what differs.
 
 "Sent back" counts only a later-round step that is being reworked (not
 pending); the steps a send-back reset to pending still show their round badge.
@@ -489,7 +511,7 @@ pending); the steps a send-back reset to pending still show their round badge.
   next for their document, sorted by due date.
 - Routing is the hash (`#/p/<id>`), so projects can be linked directly.
 
-Checks: `cd dev && npm run tracker` (48 checks, own Firebase stub with nested
+Checks: `cd dev && npm run tracker` (55 checks, own Firebase stub with nested
 paths and live listeners — see `dev/tracker-preview.js`).
 
 ## Conventions to follow

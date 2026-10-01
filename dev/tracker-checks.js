@@ -61,7 +61,7 @@ const cell = (d, docId, stepId) => {
   await p.evaluate(() => document.querySelector('.fixed button[aria-label="Close"]').click()); await p.waitForTimeout(100);
 
   console.log('\nNew project');
-  await click(p, 'button', 'New project'); await p.waitForTimeout(150);
+  await click(p, '[data-testid=new-project]'); await p.waitForTimeout(150);
   await fill(p, '.fixed input >> nth=0', 'Certificate in Testing');
   await click(p, '.fixed button', 'Create project'); await p.waitForTimeout(300);
   d = await db(p);
@@ -88,6 +88,10 @@ const cell = (d, docId, stepId) => {
   d = await db(p);
   const lk = Object.values(d.tracker.projects)[0].links.d1;
   ok('a new file version replaces the link and keeps the old one', lk.url === 'https://example.com/v2' && lk.version === 2 && Object.values(lk.history).some(h => h.url === 'https://example.com/v1'));
+  await p.evaluate(() => document.querySelector('[data-testid=card-task]').click()); await p.waitForTimeout(150);
+  d = await db(p);
+  ok('a task can be ticked on the card without opening the step', !!((cell(d, 'd1', 's1').checks || {}).r1 || {}).t0 && await p.evaluate(() => !document.querySelector('.fixed')));
+  await p.evaluate(() => document.querySelector('[data-testid=card-task]').click()); await p.waitForTimeout(150);
   ok('the document shows its file link', await p.evaluate(() => /Open file\s*v2/.test(document.querySelector('[data-testid=doc-link]').innerText)));
   await p.screenshot({ path: path.join(SHOTS, 'tracker-overview.png') });
   await click(p, 'button[data-view=flow]'); await p.waitForTimeout(150);
@@ -141,7 +145,7 @@ const cell = (d, docId, stepId) => {
 
   console.log('\nAttention');
   await p.evaluate(() => document.querySelector('.fixed button[aria-label="Close"]').click()); await p.waitForTimeout(100);
-  await click(p, 'button', 'Dashboard'); await p.waitForTimeout(200);
+  await click(p, '[data-testid=nav-dashboard]'); await p.waitForTimeout(200);
   t = await text(p);
   ok('dashboard lists the step assigned through a role', await p.evaluate(() => { const a = document.querySelector('[data-testid=attention]'); return !!a && a.innerText.includes('JCCS'); }));
   ok('summary tiles count held up steps', await p.evaluate(() => /2\s*Held up/.test(document.querySelector('[data-testid=tiles]').innerText)));
@@ -149,7 +153,14 @@ const cell = (d, docId, stepId) => {
   ok('project row shows who is on it', await p.evaluate(() => document.querySelector('[data-testid=project-people]').innerText.includes('YP')));
   ok('overall bar carries its % inside', await p.evaluate(() => /\d+%/.test(document.querySelector('[data-testid=overall-bar]').innerText)));
   ok('one progress chip per document, named', await p.evaluate(() => { const c = document.querySelector('[data-testid=doc-chips]'); return c.children.length === 2 && c.innerText.includes('Program Proposal'); }));
-  ok('held up report names the reason', await p.evaluate(() => document.querySelector('[data-testid=report-flagged]').innerText.includes('Waiting on the Dean')));
+  ok('sidebar lists the project with its progress', await p.evaluate(() => document.querySelector('aside').innerText.includes('Certificate in Testing')));
+  ok('brand block and top bar borders meet in one line', await p.evaluate(() => Math.abs(document.querySelector('aside > button').getBoundingClientRect().bottom - document.querySelector('header').getBoundingClientRect().bottom) < 0.5));
+  ok('donut counts the project once', await p.evaluate(() => /1\s*projects/.test(document.querySelector('[data-testid=donut]').innerText)));
+  ok('completed projects are hidden by default', await p.evaluate(() => /Status\s*5/.test(document.querySelector('[data-testid=f-status]').innerText)));
+  await p.evaluate(() => [...document.querySelectorAll('[data-testid=tiles] button')].find(b => b.innerText.includes('Sent back')).click()); await p.waitForTimeout(100);
+  ok('clicking a tile filters to those projects', await p.evaluate(() => document.querySelectorAll('[data-testid=project-row]').length === 0 && document.body.innerText.includes('No projects match')));
+  await p.evaluate(() => [...document.querySelectorAll('button')].find(b => b.innerText.trim() === 'Show all').click()); await p.waitForTimeout(100);
+  ok('show all brings the project back', await p.evaluate(() => document.querySelectorAll('[data-testid=project-row]').length === 1));
   ok('recent updates are grouped under the project', await p.evaluate(() => document.querySelectorAll('[data-testid=recent-group]').length === 1 && document.querySelector('[data-testid=recent-group]').innerText.startsWith('Certificate in Testing')));
   ok('a change applied at a meeting collapses to one line', await p.evaluate(() => (document.querySelector('[data-testid=recent]').innerText.match(/JCCS: Held up/g) || []).length === 1));
   await click(p, '[data-testid=project-row]'); await p.waitForTimeout(200);
@@ -185,7 +196,8 @@ const cell = (d, docId, stepId) => {
   ok('overview now slides to the reopened step', await p.evaluate(() => { const n = document.querySelector('[data-kind=now]'); return !!n && n.innerText.includes('Draft') && n.innerText.includes('Round 2'); }));
   await p.screenshot({ path: path.join(SHOTS, 'tracker-overview-2.png') });
   await p.goto(PAGE); await p.waitForTimeout(400);
-  ok('sent back report shows the new round', await p.evaluate(() => document.querySelector('[data-testid=report-flagged]').innerText.includes('Round 2')));
+  await p.evaluate(() => [...document.querySelectorAll('[data-testid=tiles] button')].find(b => b.innerText.includes('Sent back')).click()); await p.waitForTimeout(100);
+  ok('the Sent back tile now finds the project', await p.evaluate(() => document.querySelectorAll('[data-testid=project-row]').length === 1));
   await p.screenshot({ path: path.join(SHOTS, 'tracker-dashboard.png'), fullPage: true });
   await click(p, '[data-testid=project-row]'); await p.waitForTimeout(200);
   await click(p, 'button[data-view=flow]'); await p.waitForTimeout(150);
@@ -200,8 +212,10 @@ const cell = (d, docId, stepId) => {
   await p.evaluate(() => firebase.database().ref('tracker/ping').set(1));
   await p.waitForTimeout(150);
   t = await text(p);
-  ok('flags a changed workflow', t.includes('has changed since this project started'));
-  await click(p, 'button', 'Update to latest workflow'); await p.waitForTimeout(150);
+  ok('flags a changed workflow with a pill in the top bar', await p.evaluate(() => !!document.querySelector('[data-testid=drift-pill]')));
+  await click(p, '[data-testid=drift-pill]'); await p.waitForTimeout(150);
+  ok('the changes drawer says what changed', await p.evaluate(() => document.querySelector('[data-testid=workflow-diff]').innerText.includes('New step: Board')));
+  await click(p, '[data-testid=changes-drawer] button', 'Update to latest workflow'); await p.waitForTimeout(150);
   d = await db(p);
   const pr2 = Object.values(d.tracker.projects)[0];
   ok('update pulls in new steps and keeps progress', pr2.documents[0].steps.some(s => s.id === 's5') && cell(d, 'd1', 's1').round === 2);

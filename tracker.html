@@ -34,7 +34,7 @@
                  scrollbar-width: none; }
     .trk-track::-webkit-scrollbar { display: none; }
     .trk-track:active { cursor: grabbing; }
-    .trk-now  { flex-grow: 0; flex-shrink: 0; min-height: 92px; scroll-snap-align: start; scroll-margin-left: 156px; }
+    .trk-now  { flex-grow: 0; flex-shrink: 0; min-height: 92px; scroll-snap-align: start; }
     .trk-track.snap { scroll-snap-type: x proximity; }
     .trk-side { flex-grow: 0; flex-shrink: 0; min-height: 92px; }
     .trk-edge { position: absolute; top: 0; bottom: 0; width: 36px; pointer-events: none; opacity: 0; transition: opacity .15s; }
@@ -47,6 +47,9 @@
                  justify-content: center; padding: 0; box-shadow: 0 2px 8px rgba(15,23,42,.14); z-index: 2; }
     .trk-nudge:hover { color: #0f172a; background: #f8fafc; }
     .trk-nudge.l { left: 2px; } .trk-nudge.r { right: 2px; }
+    .tb-btn { min-width: 128px; justify-content: center; }
+    .drawer { animation: drawerIn .18s ease; }
+    @keyframes drawerIn { from { transform: translateX(24px); opacity: .4; } to { transform: none; opacity: 1; } }
     .line-clamp-2 { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
   </style>
 </head>
@@ -844,13 +847,8 @@ function StepModal({ project, doc, step, data, authUser, onClose }) {
     logActivity(project.id, authUser, doc.name + ' · ' + step.stageName + ': ' + (value ? label + ' set to ' + fmtDate(value) : label + ' cleared'), { kind: 'date', docId: doc.id, step: step.stageName });
   };
   const rc = roundChecks(cell);
-  const toggleCheck = (i) => {
-    const p = path + '/checks/r' + cell.round + '/t' + i;
-    const a = step.actions[i];
-    if (rc['t' + i]) dbRemove(p);
-    else dbSet(p, { at: firebase.database.ServerValue.TIMESTAMP, by: who });
-    logActivity(project.id, authUser, doc.name + ' · ' + step.stageName + ': ' + (rc['t' + i] ? 'unticked' : 'ticked') + ' "' + (a.label + (a.person ? ' ' + a.person : '')).trim() + '"', { kind: 'tick', docId: doc.id, step: step.stageName });
-  };
+  const toggleCheck = (i) => toggleTask(project, doc, step, cell, i, authUser);
+
 
   // Send back: the target step opens a new round; every step after it that
   // had been started resets to pending in a new round. History is never
@@ -993,20 +991,118 @@ function StepModal({ project, doc, step, data, authUser, onClose }) {
 }
 
 // ── Activity ───────────────────────────────────────────────────────────────────
-function ActivityModal({ project, onClose }) {
-  const items = Object.values(project.activity).sort((a, b) => (b.at || 0) - (a.at || 0));
+// ── Changes drawer: project activity and what changed in the workflow ─────────
+// What differs between the project's copy of the workflow and the map's
+// current version, as readable lines. This is what "the workflow has changed"
+// means, spelled out, so nobody has to guess what triggered it.
+const DIFF_FIELDS = [
+  ['actions', 'tasks'], ['roleIds', 'roles'], ['notes', 'notes'], ['storageLocation', 'storage location'],
+  ['storageUrl', 'storage link'], ['fileOperation', 'file handling'], ['triggerType', 'trigger'],
+  ['triggerLabel', 'trigger'], ['informationOnly', 'information only'], ['syncGroupId', 'meeting group'],
+];
+function workflowDiff(oldDocs, newDocs) {
+  const out = [];
+  const oldById = new Map(oldDocs.map(d => [d.id, d]));
+  const newById = new Map(newDocs.map(d => [d.id, d]));
+  newDocs.forEach(d => { if (!oldById.has(d.id)) out.push({ kind: 'add', text: 'New document: ' + d.name }); });
+  oldDocs.forEach(d => { if (!newById.has(d.id)) out.push({ kind: 'remove', text: 'Document removed: ' + d.name }); });
+  newDocs.forEach(nd => {
+    const od = oldById.get(nd.id);
+    if (!od) return;
+    if (od.name !== nd.name) out.push({ kind: 'edit', text: 'Document renamed: ' + od.name + ' → ' + nd.name });
+    const os = new Map(od.steps.map((s, i) => [s.id, { s, i }]));
+    const ns = new Map(nd.steps.map((s, i) => [s.id, { s, i }]));
+    nd.steps.forEach(s => { if (!os.has(s.id)) out.push({ kind: 'add', doc: nd, text: 'New step: ' + s.stageName }); });
+    od.steps.forEach(s => { if (!ns.has(s.id)) out.push({ kind: 'remove', doc: nd, text: 'Step removed: ' + s.stageName }); });
+    let moved = false;
+    nd.steps.forEach((s, i) => {
+      const o = os.get(s.id);
+      if (!o) return;
+      if (o.i !== i) moved = true;
+      if (o.s.stageName !== s.stageName) out.push({ kind: 'edit', doc: nd, text: 'Step renamed: ' + o.s.stageName + ' → ' + s.stageName });
+      const fields = [...new Set(DIFF_FIELDS.filter(([k]) => stableStringify(o.s[k] === undefined ? null : o.s[k]) !== stableStringify(s[k] === undefined ? null : s[k])).map(([, l]) => l))];
+      if (fields.length) out.push({ kind: 'edit', doc: nd, text: s.stageName + ': changed ' + fields.join(', ') });
+    });
+    if (moved) out.push({ kind: 'edit', doc: nd, text: 'Steps reordered' });
+  });
+  return out;
+}
+
+function Drawer({ title, onClose, children, testid }) {
+  return ReactDOM.createPortal(
+    <div className="fixed inset-0" style={{ zIndex: 99990 }} onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
+      <aside className="drawer absolute top-0 right-0 bottom-0 w-full max-w-[420px] bg-white border-l border-slate-200 shadow-2xl flex flex-col" data-testid={testid}>
+        <div className="flex items-center justify-between px-4 border-b border-slate-200 shrink-0" style={{ height: CHROME_BAR_H }}>
+          <h2 className="font-bold text-slate-800 text-sm">{title}</h2>
+          <button onClick={onClose} aria-label="Close" className="text-slate-400 hover:text-slate-700"><Icon name="x" size={18} /></button>
+        </div>
+        {children}
+      </aside>
+    </div>, document.body);
+}
+
+function ChangesDrawer({ project, data, authUser, tab, onTab, onClose }) {
+  const items = Object.values(project.activity).map(a => activityKind(a, project)).sort((a, b) => (b.at || 0) - (a.at || 0));
+  const drift = workflowDrift(project, data);
+  const diff = drift && !drift.missing ? workflowDiff(project.documents, drift.latest) : [];
+  const DIFF_STYLE = { add: ['plus', '#059669'], remove: ['x', '#dc2626'], edit: ['edit', '#0284c7'] };
   return (
-    <Modal title={'Activity · ' + project.name} wide onClose={onClose}>
-      {!items.length && <p className="text-sm text-slate-400">No activity yet.</p>}
-      <ul className="divide-y">
-        {items.map((a, i) => (
-          <li key={i} className="py-2 text-sm flex gap-3">
-            <span className="text-xs text-slate-400 whitespace-nowrap w-32 flex-shrink-0">{fmtStamp(a.at)}</span>
-            <span className="text-slate-700 flex-1">{a.text}<span className="text-xs text-slate-400"> · {a.by}</span></span>
-          </li>
+    <Drawer title="Changes" onClose={onClose} testid="changes-drawer">
+      <div className="flex gap-1 px-4 py-2 border-b border-slate-200 shrink-0">
+        {[['activity', 'Project activity'], ['workflow', 'Workflow changes' + (diff.length ? ' · ' + diff.length : '')]].map(([id, label]) => (
+          <button key={id} onClick={() => onTab(id)} data-tab={id}
+            className={`text-xs font-medium px-3 py-1.5 rounded-md ${tab === id ? 'bg-indigo-50 text-indigo-700' : 'text-slate-500 hover:bg-slate-100'}`}>{label}</button>
         ))}
-      </ul>
-    </Modal>
+      </div>
+      <div className="flex-1 overflow-y-auto px-4 py-3">
+        {tab === 'activity' && <>
+          {!items.length && <p className="text-sm text-slate-400">No activity yet.</p>}
+          <ul className="space-y-2.5">
+            {items.map((it, i) => {
+              const ks = KIND_STYLE[it.kind] || KIND_STYLE.project;
+              const st = it.kind === 'status' && it.status ? STATUS[it.status] : null;
+              const color = st ? st.color : ks.color;
+              return (
+                <li key={i} className="flex items-start gap-2.5 text-xs">
+                  <span className="w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: color + '1a', color }}><Icon name={st ? st.icon : ks.icon} size={12} /></span>
+                  <span className="min-w-0 flex-1">
+                    <span className="text-slate-700">{it.short}</span>
+                    <span className="flex items-center gap-1 mt-0.5 text-[10px] text-slate-400">
+                      {it.doc && <><span className="w-1.5 h-1.5 rounded-full" style={{ background: it.doc.color }} />{it.doc.name} ·</>}
+                      {shortWho(it.by)} · {fmtStamp(it.at)}
+                    </span>
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
+        </>}
+        {tab === 'workflow' && <>
+          {drift && drift.missing && <p className="text-sm text-slate-500">The workflow this project was created from no longer exists in the Workflow Map.</p>}
+          {!drift && <p className="text-sm text-slate-500">This project matches the current "{project.workflowName}" workflow.</p>}
+          {diff.length > 0 && <>
+            <p className="text-xs text-slate-500 mb-3">How the "{drift.wf.name}" workflow in the Workflow Map now differs from this project's copy. Any edit to a step it uses — its tasks, roles, notes, storage or trigger — counts.</p>
+            <ul className="space-y-1.5 mb-4" data-testid="workflow-diff">
+              {diff.map((d, i) => {
+                const [icon, color] = DIFF_STYLE[d.kind];
+                return (
+                  <li key={i} className="flex items-start gap-2 text-xs text-slate-700">
+                    <span className="mt-0.5" style={{ color }}><Icon name={icon} size={12} /></span>
+                    <span>{d.doc && <span className="inline-flex items-center gap-1 text-slate-500 mr-1"><span className="w-1.5 h-1.5 rounded-full" style={{ background: d.doc.color }} />{d.doc.name}:</span>}{d.text}</span>
+                  </li>
+                );
+              })}
+            </ul>
+            <Btn sm onClick={() => applyWorkflowUpdate(project, data, drift, authUser)}><Icon name="sync" size={13} />Update to latest workflow</Btn>
+            <p className="text-[11px] text-slate-400 mt-2">Progress on steps that still exist is kept.</p>
+          </>}
+          {drift && !drift.missing && !diff.length && <>
+            <p className="text-sm text-slate-500 mb-3">The workflow's details were reformatted but nothing this project uses has changed.</p>
+            <Btn sm variant="secondary" onClick={() => applyWorkflowUpdate(project, data, drift, authUser)}>Mark as up to date</Btn>
+          </>}
+        </>}
+      </div>
+    </Drawer>
   );
 }
 
@@ -1105,9 +1201,9 @@ function lastCompletedAt(cell) {
 }
 
 // Segmented bar: one segment per step, filled by status, current one ringed.
-function StepSegments({ project, doc, onOpen, cur }) {
+function StepSegments({ project, doc, onOpen, cur, h = 10 }) {
   return (
-    <div className="flex gap-[2px] h-2.5" data-testid="segments">
+    <div className="flex gap-[2px]" style={{ height: h }} data-testid="segments">
       {doc.steps.map((s, i) => {
         const c = cellOf(project, doc.id, s.id);
         const st = STATUS[c.status];
@@ -1120,109 +1216,156 @@ function StepSegments({ project, doc, onOpen, cur }) {
   );
 }
 
-function PeopleLine({ ppl }) {
-  if (!ppl.length) return <span className="text-xs text-slate-400">Nobody assigned</span>;
-  return (
-    <span className="flex items-center gap-1.5 min-w-0">
-      <span className="flex -space-x-1.5 flex-shrink-0">{ppl.slice(0, 3).map(p => <Avatar key={p.id} person={p} size={20} />)}</span>
-      <span className="text-xs text-slate-600 truncate">{ppl.map(p => p.name.split(' ')[0]).join(', ')}</span>
-    </span>
-  );
+// Who is on a step and why: role holders labelled with the role, plus tags.
+function stepPeopleWithRoles(project, data, step, cell) {
+  const out = new Map();
+  (step.roleIds || []).forEach(r => {
+    const label = (data.roles.find(x => x.id === r) || {}).label || '';
+    roleHolders(project, data.people, r).forEach(id => { if (!out.has(id)) out.set(id, label); });
+  });
+  cell.assignees.forEach(id => { if (!out.has(id)) out.set(id, 'Tagged'); });
+  return [...out.entries()].map(([id, role]) => ({ person: personById(data.people, id), role })).filter(x => x.person);
+}
+function daysOnStep(cell) {
+  const started = Object.values(cell.history).filter(h => h.to === 'in_progress' || h.to === 'held_up').reduce((m, h) => Math.max(m, h.at || 0), 0);
+  if (started) return Math.floor((Date.now() - started) / 86400000);
+  return cell.startDate ? -daysUntil(cell.startDate) : null;
+}
+// Tick or untick one checklist item. Shared by the step panel and the card.
+function toggleTask(project, doc, step, cell, i, authUser) {
+  const rc = roundChecks(cell);
+  const p = cellPath(project.id, doc.id, step.id) + '/checks/r' + cell.round + '/t' + i;
+  const a = step.actions[i];
+  if (rc['t' + i]) dbRemove(p);
+  else dbSet(p, { at: firebase.database.ServerValue.TIMESTAMP, by: (authUser && authUser.email) || '' });
+  logActivity(project.id, authUser, doc.name + ' · ' + step.stageName + ': ' + (rc['t' + i] ? 'unticked' : 'ticked') + ' "' + (a.label + (a.person ? ' ' + a.person : '')).trim() + '"', { kind: 'tick', docId: doc.id, step: step.stageName });
 }
 
-// The current step's card: compact, three lines, so every document fits on
-// one screen. Previous and next steps sit either side as narrow cards.
-function NowCard({ project, doc, idx, people, onOpen }) {
+function SectionLabel({ children }) {
+  return <div className="text-[9px] font-bold tracking-[.12em] text-slate-400 uppercase mb-1">{children}</div>;
+}
+
+// The current step: a header line, then three sections — status and dates,
+// the checklist (tickable right here), and people with the latest activity.
+function NowCard({ project, doc, idx, data, authUser, onOpen }) {
   const step = doc.steps[idx];
   const c = cellOf(project, doc.id, step.id);
   const s = STATUS[c.status];
   const due = dueLabel(c.dueDate);
-  const ppl = stepPeople(project, people, step, c).map(id => personById(people, id)).filter(Boolean);
+  const ppl = stepPeopleWithRoles(project, data, step, c);
   const cc = checkCount(step, c);
   const rc = roundChecks(c);
-  const nextTask = step.actions.findIndex((a, i) => !rc['t' + i]);
-  const upd = latestUpdate(c);
+  const days = daysOnStep(c);
+  const hist = Object.values(c.history).sort((a, b) => (b.at || 0) - (a.at || 0)).slice(0, 2);
+  const stop = (e) => e.stopPropagation();
+  const MAX_TASKS = 4;
   return (
-    <button onClick={() => onOpen(doc.id, step.id)} data-kind="now"
-      className="w-full h-full text-left bg-white rounded-lg border-2 px-3 py-2 hover:shadow-md transition-shadow flex flex-col gap-1.5"
+    <div onClick={() => onOpen(doc.id, step.id)} data-kind="now" role="button"
+      className="w-full h-full text-left bg-white rounded-lg border-2 hover:shadow-md transition-shadow flex flex-col cursor-pointer"
       style={{ borderColor: s.color }}>
-      <div className="flex items-center gap-2 min-w-0">
+      <div className="flex items-center gap-2 px-3 py-1.5 border-b border-slate-100 min-w-0" style={{ background: s.color + '0d' }}>
         <span className="text-[10px] font-semibold text-slate-400 flex-shrink-0">{idx + 1}/{doc.steps.length}</span>
         <span className="text-sm font-bold text-slate-800 truncate">{step.stageName}</span>
         {c.round > 1 && <span className="text-[10px] font-semibold text-violet-700 bg-violet-50 border border-violet-200 rounded px-1 flex-shrink-0">Round {c.round}</span>}
         <span className="ml-auto flex-shrink-0"><StatusChip status={c.status} sm /></span>
       </div>
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-slate-600">
-        {c.status === 'held_up' && c.heldReason && <span className="text-amber-800 bg-amber-50 border border-amber-200 rounded px-1.5 truncate max-w-full">{c.heldReason}</span>}
-        {due ? <span className={`border rounded-full px-1.5 ${TONE[due.tone]}`}>{due.text}</span> : <span className="text-slate-400">No due date</span>}
-        {c.meetingDate && <span className="inline-flex items-center gap-1"><Icon name="t_meet" size={11} className="text-slate-400" />{fmtDate(c.meetingDate)}</span>}
-        {cc.n > 0 && (
-          <span className="inline-flex items-center gap-1.5 min-w-0" data-testid="now-tasks">
-            <span className="flex gap-[2px] w-14 h-1.5 flex-shrink-0">{step.actions.map((a, i) => <span key={i} className="flex-1 rounded-full" style={{ background: rc['t' + i] ? '#059669' : '#e2e8f0' }} />)}</span>
-            <span className="font-medium">{cc.done}/{cc.n} tasks</span>
-            {nextTask >= 0 && <span className="text-slate-500 truncate">· Next: {step.actions[nextTask].label}{step.actions[nextTask].person ? ' ' + step.actions[nextTask].person : ''}</span>}
-          </span>
-        )}
+      <div className="grid grid-cols-3 divide-x divide-slate-100 flex-1 min-h-0">
+        <div className="px-3 py-2 min-w-0">
+          <SectionLabel>Status &amp; dates</SectionLabel>
+          {c.status === 'held_up' && c.heldReason && <div className="text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded px-1.5 py-0.5 mb-1 line-clamp-2">{c.heldReason}</div>}
+          <dl className="grid grid-cols-[auto_1fr] gap-x-2 gap-y-0.5 text-[11px]">
+            <dt className="text-slate-400">Due</dt><dd>{due ? <span className={`border rounded-full px-1.5 ${TONE[due.tone]}`}>{due.text}</span> : <span className="text-slate-400">Not set</span>}</dd>
+            {c.meetingDate && <><dt className="text-slate-400">Meeting</dt><dd className="text-slate-700">{fmtDate(c.meetingDate)}</dd></>}
+            {c.startDate && <><dt className="text-slate-400">Started</dt><dd className="text-slate-700">{fmtDate(c.startDate)}</dd></>}
+            {days !== null && days >= 0 && <><dt className="text-slate-400">On step</dt><dd className="text-slate-700">{days === 0 ? 'Since today' : days + (days === 1 ? ' day' : ' days')}</dd></>}
+          </dl>
+        </div>
+        <div className="px-3 py-2 min-w-0" data-testid="now-tasks">
+          <SectionLabel>Tasks{cc.n ? ' · ' + cc.done + ' of ' + cc.n : ''}</SectionLabel>
+          {!cc.n && <div className="text-[11px] text-slate-400">No tasks on this step.</div>}
+          <ul className="space-y-0.5">
+            {step.actions.slice(0, MAX_TASKS).map((a, i) => (
+              <li key={i}>
+                <label onClick={stop} className="flex items-start gap-1.5 text-[11px] cursor-pointer hover:bg-slate-50 rounded px-0.5">
+                  <input type="checkbox" className="mt-0.5" checked={!!rc['t' + i]} onChange={() => toggleTask(project, doc, step, c, i, authUser)} data-testid="card-task" />
+                  <span className={`leading-tight ${rc['t' + i] ? 'line-through text-slate-400' : 'text-slate-700'}`}>{a.label}{a.person ? ' ' + a.person : ''}</span>
+                </label>
+              </li>
+            ))}
+          </ul>
+          {cc.n > MAX_TASKS && <div className="text-[10px] text-slate-400 mt-0.5">+{cc.n - MAX_TASKS} more in the step</div>}
+        </div>
+        <div className="px-3 py-2 min-w-0">
+          <SectionLabel>People</SectionLabel>
+          {!ppl.length && <div className="text-[11px] text-slate-400">Nobody assigned</div>}
+          <ul className="space-y-0.5 mb-1.5">
+            {ppl.slice(0, 3).map(({ person, role }) => (
+              <li key={person.id} className="flex items-center gap-1.5 text-[11px] min-w-0">
+                <Avatar person={person} size={18} /><span className="text-slate-700 truncate">{person.name}</span>
+                {role && <span className="text-slate-400 truncate">· {role}</span>}
+              </li>
+            ))}
+            {ppl.length > 3 && <li className="text-[10px] text-slate-400">+{ppl.length - 3} more</li>}
+          </ul>
+          {hist.length > 0 && <>
+            <SectionLabel>Latest</SectionLabel>
+            {hist.map((h, i) => {
+              const u = latestUpdate({ history: { x: h } });
+              return <div key={i} className="text-[10px] text-slate-500 truncate" title={u.text}>{u.text} · {timeAgo(u.at)}</div>;
+            })}
+          </>}
+          {c.notes && <div className="text-[10px] text-slate-500 truncate mt-0.5 flex items-center gap-1" title={c.notes}><Icon name="notes" size={10} />{c.notes}</div>}
+        </div>
       </div>
-      <div className="mt-auto flex items-center gap-3 min-w-0">
-        <PeopleLine ppl={ppl} />
-        {upd && <span className="ml-auto text-[11px] text-slate-400 truncate max-w-[55%]" title={upd.text + ' · ' + upd.by}>{upd.text} · {timeAgo(upd.at)}</span>}
-      </div>
-    </button>
+    </div>
   );
 }
 
-function SideCard({ project, doc, idx, kind, onOpen }) {
+function SideCard({ project, doc, idx, kind, data, onOpen }) {
   const step = doc.steps[idx];
   const c = cellOf(project, doc.id, step.id);
   const s = STATUS[c.status];
-  const doneAt = c.status === 'complete' ? lastCompletedAt(c) : 0;
+  const done = c.status === 'complete' ? Object.values(c.history).filter(h => h.to === 'complete').sort((a, b) => (b.at || 0) - (a.at || 0))[0] : null;
   const due = kind === 'next' ? dueLabel(c.dueDate) : null;
+  const ppl = kind === 'next' ? stepPeople(project, data.people, step, c).map(id => personById(data.people, id)).filter(Boolean) : [];
   return (
     <button onClick={() => onOpen(doc.id, step.id)} data-kind={kind} title={(idx + 1) + '. ' + step.stageName + ' — ' + s.label}
-      className={`w-full h-full text-left rounded-lg px-2.5 py-1.5 flex flex-col gap-0.5 hover:shadow ${kind === 'past' ? 'bg-slate-50 border border-slate-200 opacity-75' : 'bg-white border border-dashed border-slate-300'}`}>
-      <span className="text-xs font-medium text-slate-700 leading-tight line-clamp-2"><span className="text-[10px] text-slate-400 font-semibold mr-1">{idx + 1}</span>{step.stageName}</span>
-      <span className="mt-auto text-[10px] inline-flex items-center gap-1" style={{ color: s.color }}>
-        <Icon name={s.icon} size={11} />{c.status === 'complete' ? (doneAt ? 'Done ' + timeAgo(doneAt) : 'Done') : s.label}
+      className={`w-full h-full text-left rounded-lg px-2.5 py-1.5 flex flex-col gap-0.5 hover:shadow ${kind === 'past' ? 'bg-slate-50 border border-slate-200' : 'bg-white border border-dashed border-slate-300'}`}>
+      <span className={`text-xs font-medium leading-tight line-clamp-2 ${kind === 'past' ? 'text-slate-500' : 'text-slate-700'}`}><span className="text-[10px] text-slate-400 font-semibold mr-1">{idx + 1}</span>{step.stageName}</span>
+      <span className="text-[10px] inline-flex items-center gap-1" style={{ color: s.color }}>
+        <Icon name={s.icon} size={11} />{c.status === 'complete' ? 'Done' : s.label}
         {c.round > 1 && <span className="font-semibold text-violet-700 ml-1">R{c.round}</span>}
       </span>
-      {due && <span className={`text-[10px] border rounded-full px-1.5 self-start ${TONE[due.tone]}`}>{due.text}</span>}
+      {done && <span className="text-[10px] text-slate-400 truncate">{shortWho(done.by)} · {timeAgo(done.at)}</span>}
+      {kind === 'next' && ppl.length > 0 && <span className="text-[10px] text-slate-500 truncate">{ppl.map(p => p.name.split(' ')[0]).join(', ')}</span>}
+      {due && <span className={`mt-auto text-[10px] border rounded-full px-1.5 self-start ${TONE[due.tone]}`}>{due.text}</span>}
     </button>
   );
 }
 
-// Every step of a document on one row, laid out as fixed slots: a narrow
-// previous card, the wide current card, a narrow next card. Rows always open
-// aligned on that layout (a "start"/"end" placeholder fills a missing
-// neighbour), and can be dragged or stepped left and right to look further.
-const SIDE_W = 150, TRACK_GAP = 6;
+// Every step of a document on one row, as fixed slots: a narrow previous
+// card, the current card (up to NOW_MAX wide), then upcoming cards filling the
+// rest. Rows always open aligned on that layout — a Start placeholder fills a
+// missing previous step — so the Now column lines up down the page. Drag or
+// step with the edge buttons to look further; the Now card snaps back into
+// place when dropped near it.
+const SIDE_W = 180, TRACK_GAP = 6, NOW_MAX = 860;
+const nowWidthFor = (w) => Math.max(320, Math.min(NOW_MAX, w - 2 * SIDE_W - 2 * TRACK_GAP));
 
-function StepTrack({ project, doc, people, onOpen }) {
+function StepTrack({ project, doc, data, authUser, width, onOpen }) {
   const ref = useRef(null);
   const nowRef = useRef(null);
   const drag = useRef({ down: false, x: 0, left: 0, moved: false });
   const first = useRef(true);
-  const [width, setWidth] = useState(0);
   const [edges, setEdges] = useState({ l: false, r: false });
   const cur = currentIndex(project, doc);
   const curKey = cur >= 0 ? doc.steps[cur].id : 'done';
-  const nowW = Math.max(240, width - 2 * SIDE_W - 2 * TRACK_GAP);
+  const nowW = nowWidthFor(width);
 
   const measure = () => {
     const el = ref.current;
     if (el) setEdges({ l: el.scrollLeft > 4, r: el.scrollLeft + el.clientWidth < el.scrollWidth - 4 });
   };
-  useEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    setWidth(el.clientWidth);
-    if (typeof ResizeObserver === 'undefined') return;
-    const ro = new ResizeObserver(() => setWidth(el.clientWidth));
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, []);
-  // Park with the previous slot at the left edge. Smooth after the first
-  // render, so a step closing reads as the row sliding along.
   useEffect(() => {
     const el = ref.current, now = nowRef.current;
     if (!el || !now || !width) return;
@@ -1234,7 +1377,11 @@ function StepTrack({ project, doc, people, onOpen }) {
 
   // Snapping is off while dragging (it would fight the pointer) and back on at
   // release, which is when a nearly-parked Now card settles into place.
-  const onDown = (e) => { if (e.pointerType !== 'mouse') return; ref.current.classList.remove('snap'); drag.current = { down: true, x: e.clientX, left: ref.current.scrollLeft, moved: false }; };
+  const onDown = (e) => {
+    if (e.pointerType !== 'mouse' || e.target.closest('input,label,a')) return;
+    ref.current.classList.remove('snap');
+    drag.current = { down: true, x: e.clientX, left: ref.current.scrollLeft, moved: false };
+  };
   const onMove = (e) => {
     const d = drag.current;
     if (!d.down) return;
@@ -1247,15 +1394,13 @@ function StepTrack({ project, doc, people, onOpen }) {
   const nudge = (dir) => ref.current.scrollBy({ left: dir * (SIDE_W + TRACK_GAP), behavior: 'smooth' });
 
   const side = (key, child) => <div key={key} className="trk-side" style={{ flexBasis: SIDE_W }}>{child}</div>;
-  const placeholder = (key, text) => side(key, <div className="h-full rounded-lg border border-dashed border-slate-200 text-[11px] text-slate-300 flex items-center justify-center" data-kind="none">{text}</div>);
   const items = [];
-  if (cur === 0) items.push(placeholder('start', 'Start'));
+  if (cur === 0) items.push(side('start', <div className="h-full rounded-lg border border-dashed border-slate-200 text-[11px] text-slate-300 flex items-center justify-center" data-kind="none">Start</div>));
   doc.steps.forEach((s, i) => {
-    if (i === cur) items.push(<div key={s.id} ref={nowRef} className="trk-now" style={{ flexBasis: nowW }}><NowCard project={project} doc={doc} idx={i} people={people} onOpen={onOpen} /></div>);
-    else items.push(side(s.id, <SideCard project={project} doc={doc} idx={i} kind={cur < 0 || i < cur ? 'past' : 'next'} onOpen={onOpen} />));
+    if (i === cur) items.push(<div key={s.id} ref={nowRef} className="trk-now" style={{ flexBasis: nowW, scrollMarginLeft: SIDE_W + TRACK_GAP }}><NowCard project={project} doc={doc} idx={i} data={data} authUser={authUser} onOpen={onOpen} /></div>);
+    else items.push(side(s.id, <SideCard project={project} doc={doc} idx={i} kind={cur < 0 || i < cur ? 'past' : 'next'} data={data} onOpen={onOpen} />));
   });
-  if (cur < 0) items.push(<div key="done" ref={nowRef} className="trk-now" style={{ flexBasis: nowW }}><div className="h-full rounded-lg border-2 border-emerald-300 bg-emerald-50 text-emerald-700 text-sm font-medium flex items-center justify-center gap-1.5"><Icon name="done" size={16} />All steps done</div></div>);
-  if (cur < 0 || cur === doc.steps.length - 1) items.push(placeholder('end', 'End'));
+  if (cur === doc.steps.length - 1) items.push(side('end', <div className="h-full rounded-lg border border-dashed border-slate-200 text-[11px] text-slate-300 flex items-center justify-center" data-kind="none">End</div>));
 
   return (
     <div className="relative min-w-0">
@@ -1311,92 +1456,133 @@ function DocLinkModal({ project, doc, authUser, onClose }) {
   );
 }
 
-function Timeline({ project, stats }) {
-  const { startDate, dueDate } = project;
-  if (!startDate || !dueDate || dueDate <= startDate) return null;
-  const span = -daysUntil(startDate) + daysUntil(dueDate);
-  const elapsed = Math.min(Math.max(-daysUntil(startDate) / span, 0), 1);
-  const behind = elapsed * 100 > stats.pct + 15;
+function Overview({ project, data, authUser, onOpen }) {
+  const [linkFor, setLinkFor] = useState(null);
+  const [expanded, setExpanded] = useState({});      // finished documents opened up
+  const [width, setWidth] = useState(0);
+  const measureRef = useRef(null);
+  useEffect(() => {
+    const el = measureRef.current;
+    if (!el) return;
+    setWidth(el.clientWidth);
+    if (typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(() => setWidth(el.clientWidth));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  const linkDoc = linkFor && project.documents.find(d => d.id === linkFor);
+  const nowW = nowWidthFor(width);
+
+  const fileLink = (doc) => {
+    const link = project.links[doc.id];
+    return (
+      <div className="flex items-center gap-1.5 text-[11px] min-w-0" data-testid="doc-link">
+        <Icon name="storage" size={12} className="text-slate-400 flex-shrink-0" />
+        {link && link.url
+          ? <><a href={link.url} target="_blank" rel="noopener" className="text-indigo-600 hover:underline truncate">Open file</a>
+              <span className="text-slate-400">v{link.version || 1}</span>
+              <button onClick={() => setLinkFor(doc.id)} className="text-slate-400 hover:text-slate-700" title="Update link"><Icon name="edit" size={11} /></button></>
+          : <button onClick={() => setLinkFor(doc.id)} className="text-slate-500 hover:text-indigo-600">Add file link</button>}
+      </div>
+    );
+  };
+
   return (
-    <div className="mt-3" data-testid="timeline">
-      <div className="relative h-2.5 bg-slate-100 rounded-full">
-        <div className="absolute inset-y-0 left-0 bg-emerald-500 rounded-full" style={{ width: stats.pct + '%' }} />
-        <div className="absolute -top-1 -bottom-1 w-0.5 bg-slate-700" style={{ left: 'calc(' + (elapsed * 100) + '% - 1px)' }} title="Today" />
+    <div data-testid="overview" className="bg-white border border-slate-200 rounded-xl overflow-hidden">
+      <div className="grid grid-cols-[210px_minmax(0,1fr)] bg-slate-50 border-b border-slate-200 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+        <div className="px-3 py-1.5 border-r border-slate-200">Document</div>
+        <div ref={measureRef} className="mx-2 py-1.5 flex" style={{ gap: TRACK_GAP }}>
+          <span style={{ flex: '0 0 ' + SIDE_W + 'px' }}>Previous</span>
+          <span style={{ flex: '0 0 ' + nowW + 'px' }}>Now</span>
+          <span>Up next</span>
+        </div>
       </div>
-      <div className="flex justify-between text-[11px] text-slate-500 mt-1">
-        <span>{fmtDate(startDate)}</span>
-        <span className={behind ? 'text-amber-700 font-medium' : ''}>{Math.round(elapsed * 100)}% of time used · {stats.pct}% of steps done{behind ? ' — behind' : ''}</span>
-        <span>{fmtDate(dueDate)}</span>
-      </div>
+      {project.documents.map(doc => {
+        const w = docWindow(project, doc);
+        const done = w.cur < 0 && w.total > 0;
+        const open = !done || expanded[doc.id];
+        const finishedAt = done ? Math.max(0, ...doc.steps.map(s => lastCompletedAt(cellOf(project, doc.id, s.id)))) : 0;
+        return (
+          <div key={doc.id} className="grid grid-cols-[210px_minmax(0,1fr)] border-b border-slate-200 last:border-b-0" data-testid="ov-doc" data-done={done ? 'yes' : 'no'}>
+            <div className="px-3 py-2 flex flex-col gap-1.5 min-w-0 border-r border-slate-200" style={{ boxShadow: 'inset 3px 0 0 ' + doc.color }}>
+              <div className="flex items-center gap-1.5 min-w-0">
+                {done && <span style={{ color: doc.color }}><Icon name="done" size={14} /></span>}
+                <span className="text-sm font-bold text-slate-800 truncate">{doc.name}</span>
+              </div>
+              {!done && <div className="text-[11px] text-slate-500">Step {w.cur + 1} of {w.total} · {w.pct}%</div>}
+              {open && <StepSegments project={project} doc={doc} cur={w.cur} onOpen={onOpen} />}
+              {open && fileLink(doc)}
+            </div>
+            {open
+              ? <div className="mx-2 py-2 min-w-0">
+                  {done && <button onClick={() => setExpanded({ ...expanded, [doc.id]: false })} className="text-[11px] text-slate-500 hover:text-slate-800 inline-flex items-center gap-1 mb-1"><Icon name="chev_u" size={12} />Collapse</button>}
+                  <StepTrack project={project} doc={doc} data={data} authUser={authUser} width={width} onOpen={onOpen} />
+                </div>
+              : <button onClick={() => setExpanded({ ...expanded, [doc.id]: true })} data-testid="done-row"
+                  className="mx-2 my-1.5 px-3 rounded-lg border flex items-center gap-3 text-left hover:shadow-sm transition-shadow min-w-0"
+                  style={{ borderColor: doc.color + '66', background: doc.color + '0f' }}>
+                  <span className="text-xs font-semibold" style={{ color: doc.color }}>Complete</span>
+                  <span className="text-xs text-slate-600">All {w.total} {w.total === 1 ? 'step' : 'steps'} done{finishedAt ? ' · finished ' + new Date(finishedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : ''}</span>
+                  <span className="flex-1 max-w-[220px]"><StepSegments project={project} doc={doc} cur={-1} onOpen={() => {}} h={6} /></span>
+                  <span onClick={e => e.stopPropagation()}>{fileLink(doc)}</span>
+                  <span className="ml-auto text-[11px] text-slate-500 inline-flex items-center gap-1">Show steps<Icon name="chev_d" size={12} /></span>
+                </button>}
+          </div>
+        );
+      })}
+      {linkDoc && <DocLinkModal project={project} doc={linkDoc} authUser={authUser} onClose={() => setLinkFor(null)} />}
     </div>
   );
 }
 
-function Overview({ project, data, authUser, onOpen }) {
-  const [linkFor, setLinkFor] = useState(null);
+// The project summary band under the toolbar: progress, held up, sent back,
+// upcoming dates, and the timeline — one line, so the documents start high.
+function SummaryBand({ project, onOpen }) {
   const stats = projectStats(project);
   const dates = upcomingDates([project], null);
-  const linkDoc = linkFor && project.documents.find(d => d.id === linkFor);
+  const { startDate, dueDate } = project;
+  const span = startDate && dueDate && dueDate > startDate ? -daysUntil(startDate) + daysUntil(dueDate) : 0;
+  const elapsed = span ? Math.min(Math.max(-daysUntil(startDate) / span, 0), 1) : null;
+  const behind = elapsed !== null && elapsed * 100 > stats.pct + 15;
+  const item = (label, value, color) => (
+    <div className="flex items-baseline gap-1.5 flex-shrink-0">
+      <span className="text-lg font-bold leading-none" style={{ color: color || '#1e293b' }}>{value}</span>
+      <span className="text-[11px] text-slate-500">{label}</span>
+    </div>
+  );
   return (
-    <div data-testid="overview">
-      <div className="bg-white border rounded-xl px-4 py-3 mb-3">
-        <div className="grid grid-cols-2 md:grid-cols-[1fr_1fr_1fr_2fr] gap-x-6 gap-y-3">
-          <Stat label="Complete" value={stats.pct + '%'} sub={stats.closed + ' of ' + stats.total + ' steps'} />
-          <Stat label="Held up" value={stats.held} tone={stats.held ? 'amber' : null} />
-          <Stat label="Sent back" value={stats.sentBack} sub="being reworked" tone={stats.sentBack ? 'violet' : null} />
-          <div className="min-w-0 col-span-2 md:col-span-1" data-testid="upcoming">
-            <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 mb-1">Upcoming dates</div>
-            {!dates.length && <div className="text-xs text-slate-400">No due or meeting dates on open steps.</div>}
-            <div className="flex flex-wrap gap-1.5">
-              {dates.slice(0, 4).map((it, i) => {
-                const tone = it.days < 0 ? 'red' : it.days <= 7 ? 'amber' : 'slate';
-                return (
-                  <button key={i} onClick={() => onOpen(it.doc.id, it.step.id)} className={`text-[11px] border rounded-full pl-1.5 pr-2 py-0.5 inline-flex items-center gap-1 ${TONE[tone]}`}>
-                    <span className="w-2 h-2 rounded-full" style={{ background: it.doc.color }} />
-                    <span className="font-semibold">{fmtDate(it.date).replace(/, \d{4}$/, '')}</span>
-                    <span>{it.step.stageName} {it.kind === 'meeting' ? 'meeting' : 'due'}</span>
-                  </button>
-                );
-              })}
-              {dates.length > 4 && <span className="text-[11px] text-slate-400 self-center">+{dates.length - 4} more</span>}
-            </div>
-          </div>
-        </div>
-        <Timeline project={project} stats={stats} />
-      </div>
-
-      {/* One table-like block: documents share a header and are separated by rules. */}
-      <div className="bg-white border rounded-xl overflow-hidden">
-        <div className="grid grid-cols-[200px_minmax(0,1fr)] bg-slate-50 border-b text-[10px] font-semibold uppercase tracking-wider text-slate-400">
-          <div className="px-3 py-1.5">Document</div>
-          <div className="grid py-1.5 px-1" style={{ gridTemplateColumns: SIDE_W + 'px 1fr ' + SIDE_W + 'px', gap: TRACK_GAP }}>
-            <span className="px-1">Previous</span><span className="px-1">Now</span><span className="px-1">Next</span>
-          </div>
-        </div>
-        {project.documents.map(doc => {
-          const w = docWindow(project, doc);
-          const link = project.links[doc.id];
+    <div className="bg-white border-b border-slate-200 px-4 py-2 flex flex-wrap items-center gap-x-6 gap-y-2" data-testid="summary">
+      {item('complete', stats.pct + '%')}
+      {item('held up', stats.held, stats.held ? '#b45309' : '#94a3b8')}
+      {item('sent back', stats.sentBack, stats.sentBack ? '#6d28d9' : '#94a3b8')}
+      <div className="flex items-center gap-1.5 min-w-0 flex-1" data-testid="upcoming">
+        <Icon name="calendar" size={13} className="text-slate-400 flex-shrink-0" />
+        {!dates.length && <span className="text-[11px] text-slate-400">No upcoming dates</span>}
+        {dates.slice(0, 3).map((it, i) => {
+          const tone = it.days < 0 ? 'red' : it.days <= 7 ? 'amber' : 'slate';
           return (
-            <div key={doc.id} className="grid grid-cols-[200px_minmax(0,1fr)] border-b last:border-b-0" data-testid="ov-doc">
-              <div className="px-3 py-2 flex flex-col gap-1.5 min-w-0 border-r" style={{ boxShadow: 'inset 3px 0 0 ' + doc.color }}>
-                <div className="text-sm font-bold text-slate-800 truncate">{doc.name}</div>
-                <div className="text-[11px] text-slate-500">{w.cur < 0 ? 'All ' + w.total + ' steps done' : 'Step ' + (w.cur + 1) + ' of ' + w.total + ' · ' + w.pct + '%'}</div>
-                <StepSegments project={project} doc={doc} cur={w.cur} onOpen={onOpen} />
-                <div className="flex items-center gap-1.5 text-[11px]" data-testid="doc-link">
-                  <Icon name="storage" size={12} className="text-slate-400" />
-                  {link && link.url
-                    ? <><a href={link.url} target="_blank" rel="noopener" className="text-indigo-600 hover:underline truncate">Open file</a>
-                        <span className="text-slate-400">v{link.version || 1}</span>
-                        <button onClick={() => setLinkFor(doc.id)} className="text-slate-400 hover:text-slate-700 ml-auto" title="Update link"><Icon name="edit" size={11} /></button></>
-                    : <button onClick={() => setLinkFor(doc.id)} className="text-slate-500 hover:text-indigo-600">Add file link</button>}
-                </div>
-              </div>
-              <div className="px-1 py-1.5 min-w-0"><StepTrack project={project} doc={doc} people={data.people} onOpen={onOpen} /></div>
-            </div>
+            <button key={i} onClick={() => onOpen(it.doc.id, it.step.id)} className={`text-[11px] border rounded-full pl-1.5 pr-2 py-0.5 inline-flex items-center gap-1 whitespace-nowrap ${TONE[tone]}`}>
+              <span className="w-2 h-2 rounded-full" style={{ background: it.doc.color }} />
+              <span className="font-semibold">{fmtDate(it.date).replace(/, \d{4}$/, '')}</span>
+              <span>{it.step.stageName} {it.kind === 'meeting' ? 'meeting' : 'due'}</span>
+            </button>
           );
         })}
+        {dates.length > 3 && <span className="text-[11px] text-slate-400">+{dates.length - 3}</span>}
       </div>
-      {linkDoc && <DocLinkModal project={project} doc={linkDoc} authUser={authUser} onClose={() => setLinkFor(null)} />}
+      {elapsed !== null && (
+        <div className="w-full md:w-[340px] flex-shrink-0" data-testid="timeline" title={Math.round(elapsed * 100) + '% of time used · ' + stats.pct + '% of steps done'}>
+          <div className="relative h-2 bg-slate-100 border border-slate-200 rounded-full">
+            <div className="absolute inset-y-0 left-0 bg-emerald-500 rounded-full" style={{ width: stats.pct + '%' }} />
+            <div className="absolute -top-1 -bottom-1 w-0.5 bg-slate-700" style={{ left: 'calc(' + (elapsed * 100) + '% - 1px)' }} />
+          </div>
+          <div className="flex justify-between text-[10px] text-slate-400 mt-0.5">
+            <span>{fmtDate(startDate)}</span>
+            <span className={behind ? 'text-amber-700 font-medium' : ''}>{Math.round(elapsed * 100)}% of time{behind ? ' · behind' : ''}</span>
+            <span>{fmtDate(dueDate)}</span>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1420,11 +1606,14 @@ function DateList({ items, onOpen, showProject = true, empty, limit = 12 }) {
         const tone = it.days < 0 ? 'red' : it.days <= 7 ? 'amber' : 'slate';
         return (
           <li key={i}>
-            <button onClick={() => onOpen(it)} className="w-full text-left py-1.5 flex items-center gap-2 hover:bg-slate-50 rounded">
-              <span className={`text-[11px] border rounded-full px-2 w-24 text-center flex-shrink-0 ${TONE[tone]}`}>{fmtDate(it.date)}</span>
-              <Icon name={it.kind === 'meeting' ? 't_meet' : 'clock'} size={12} className="text-slate-400" />
-              <span className="text-sm text-slate-700 truncate">{it.step.stageName}</span>
-              <span className="text-xs text-slate-500 truncate">{it.kind === 'meeting' ? 'meeting' : 'due'} · {it.doc.name}{showProject ? ' · ' + it.project.name : ''}</span>
+            <button onClick={() => onOpen(it)} className="w-full text-left py-1.5 flex items-center gap-2.5 hover:bg-slate-50 rounded">
+              <span className={`text-[11px] font-semibold border rounded-md w-14 text-center py-1 flex-shrink-0 leading-tight ${TONE[tone]}`}>
+                {new Date(it.date + 'T00:00').toLocaleDateString(undefined, { month: 'short' })}<br />{new Date(it.date + 'T00:00').getDate()}
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="flex items-center gap-1 text-sm text-slate-800 truncate"><Icon name={it.kind === 'meeting' ? 't_meet' : 'clock'} size={12} className="text-slate-400 flex-shrink-0" />{it.step.stageName} <span className="text-slate-400 text-xs">{it.kind === 'meeting' ? 'meeting' : 'due'}</span></span>
+                <span className="flex items-center gap-1 text-[11px] text-slate-500 truncate"><span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: it.doc.color }} />{it.doc.name}{showProject ? ' · ' + it.project.name : ''}</span>
+              </span>
             </button>
           </li>
         );
@@ -1434,9 +1623,64 @@ function DateList({ items, onOpen, showProject = true, empty, limit = 12 }) {
   );
 }
 
-function ProjectView({ project, data, authUser, onBack }) {
+// ── Chrome shared with the Workflow Tool ───────────────────────────────────────
+// Same structure as workflow-tool.html: brand block above a white sidebar, a
+// top bar of the same fixed height (so the two bottom borders meet in one
+// line), then a white toolbar row of bordered buttons.
+const CHROME_BAR_H = 68;
+
+function TopBar({ eyebrow, title, sub, children }) {
+  return (
+    <header className="bg-white border-b border-slate-200 px-4 flex items-center gap-3 shrink-0" style={{ height: CHROME_BAR_H }}>
+      <div className="flex-1 min-w-0">
+        <div className="text-[9px] font-bold tracking-[.13em] text-slate-400 uppercase leading-none mb-0.5 truncate">{eyebrow}</div>
+        <h1 className="font-bold text-slate-900 text-[17px] truncate leading-tight tracking-tight">{title}</h1>
+        {sub && <div className="flex items-center gap-1.5 mt-0.5 text-[11px] text-slate-400 truncate">{sub}</div>}
+      </div>
+      {children}
+    </header>
+  );
+}
+function Toolbar({ children }) {
+  return <div className="shrink-0 flex flex-wrap items-center gap-2 px-4 py-2 border-b border-slate-200 bg-white">{children}</div>;
+}
+function ToolBtn({ icon, children, onClick, active, title, testid }) {
+  return (
+    <button onClick={onClick} title={title} data-testid={testid}
+      className={`tb-btn inline-flex items-center gap-1.5 font-medium rounded-lg text-xs px-2.5 py-1.5 border transition-colors ${
+        active ? 'bg-indigo-600 border-indigo-600 text-white hover:bg-indigo-700' : 'bg-white border-slate-300 text-slate-700 hover:bg-slate-50'}`}>
+      <Icon name={icon} size={13} /> {children}
+    </button>
+  );
+}
+function ViewToggle({ view, onSetView }) {
+  const items = [['overview', 'v_docs', 'Overview', 'Where each document is now'], ['flow', 'v_flow', 'Full flow', 'Every step of every document']];
+  return (
+    <div className="flex items-center bg-slate-100 rounded-lg p-0.5 shrink-0">
+      {items.map(([id, icon, label, title]) => (
+        <button key={id} onClick={() => onSetView(id)} title={title} data-view={id}
+          className={`inline-flex items-center justify-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-md transition-colors ${
+            view === id ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+          style={{ minWidth: 118 }}>
+          <Icon name={icon} size={13} /> {label}
+        </button>
+      ))}
+    </div>
+  );
+}
+function SyncLine({ online, children }) {
+  return <>
+    <span className={online ? 'text-emerald-600' : 'text-red-500'} title={online ? 'Live — changes sync as you make them' : 'Offline — changes will sync when you reconnect'}>
+      <Icon name={online ? 'sync' : 'warn'} size={12} />
+    </span>
+    <span className="truncate">{online ? 'Live' : 'Offline'}{children}</span>
+  </>;
+}
+
+function ProjectView({ project, data, authUser, online, onBack }) {
   const [open, setOpen] = useState(null);          // { docId, stepId }
-  const [modal, setModal] = useState(null);        // 'settings' | 'activity'
+  const [modal, setModal] = useState(null);        // 'settings'
+  const [drawer, setDrawer] = useState(null);      // null | 'activity' | 'workflow'
   const [view, setViewState] = useState(() => { try { return localStorage.getItem(VIEW_KEY) || 'overview'; } catch (e) { return 'overview'; } });
   const setView = (v) => { setViewState(v); try { localStorage.setItem(VIEW_KEY, v); } catch (e) {} };
   const spine = useMemo(() => buildStepSpine(project.documents), [project.documents]);
@@ -1445,57 +1689,48 @@ function ProjectView({ project, data, authUser, onBack }) {
   const openDoc = open && project.documents.find(d => d.id === open.docId);
   const openStep = openDoc && openDoc.steps.find(s => s.id === open.stepId);
   const pdue = !stats.done ? dueLabel(project.dueDate) : null;
+  const pids = new Set();
+  project.documents.forEach(d => d.steps.forEach(s => stepPeople(project, data.people, s, cellOf(project, d.id, s.id)).forEach(id => pids.add(id))));
+  const ppl = [...pids].map(id => personById(data.people, id)).filter(Boolean);
+  const onOpenStep = (d, s) => setOpen({ docId: d, stepId: s });
 
   return (
-    <div className="p-4 sm:p-6 min-w-0">
-      <button onClick={onBack} className="text-xs text-slate-500 hover:text-slate-800 inline-flex items-center gap-1 mb-2"><Icon name="chev_l" size={12} />Dashboard</button>
-      <div className="flex flex-wrap items-start gap-3 mb-4">
-        <div className="flex-1 min-w-0">
-          <div className="text-[10px] font-semibold tracking-widest text-slate-400 uppercase">Project · {project.workflowName}</div>
-          <h1 className="text-xl font-bold text-slate-800">{project.name}{project.archived && <span className="ml-2 text-xs font-medium text-slate-500 border rounded-full px-2 py-0.5 align-middle">Archived</span>}</h1>
-          <div className="text-xs text-slate-500 mt-1 flex flex-wrap gap-x-3 gap-y-1 items-center">
-            {project.startDate && <span>Started {fmtDate(project.startDate)}</span>}
-            {project.dueDate && <span>Target {fmtDate(project.dueDate)}</span>}
-            {pdue && pdue.tone !== 'slate' && <span className={`border rounded-full px-2 ${TONE[pdue.tone]}`}>{pdue.text}</span>}
-            <span>{stats.closed}/{stats.total} steps done</span>
-          </div>
-        </div>
-        <div className="flex gap-2">
-          <Btn variant="secondary" sm onClick={() => setModal('activity')}><Icon name="history" size={13} />Activity</Btn>
-          <Btn variant="secondary" sm onClick={() => setModal('settings')}><Icon name="settings" size={13} />Project settings</Btn>
-        </div>
+    <>
+      <TopBar eyebrow={'Project · ' + project.workflowName + (project.archived ? ' · Archived' : '')} title={project.name}
+        sub={<SyncLine online={online}>
+          {project.startDate ? ' · started ' + fmtDate(project.startDate) : ''}
+          {project.dueDate ? ' · target ' + fmtDate(project.dueDate) : ''}
+          {pdue && pdue.tone !== 'slate' ? ' (' + pdue.text.toLowerCase() + ')' : ''}
+        </SyncLine>}>
+        {ppl.length > 0 && <div className="flex items-center gap-1 shrink-0" data-testid="header-people">{ppl.slice(0, 6).map(p => <Avatar key={p.id} person={p} size={26} />)}</div>}
+        {drift && !drift.missing && (
+          <button onClick={() => setDrawer('workflow')} data-testid="drift-pill"
+            className="shrink-0 inline-flex items-center gap-1.5 text-xs font-semibold rounded-lg px-3 py-2 border bg-amber-50 text-amber-700 border-amber-300"
+            title="The workflow in the Workflow Map has changed since this project copied it">
+            <Icon name="warn" size={14} /> Workflow changed
+          </button>
+        )}
+      </TopBar>
+      <Toolbar>
+        <ViewToggle view={view} onSetView={setView} />
+        <ToolBtn icon="history" onClick={() => setDrawer(drawer ? null : 'activity')} active={!!drawer} testid="changes-btn">Changes</ToolBtn>
+        <ToolBtn icon="settings" onClick={() => setModal('settings')}>Project settings</ToolBtn>
+        {project.notes && <span className="text-[11px] text-slate-500 truncate max-w-[40%]" title={project.notes}><Icon name="notes" size={12} className="inline mr-1 text-amber-500" />{project.notes}</span>}
+      </Toolbar>
+      {project.documents.length > 0 && <SummaryBand project={project} onOpen={onOpenStep} />}
+
+      <div className="flex-1 min-h-0 overflow-auto p-4">
+        {!project.documents.length
+          ? <div className="text-sm text-slate-500 bg-white border rounded-lg p-6">This workflow had no documents when the project was created.</div>
+          : view === 'flow'
+            ? <FlowGrid project={project} data={data} spine={spine} onOpen={onOpenStep} />
+            : <Overview project={project} data={data} authUser={authUser} onOpen={onOpenStep} />}
       </div>
-
-      {drift && !drift.missing && (
-        <div className="flex items-center gap-3 bg-amber-50 border border-amber-200 text-amber-900 text-sm rounded-lg px-3 py-2 mb-4">
-          <Icon name="warn" size={15} />
-          <span className="flex-1">The "{drift.wf.name}" workflow has changed since this project started.</span>
-          <Btn sm variant="secondary" onClick={() => applyWorkflowUpdate(project, data, drift, authUser)}>Update to latest workflow</Btn>
-        </div>
-      )}
-      {project.notes && <div className="bg-white border rounded-lg px-3 py-2 text-sm text-slate-700 mb-4 whitespace-pre-wrap"><span className="text-xs font-semibold text-slate-500 mr-2">Notes</span>{project.notes}</div>}
-
-      <div className="flex items-center gap-2 mb-3">
-        <div className="inline-flex border border-slate-300 rounded-lg overflow-hidden bg-white" role="tablist">
-          {[['overview', 'Overview', 'layout-list'], ['flow', 'Full flow', 'map']].map(([id, label, icon]) => (
-            <button key={id} onClick={() => setView(id)} data-view={id}
-              className={`inline-flex items-center gap-1.5 text-sm px-3 py-1.5 ${view === id ? 'bg-indigo-50 text-indigo-700 font-medium' : 'text-slate-600 hover:bg-slate-50'}`}>
-              <Icon name={id === 'overview' ? 'v_docs' : 'map'} size={14} />{label}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {!project.documents.length
-        ? <div className="text-sm text-slate-500 bg-white border rounded-lg p-6">This workflow had no documents when the project was created.</div>
-        : view === 'flow'
-          ? <FlowGrid project={project} data={data} spine={spine} onOpen={(d, s) => setOpen({ docId: d, stepId: s })} />
-          : <Overview project={project} data={data} authUser={authUser} onOpen={(d, s) => setOpen({ docId: d, stepId: s })} />}
 
       {openStep && <StepModal key={open.docId + open.stepId} project={project} doc={openDoc} step={openStep} data={data} authUser={authUser} onClose={() => setOpen(null)} />}
       {modal === 'settings' && <ProjectSettingsModal project={project} data={data} authUser={authUser} onDeleted={onBack} onClose={() => setModal(null)} />}
-      {modal === 'activity' && <ActivityModal project={project} onClose={() => setModal(null)} />}
-    </div>
+      {drawer && <ChangesDrawer project={project} data={data} authUser={authUser} tab={drawer} onTab={setDrawer} onClose={() => setDrawer(null)} />}
+    </>
   );
 }
 
@@ -1507,8 +1742,10 @@ function Panel({ title, icon, children, testid, right, accent = '#64748b', count
     <section className="bg-white border rounded-xl overflow-hidden" data-testid={testid}>
       <h2 className="text-sm font-bold text-slate-800 px-4 py-2.5 flex items-center gap-2 border-b" style={{ borderTop: '3px solid ' + accent }}>
         <span className="w-6 h-6 rounded-md flex items-center justify-center" style={{ background: accent + '1a', color: accent }}><Icon name={icon} size={14} /></span>
-        {title}
-        {sub && <span className="text-xs font-normal text-slate-500 truncate">{sub}</span>}
+        <span className="min-w-0 leading-tight">
+          <span className="block">{title}</span>
+          {sub && <span className="block text-[11px] font-normal text-slate-500">{sub}</span>}
+        </span>
         {count > 0 && <span className="text-[11px] font-bold rounded-full px-1.5 text-white" style={{ background: accent }}>{count}</span>}
         <span className="ml-auto font-normal">{right}</span>
       </h2>
@@ -1556,19 +1793,19 @@ function ProjectRow({ project, people, onOpen }) {
           <span className={`absolute inset-y-0 flex items-center text-[11px] font-bold ${st.pct >= 12 ? 'text-white' : 'text-slate-600'}`}
             style={st.pct >= 12 ? { right: 'calc(' + (100 - st.pct) + '% + 6px)' } : { left: 'calc(' + st.pct + '% + 6px)' }}>{st.pct}%</span>
         </div>
-        <div className="flex flex-wrap gap-1.5 mt-1.5" data-testid="doc-chips">
+        <div className="grid gap-1.5 mt-1.5" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(128px, 1fr))' }} data-testid="doc-chips">
           {project.documents.map(d => {
             const w = docWindow(project, d);
             const c = w.cur >= 0 ? cellOf(project, d.id, d.steps[w.cur].id) : null;
             const held = c && c.status === 'held_up';
             return (
-              <span key={d.id} className="relative overflow-hidden rounded-full border text-[11px] font-medium px-2 py-0.5 text-slate-800 inline-flex items-center gap-1"
+              <span key={d.id} className="relative overflow-hidden rounded-full border text-[11px] font-medium px-2 py-0.5 text-slate-800 flex items-center gap-1 min-w-0"
                 style={{ borderColor: held ? '#d97706' : d.color }}
                 title={d.name + ' — ' + (c ? 'at ' + d.steps[w.cur].stageName + ' (' + STATUS[c.status].label + ')' : 'done') + ', ' + w.closed + ' of ' + w.total + ' steps'}>
                 <span className="absolute inset-y-0 left-0" style={{ width: w.pct + '%', background: d.color, opacity: .28 }} />
                 {held && <span className="relative text-amber-700"><Icon name="held" size={10} /></span>}
                 {w.cur < 0 && <span className="relative" style={{ color: d.color }}><Icon name="check" size={10} /></span>}
-                <span className="relative">{d.name}</span>
+                <span className="relative truncate">{d.name}</span>
               </span>
             );
           })}
@@ -1672,144 +1909,328 @@ function RecentUpdates({ projects, onOpen }) {
   );
 }
 
-function Dashboard({ data, authUser, onOpen, onNew }) {
-  const [q, setQ] = useState('');
-  const [wf, setWf] = useState('');
-  const [mine, setMine] = useState(false);
-  const [showArchived, setShowArchived] = useState(false);
+// A dropdown of checkable options. Selection is a Set of ids.
+function MultiSelect({ label, options, value, onChange, actions, testid, defaultSize }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+  useEffect(() => {
+    if (!open) return;
+    const off = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener('mousedown', off);
+    return () => document.removeEventListener('mousedown', off);
+  }, [open]);
+  const n = options.filter(o => value.has(o.id)).length;
+  const narrowed = n !== (defaultSize == null ? options.length : defaultSize) || (defaultSize != null && n === options.length);
+  const toggle = (id) => { const v = new Set(value); v.has(id) ? v.delete(id) : v.add(id); onChange(v); };
+  return (
+    <div className="relative" ref={ref} data-testid={testid}>
+      <button onClick={() => setOpen(!open)}
+        className={`inline-flex items-center gap-1.5 text-xs font-medium rounded-lg px-2.5 py-1.5 border transition-colors ${narrowed ? 'bg-indigo-50 border-indigo-300 text-indigo-700' : 'bg-white border-slate-300 text-slate-700 hover:bg-slate-50'}`}>
+        {label}<span className={`text-[10px] rounded-full px-1.5 ${narrowed ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-500'}`}>{n === options.length ? 'All' : n}</span>
+        <Icon name="chev_d" size={12} />
+      </button>
+      {open && (
+        <div className="absolute left-0 top-full mt-1 z-30 bg-white border border-slate-200 rounded-lg shadow-lg py-1 min-w-[220px] fade-in">
+          {actions && <div className="flex gap-1 px-2 pb-1 mb-1 border-b border-slate-100">{actions.map(a => (
+            <button key={a.label} onClick={() => onChange(a.value())} className="text-[11px] text-indigo-600 hover:bg-indigo-50 rounded px-2 py-0.5">{a.label}</button>
+          ))}</div>}
+          {options.map(o => (
+            <button key={o.id} onClick={() => toggle(o.id)} className="w-full text-left flex items-center gap-2 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50">
+              <span className={`w-4 h-4 rounded border flex items-center justify-center flex-shrink-0 ${value.has(o.id) ? 'bg-indigo-600 border-indigo-600 text-white' : 'border-slate-300'}`}>{value.has(o.id) && <Icon name="check" size={11} />}</span>
+              {o.dot && <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: o.dot }} />}
+              <span className="truncate">{o.label}</span>
+              {o.sub && <span className="ml-auto text-[11px] text-slate-400">{o.sub}</span>}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// A project's flags, for the Status filter. A project shows if any flag is
+// selected, so "Held up" alone narrows to projects with a held-up step.
+const PROJECT_FLAGS = [
+  { id: 'active', label: 'In progress' }, { id: 'held', label: 'Held up', dot: '#d97706' },
+  { id: 'sentback', label: 'Sent back', dot: '#7c3aed' }, { id: 'overdue', label: 'Overdue', dot: '#dc2626' },
+  { id: 'stale', label: 'Stale', dot: '#94a3b8' }, { id: 'complete', label: 'Complete', dot: '#059669' },
+  { id: 'archived', label: 'Archived', dot: '#cbd5e1' },
+];
+const DEFAULT_FLAGS = ['active', 'held', 'sentback', 'overdue', 'stale'];
+function projectFlags(p) {
+  if (p.archived) return ['archived'];
+  const st = projectStats(p);
+  if (st.done) return ['complete'];
+  const f = ['active'];
+  if (st.held) f.push('held');
+  if (st.sentBack) f.push('sentback');
+  if (st.overdue || (p.dueDate && daysUntil(p.dueDate) < 0)) f.push('overdue');
+  if ((Date.now() - st.lastAt) > STALE_DAYS * 86400000) f.push('stale');
+  return f;
+}
+function projectPeopleIds(project, people) {
+  const ids = new Set();
+  project.documents.forEach(d => d.steps.forEach(s => stepPeople(project, people, s, cellOf(project, d.id, s.id)).forEach(id => ids.add(id))));
+  return ids;
+}
+
+// ── Project status donut ──────────────────────────────────────────────────────
+// Each project counted once, by its most pressing state. Status colours are the
+// app's (same as the step chips); every slice is labelled in the legend with
+// its count, so colour is never the only cue.
+const DONUT_CATS = [
+  { id: 'complete', label: 'Complete', color: '#059669' },
+  { id: 'progress', label: 'In progress', color: '#2563eb' },
+  { id: 'held', label: 'Held up', color: '#d97706' },
+  { id: 'sentback', label: 'Sent back', color: '#7c3aed' },
+  { id: 'notstarted', label: 'Not started', color: '#94a3b8' },
+  { id: 'archived', label: 'Archived', color: '#cbd5e1' },
+];
+function donutCategory(p) {
+  const st = projectStats(p);
+  if (st.done) return 'complete';
+  if (p.archived) return 'archived';
+  if (st.held) return 'held';
+  if (st.sentBack) return 'sentback';
+  const started = p.documents.some(d => d.steps.some(s => cellOf(p, d.id, s.id).status !== 'pending'));
+  return started ? 'progress' : 'notstarted';
+}
+function StatusDonut({ projects }) {
+  const [range, setRange] = useState('all');
+  const [hover, setHover] = useState(null);
+  const cutoff = range === 'all' ? 0 : Date.now() - (range === '12m' ? 365 : 182) * 86400000;
+  const inRange = projects.filter(p => (p.createdAt || 0) >= cutoff);
+  const counts = DONUT_CATS.map(c => ({ ...c, n: inRange.filter(p => donutCategory(p) === c.id).length }));
+  const total = inRange.length;
+  const R = 42, SW = 14, C = 2 * Math.PI * R, GAP = 2;
+  const shown = counts.filter(c => c.n);
+  let offset = 0;
+  const segs = shown.map(c => {
+    const len = Math.max(0, (c.n / total) * C - (shown.length > 1 ? GAP : 0));
+    const seg = { ...c, len, offset };
+    offset += (c.n / total) * C;
+    return seg;
+  });
+  const focus = hover && counts.find(c => c.id === hover);
+  return (
+    <div data-testid="donut">
+      <div className="flex justify-end -mt-1 mb-2">
+        <div className="flex items-center bg-slate-100 rounded-md p-0.5">
+          {[['all', 'All time'], ['12m', '12 months'], ['6m', '6 months']].map(([id, label]) => (
+            <button key={id} onClick={() => setRange(id)} className={`text-[11px] px-2 py-0.5 rounded ${range === id ? 'bg-white text-indigo-600 shadow-sm font-medium' : 'text-slate-500'}`}>{label}</button>
+          ))}
+        </div>
+      </div>
+      {!total ? <p className="text-xs text-slate-400">No projects in this period.</p> : (
+        <div className="flex items-center gap-4">
+          <svg width="120" height="120" viewBox="0 0 120 120" className="flex-shrink-0" role="img" aria-label={counts.map(c => c.label + ' ' + c.n).join(', ')}>
+            <g transform="rotate(-90 60 60)">
+              <circle cx="60" cy="60" r={R} fill="none" stroke="#f1f5f9" strokeWidth={SW} />
+              {segs.map(s => (
+                <circle key={s.id} cx="60" cy="60" r={R} fill="none" stroke={s.color} strokeWidth={hover === s.id ? SW + 4 : SW}
+                  strokeDasharray={s.len + ' ' + (C - s.len)} strokeDashoffset={-s.offset}
+                  style={{ cursor: 'pointer', transition: 'stroke-width .12s' }}
+                  onMouseEnter={() => setHover(s.id)} onMouseLeave={() => setHover(null)}>
+                  <title>{s.label}: {s.n} of {total}</title>
+                </circle>
+              ))}
+            </g>
+            <text x="60" y="58" textAnchor="middle" className="fill-slate-800" style={{ fontSize: 22, fontWeight: 700 }}>{focus ? focus.n : total}</text>
+            <text x="60" y="74" textAnchor="middle" className="fill-slate-500" style={{ fontSize: 10 }}>{focus ? focus.label.toLowerCase() : 'projects'}</text>
+          </svg>
+          <ul className="flex-1 space-y-0.5 min-w-0">
+            {counts.map(c => (
+              <li key={c.id} onMouseEnter={() => setHover(c.id)} onMouseLeave={() => setHover(null)}
+                className={`flex items-center gap-2 text-xs rounded px-1 ${hover === c.id ? 'bg-slate-50' : ''} ${c.n ? '' : 'opacity-40'}`}>
+                <span className="w-2.5 h-2.5 rounded-sm flex-shrink-0" style={{ background: c.color }} />
+                <span className="text-slate-700 flex-1 truncate">{c.label}</span>
+                <span className="text-slate-800 font-semibold tabular-nums">{c.n}</span>
+                <span className="text-slate-400 tabular-nums w-9 text-right">{total ? Math.round(c.n / total * 100) : 0}%</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Dashboard({ data, authUser, online, onOpen, onNew }) {
   const me = meOf(data.people, authUser);
+  const [q, setQ] = useState('');
+  const [flags, setFlags] = useState(() => new Set(DEFAULT_FLAGS));
+  const [who, setWho] = useState(null);       // null = everyone
+  const [types, setTypes] = useState(null);   // null = every workflow
   const attention = attentionFor(data.projects, data.people, me);
   const active = data.projects.filter(p => !p.archived);
 
-  const involves = (project, pid) => project.documents.some(d => d.steps.some(s => stepPeople(project, data.people, s, cellOf(project, d.id, s.id)).includes(pid)));
-  const list = data.projects.filter(p =>
-    (showArchived ? p.archived : !p.archived) &&
-    (!wf || p.workflowId === wf) &&
-    (!q || p.name.toLowerCase().includes(q.toLowerCase())) &&
-    (!mine || (me && involves(p, me.id))));
+  const peopleOpts = [...(me ? [me] : []), ...data.people.filter(p => !me || p.id !== me.id)].map(p => ({ id: p.id, label: p.name + (me && p.id === me.id ? ' (you)' : '') }));
+  const allPeople = new Set(peopleOpts.map(o => o.id));
+  const whoSet = who || allPeople;
+  const typeOpts = data.workflows.map(w => ({ id: w.id, label: w.name }));
+  const allTypes = new Set(typeOpts.map(o => o.id));
+  const typeSet = types || allTypes;
 
-  // Reports
+  const list = data.projects.filter(p => {
+    if (q && !p.name.toLowerCase().includes(q.toLowerCase())) return false;
+    if (!projectFlags(p).some(f => flags.has(f))) return false;
+    if (types && !types.has(p.workflowId)) return false;
+    if (who) { const ids = projectPeopleIds(p, data.people); if (![...ids].some(id => who.has(id))) return false; }
+    return true;
+  });
+  const filtered = list.length !== data.projects.length;
+  const clear = () => { setQ(''); setFlags(new Set(PROJECT_FLAGS.map(f => f.id))); setWho(null); setTypes(null); };
+
   const stats = active.map(p => ({ p, st: projectStats(p) }));
-  const flagged = [];   // held up or on a later round
-  active.forEach(project => project.documents.forEach(doc => doc.steps.forEach(step => {
-    const c = cellOf(project, doc.id, step.id);
-    if (isClosed(c.status)) return;
-    if (c.status === 'held_up' || (c.round > 1 && c.status !== 'pending')) flagged.push({ project, doc, step, cell: c });
-  })));
-  const stale = stats.filter(x => !x.st.done && (Date.now() - x.st.lastAt) > STALE_DAYS * 86400000).sort((a, b) => a.st.lastAt - b.st.lastAt);
+  let held = 0, sentBack = 0;
+  stats.forEach(x => { held += x.st.held; sentBack += x.st.sentBack; });
   const dates = upcomingDates(active, 14);
+  const stale = stats.filter(x => !x.st.done && (Date.now() - x.st.lastAt) > STALE_DAYS * 86400000);
   const tiles = [
-    { label: 'Active projects', value: active.length, icon: 'dashboard', color: '#4f46e5', sub: stats.filter(x => x.st.done).length + ' complete' },
-    { label: 'Held up', value: flagged.filter(f => f.cell.status === 'held_up').length, icon: 'held', color: '#d97706', sub: 'steps waiting' },
-    { label: 'Sent back', value: flagged.filter(f => f.cell.round > 1 && f.cell.status !== 'pending').length, icon: 'ret', color: '#7c3aed', sub: 'being reworked' },
-    { label: 'Overdue', value: stats.reduce((n, x) => n + x.st.overdue, 0), icon: 'warn', color: '#dc2626', sub: dates.filter(d => d.days >= 0 && d.days <= 7).length + ' due this week' },
-    { label: 'Stale', value: stale.length, icon: 'clock', color: '#64748b', sub: 'quiet ' + STALE_DAYS + '+ days' },
+    { label: 'Active projects', value: active.filter(p => !projectStats(p).done).length, icon: 'dashboard', color: '#4f46e5', sub: stats.filter(x => x.st.done).length + ' complete', always: true },
+    { label: 'Held up', value: held, icon: 'held', color: '#d97706', sub: 'steps waiting', flag: 'held' },
+    { label: 'Sent back', value: sentBack, icon: 'ret', color: '#7c3aed', sub: 'being reworked', flag: 'sentback' },
+    { label: 'Overdue', value: stats.reduce((n, x) => n + x.st.overdue, 0), icon: 'warn', color: '#dc2626', sub: dates.filter(d => d.days >= 0 && d.days <= 7).length + ' due this week', flag: 'overdue' },
+    { label: 'Stale', value: stale.length, icon: 'clock', color: '#64748b', sub: 'quiet ' + STALE_DAYS + '+ days', flag: 'stale' },
   ];
 
   return (
-    <div className="p-4 sm:p-6 max-w-7xl mx-auto">
-      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-4" data-testid="tiles">
-        {tiles.map(t => (
-          <div key={t.label} className="bg-white border rounded-xl px-4 py-3 flex items-center gap-3 relative overflow-hidden" style={{ opacity: t.value || t.label === 'Active projects' ? 1 : .7 }}>
-            <span className="absolute inset-y-0 left-0 w-1" style={{ background: t.value ? t.color : '#e2e8f0' }} />
-            <span className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: (t.value ? t.color : '#94a3b8') + '1a', color: t.value ? t.color : '#94a3b8' }}><Icon name={t.icon} size={19} /></span>
-            <span className="min-w-0">
-              <span className="block text-2xl font-bold leading-none" style={{ color: t.value ? t.color : '#94a3b8' }}>{t.value}</span>
-              <span className="block text-xs font-semibold text-slate-700 mt-1">{t.label}</span>
-              <span className="block text-[11px] text-slate-400">{t.sub}</span>
-            </span>
-          </div>
-        ))}
-      </div>
+    <>
+      <TopBar eyebrow="Program Tracker" title="Dashboard" sub={<SyncLine online={online}>{' · ' + active.length + ' active ' + (active.length === 1 ? 'project' : 'projects')}</SyncLine>} />
+      <div className="flex-1 min-h-0 overflow-auto p-4">
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-4" data-testid="tiles">
+          {tiles.map(t => {
+            const on = t.value || t.always;
+            return (
+              <button key={t.label} onClick={() => t.flag && setFlags(new Set([t.flag]))} title={t.flag ? 'Show only these projects' : ''}
+                className={`bg-white border border-slate-200 rounded-xl px-3 py-2 flex items-center gap-2.5 relative overflow-hidden text-left ${t.flag ? 'hover:shadow-sm' : 'cursor-default'}`} style={{ opacity: on ? 1 : .65 }}>
+                <span className="absolute inset-y-0 left-0 w-1" style={{ background: on ? t.color : '#e2e8f0' }} />
+                <span className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: (on ? t.color : '#94a3b8') + '1a', color: on ? t.color : '#94a3b8' }}><Icon name={t.icon} size={16} /></span>
+                <span className="text-2xl font-bold leading-none tabular-nums" style={{ color: on ? t.color : '#94a3b8' }}>{t.value}</span>
+                <span className="min-w-0 leading-tight">
+                  <span className="block text-xs font-semibold text-slate-700 truncate">{t.label}</span>
+                  <span className="block text-[11px] text-slate-400 truncate">{t.sub}</span>
+                </span>
+              </button>
+            );
+          })}
+        </div>
 
-      <div className="grid lg:grid-cols-3 gap-4 items-start">
-        <div className="lg:col-span-2 space-y-4 min-w-0">
-          <Panel title="Needs your attention" icon="t_cust" testid="attention" accent="#4f46e5" sub="Your steps (by role or tag) that are active or next in line">
-            {!me && <p className="text-sm text-slate-600">Your sign-in ({authUser.email}) is not on the People list yet, so nothing can be assigned to you. Add yourself under <strong>People</strong>.</p>}
-            {me && !attention.length && <p className="text-sm text-slate-500">Nothing pending for you.</p>}
-            {me && attention.length > 0 && <div className="divide-y -mx-1">
-              {attention.map((it, i) => {
-                const due = dueLabel(it.cell.dueDate);
-                return (
-                  <button key={i} onClick={() => onOpen(it.project.id)} className="w-full text-left px-1 py-2 flex flex-wrap items-center gap-x-3 gap-y-1 hover:bg-slate-50 rounded">
-                    <span className="w-2.5 h-2.5 rounded-full" style={{ background: it.doc.color }} />
-                    <span className="text-sm font-medium text-slate-800">{it.step.stageName}</span>
-                    <span className="text-xs text-slate-500">{it.doc.name} · {it.project.name}</span>
-                    <span className="ml-auto flex items-center gap-2">
-                      {it.cell.round > 1 && <span className="text-[10px] font-semibold text-violet-700 bg-violet-50 border border-violet-200 rounded px-1">Round {it.cell.round}</span>}
-                      {due && <span className={`text-xs border rounded-full px-2 ${TONE[due.tone]}`}>{due.text}</span>}
-                      <StatusChip status={it.cell.status} sm />
-                    </span>
-                  </button>
-                );
-              })}
-            </div>}
-          </Panel>
-
-          <section className="bg-white border rounded-xl">
-            <div className="flex flex-wrap items-center gap-2 px-3 py-2.5 border-b">
-              <h2 className="text-sm font-bold text-slate-700 mr-2">{showArchived ? 'Archived projects' : 'Projects'}</h2>
-              <input className="border border-slate-300 rounded-lg px-2.5 py-1 text-sm bg-white w-40" placeholder="Search" value={q} onChange={e => setQ(e.target.value)} />
-              <select className="border border-slate-300 rounded-lg px-2 py-1 text-sm bg-white" value={wf} onChange={e => setWf(e.target.value)}>
-                <option value="">All workflows</option>
-                {data.workflows.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
-              </select>
-              <label className="text-sm text-slate-600 inline-flex items-center gap-1.5"><input type="checkbox" checked={mine} onChange={e => setMine(e.target.checked)} />Mine</label>
-              <label className="text-sm text-slate-600 inline-flex items-center gap-1.5"><input type="checkbox" checked={showArchived} onChange={e => setShowArchived(e.target.checked)} />Archived</label>
-              <Btn sm className="ml-auto" onClick={onNew}><Icon name="plus" size={13} />New project</Btn>
+        <div className="grid xl:grid-cols-[minmax(0,1fr)_360px] gap-4 items-start">
+          <section className="bg-white border border-slate-200 rounded-xl overflow-hidden min-w-0" data-testid="projects">
+            <div className="flex flex-wrap items-center gap-2 px-3 py-2.5 border-b border-slate-200">
+              <div className="relative w-full sm:w-1/3">
+                <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400"><Icon name="review" size={14} /></span>
+                <input className="w-full border border-slate-300 rounded-lg pl-8 pr-2.5 py-1.5 text-sm bg-white" placeholder="Search projects" value={q} onChange={e => setQ(e.target.value)} />
+              </div>
+              <MultiSelect label="Status" testid="f-status" options={PROJECT_FLAGS} value={flags} onChange={setFlags} defaultSize={DEFAULT_FLAGS.length}
+                actions={[{ label: 'Default', value: () => new Set(DEFAULT_FLAGS) }, { label: 'All', value: () => new Set(PROJECT_FLAGS.map(f => f.id)) }]} />
+              <MultiSelect label="People" testid="f-people" options={peopleOpts} value={whoSet} onChange={v => setWho(v.size === allPeople.size ? null : v)}
+                actions={[...(me ? [{ label: 'Only me', value: () => new Set([me.id]) }] : []), { label: 'Everyone', value: () => new Set(allPeople) }]} />
+              <MultiSelect label="Type" testid="f-type" options={typeOpts} value={typeSet} onChange={v => setTypes(v.size === allTypes.size ? null : v)}
+                actions={[{ label: 'All', value: () => new Set(allTypes) }]} />
+              <button onClick={onNew} data-testid="new-project"
+                className="ml-auto inline-flex items-center gap-2 text-sm font-semibold text-white rounded-lg pl-2 pr-4 py-1.5 shadow-md hover:shadow-lg transition-shadow"
+                style={{ background: 'linear-gradient(135deg, #4f46e5, #7c3aed)' }}>
+                <span className="w-6 h-6 rounded-md bg-white/20 flex items-center justify-center"><Icon name="plus" size={15} /></span>New project
+              </button>
             </div>
-            {!list.length && <div className="text-sm text-slate-500 px-4 py-6 text-center">
-              {data.projects.length ? 'No projects match.' : 'No projects yet. Start one from a workflow with New project.'}
+            {filtered && list.length > 0 && <div className="px-4 py-1.5 text-[11px] text-slate-500 border-b border-slate-100 bg-slate-50">Showing {list.length} of {data.projects.length} projects · <button className="text-indigo-600 hover:underline" onClick={clear}>Show all</button></div>}
+            {!list.length && <div className="text-sm text-slate-500 px-4 py-8 text-center">
+              {data.projects.length ? <>No projects match these filters. <button className="text-indigo-600 hover:underline" onClick={clear}>Show all</button></> : 'No projects yet. Start one from a workflow with New project.'}
             </div>}
             {list.map(p => <ProjectRow key={p.id} project={p} people={data.people} onOpen={onOpen} />)}
           </section>
 
-          <Panel title="Held up or sent back" icon="warn" testid="report-flagged" accent="#d97706">
-            {!flagged.length && <p className="text-xs text-slate-400">Nothing held up or on a repeat round.</p>}
-            <ul className="divide-y">
-              {flagged.map((f, i) => (
-                <li key={i}>
-                  <button onClick={() => onOpen(f.project.id)} className="w-full text-left py-1.5 flex flex-wrap items-center gap-x-2 hover:bg-slate-50 rounded">
-                    {f.cell.status === 'held_up'
-                      ? <span className="text-[10px] border rounded-full px-1.5 bg-amber-50 text-amber-800 border-amber-200">Held up</span>
-                      : <span className="text-[10px] border rounded-full px-1.5 bg-violet-50 text-violet-700 border-violet-200">Round {f.cell.round}</span>}
-                    <span className="text-sm text-slate-700">{f.step.stageName}</span>
-                    <span className="text-xs text-slate-500">{f.doc.name} · {f.project.name} · {f.project.workflowName}</span>
-                    {f.cell.heldReason && <span className="text-xs text-amber-800 w-full pl-1">{f.cell.heldReason}</span>}
-                  </button>
-                </li>
-              ))}
-            </ul>
-          </Panel>
-        </div>
-
-        <div className="space-y-4 min-w-0">
-          <Panel title="Next 14 days" icon="calendar" testid="report-dates" accent="#0284c7" count={dates.length}>
-            <DateList items={dates} onOpen={it => onOpen(it.project.id)} empty="No due or meeting dates coming up." />
-          </Panel>
-          <Panel title="Stale projects" icon="clock" testid="report-stale" accent="#64748b" count={stale.length}>
-            {!stale.length && <p className="text-xs text-slate-400">Every active project has had activity in the last {STALE_DAYS} days.</p>}
-            <ul className="divide-y">
-              {stale.map(({ p, st }) => (
-                <li key={p.id}><button onClick={() => onOpen(p.id)} className="w-full text-left py-1.5 flex items-center gap-2 hover:bg-slate-50 rounded">
-                  <span className="text-sm text-slate-700 truncate flex-1">{p.name}</span>
-                  <span className="text-[11px] text-slate-500">{Math.floor((Date.now() - st.lastAt) / 86400000)}d quiet</span>
-                </button></li>
-              ))}
-            </ul>
-          </Panel>
-          <Panel title="Recent updates" icon="history" testid="recent" accent="#0f766e">
-            <RecentUpdates projects={active} onOpen={onOpen} />
-          </Panel>
+          <div className="space-y-4 min-w-0">
+            <Panel title="Needs your attention" icon="t_cust" testid="attention" accent="#4f46e5" sub="Your steps that are active or next">
+              {!me && <p className="text-sm text-slate-600">Your sign-in ({authUser.email}) is not on the People list yet, so nothing can be assigned to you. Add yourself under <strong>People</strong>.</p>}
+              {me && !attention.length && <p className="text-sm text-slate-500">Nothing pending for you.</p>}
+              {me && attention.length > 0 && <div className="divide-y -mx-1">
+                {attention.map((it, i) => {
+                  const due = dueLabel(it.cell.dueDate);
+                  return (
+                    <button key={i} onClick={() => onOpen(it.project.id)} className="w-full text-left px-1 py-1.5 flex items-center gap-2 hover:bg-slate-50 rounded">
+                      <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: it.doc.color }} />
+                      <span className="min-w-0 flex-1">
+                        <span className="block text-sm font-medium text-slate-800 truncate">{it.step.stageName}</span>
+                        <span className="block text-[11px] text-slate-500 truncate">{it.doc.name} · {it.project.name}</span>
+                      </span>
+                      <span className="flex flex-col items-end gap-0.5 flex-shrink-0">
+                        <StatusChip status={it.cell.status} sm />
+                        {due && <span className={`text-[10px] border rounded-full px-1.5 ${TONE[due.tone]}`}>{due.text}</span>}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>}
+            </Panel>
+            <Panel title="Project status" icon="dashboard" testid="report-status" accent="#059669">
+              <StatusDonut projects={data.projects} />
+            </Panel>
+            <Panel title="Next 14 days" icon="calendar" testid="report-dates" accent="#0284c7">
+              <DateList items={dates} onOpen={it => onOpen(it.project.id)} empty="No due or meeting dates coming up." />
+            </Panel>
+            <Panel title="Recent updates" icon="history" testid="recent" accent="#0f766e">
+              <RecentUpdates projects={active} onOpen={onOpen} />
+            </Panel>
+          </div>
         </div>
       </div>
-    </div>
+    </>
   );
 }
 
 // ── App ────────────────────────────────────────────────────────────────────────
 // Routing is the URL hash (#/p/<id>), so a project can be linked to directly.
 const readRoute = () => { const m = location.hash.match(/^#\/p\/([\w-]+)/); return m ? m[1] : null; };
+
+function Sidebar({ data, route, go, authUser, onModal }) {
+  const projects = data.projects.filter(p => !p.archived);
+  const item = (active) => `group flex items-center gap-2 px-2 py-2 rounded-lg cursor-pointer mb-1 transition-colors ${active ? 'bg-indigo-600 text-white' : 'text-slate-700 hover:bg-slate-100'}`;
+  return (
+    <aside className="bg-white border-r border-slate-200 flex flex-col shrink-0 overflow-hidden" style={{ width: 240 }}>
+      <button onClick={() => go(null)} className="w-full text-left px-4 border-b border-slate-200 hover:bg-slate-50 transition-colors flex flex-col justify-center shrink-0"
+        style={{ height: CHROME_BAR_H }} title="Dashboard">
+        <div className="font-bold text-slate-800 text-sm leading-tight">Program Tracker</div>
+        <div className="text-xs text-slate-400 mt-0.5">Langara Continuing Studies</div>
+      </button>
+      <div className="flex-1 overflow-y-auto p-3">
+        <div onClick={() => go(null)} className={item(!route)} data-testid="nav-dashboard">
+          <Icon name="dashboard" size={15} className={!route ? 'text-indigo-200' : 'text-slate-400'} />
+          <span className="text-sm font-medium">Dashboard</span>
+        </div>
+        <div className="flex items-center justify-between mt-4 mb-2 px-1">
+          <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">Projects</span>
+          <button onClick={() => onModal('new')} className="text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50 rounded p-1 transition-colors" title="New project"><Icon name="plus" size={16} /></button>
+        </div>
+        {!projects.length && <div className="text-xs text-slate-400 px-2">No projects yet.</div>}
+        {projects.map(p => {
+          const st = projectStats(p);
+          const on = route === p.id;
+          return (
+            <div key={p.id} onClick={() => go(p.id)} className={item(on)} title={p.name}>
+              <span className="text-sm font-medium truncate flex-1">{p.name}</span>
+              {st.held > 0 && <span className={on ? 'text-amber-200' : 'text-amber-600'} title="Held up"><Icon name="held" size={13} /></span>}
+              <span className={`text-[10px] tabular-nums ${on ? 'text-indigo-200' : 'text-slate-400'}`}>{st.pct}%</span>
+            </div>
+          );
+        })}
+      </div>
+      <div className="p-3 border-t border-slate-200 space-y-1.5">
+        <a href={MAP_URL} className="w-full px-3 py-2 rounded-lg text-sm text-slate-700 border border-slate-200 hover:bg-slate-50 flex items-center gap-2.5 transition-colors">
+          <Icon name="map" size={16} className="text-slate-500" /> Workflow Map
+        </a>
+        <button onClick={() => onModal('people')} className="w-full px-3 py-2 rounded-lg text-sm text-slate-700 border border-slate-200 hover:bg-slate-50 flex items-center gap-2.5 transition-colors">
+          <Icon name="roles" size={16} className="text-slate-500" /> People
+        </button>
+        <button onClick={() => getFbAuth().signOut()} title={authUser.email || ''} className="w-full px-3 py-1.5 rounded-lg text-xs text-slate-500 hover:bg-slate-50 flex items-center gap-2.5 transition-colors">
+          <Icon name="signout" size={14} /> <span className="truncate">Sign out {authUser.email ? '· ' + authUser.email : ''}</span>
+        </button>
+      </div>
+    </aside>
+  );
+}
 
 function App({ authUser }) {
   const [data, online] = useTrackerData(authUser);
@@ -1822,35 +2243,19 @@ function App({ authUser }) {
   }, []);
   const go = useCallback((id) => { location.hash = id ? '#/p/' + id : '#/'; setRoute(id); }, []);
   const project = data && route ? data.projects.find(p => p.id === route) : null;
-  useEffect(() => { document.title = project ? project.name + ' · CS Program Tracker' : 'CS Program Tracker'; }, [project && project.name]);
+  useEffect(() => { document.title = project ? project.name + ' · Program Tracker' : 'Program Tracker'; }, [project && project.name]);
 
   if (!data) return <div className="flex items-center justify-center h-screen text-slate-400 text-sm">Loading…</div>;
   return (
-    <div className="min-h-screen flex flex-col">
-      <header className="bg-white border-b px-4 sm:px-6 py-2.5 flex items-center gap-3 sticky top-0 z-20">
-        <button onClick={() => go(null)} className="flex items-center gap-2 text-left">
-          <span className="w-8 h-8 rounded-lg bg-indigo-600 text-white flex items-center justify-center"><Icon name="dashboard" size={17} /></span>
-          <span>
-            <span className="block text-sm font-bold text-slate-800 leading-tight">CS Program Tracker</span>
-            <span className="block text-[11px] text-slate-500 leading-tight">Continuing Studies · Langara</span>
-          </span>
-        </button>
-        <span className={`ml-2 inline-flex items-center gap-1 text-[11px] ${online ? 'text-emerald-600' : 'text-red-600'}`} title={online ? 'Live — changes sync as you make them' : 'Offline — changes will sync when you reconnect'}>
-          <span className={`w-2 h-2 rounded-full ${online ? 'bg-emerald-500' : 'bg-red-500'}`} />{online ? 'Live' : 'Offline'}
-        </span>
-        <div className="ml-auto flex items-center gap-1.5">
-          <a href={MAP_URL} className="inline-flex items-center gap-1.5 text-sm text-slate-600 hover:bg-slate-100 rounded-lg px-2.5 py-1.5"><Icon name="map" size={14} />Workflow Map</a>
-          <Btn variant="ghost" onClick={() => setModal('people')}><Icon name="roles" size={14} />People</Btn>
-          <Btn variant="ghost" title={'Sign out ' + (authUser.email || '')} onClick={() => getFbAuth().signOut()}><Icon name="signout" size={14} /></Btn>
-        </div>
-      </header>
-      <main className="flex-1 min-w-0">
+    <div className="flex h-screen overflow-hidden bg-slate-100">
+      <Sidebar data={data} route={route} go={go} authUser={authUser} onModal={setModal} />
+      <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         {route && project
-          ? <ProjectView project={project} data={data} authUser={authUser} onBack={() => go(null)} />
+          ? <ProjectView key={project.id} project={project} data={data} authUser={authUser} online={online} onBack={() => go(null)} />
           : route
-            ? <div className="p-6 text-sm text-slate-500">That project no longer exists. <button className="text-indigo-600 underline" onClick={() => go(null)}>Back to the dashboard</button></div>
-            : <Dashboard data={data} authUser={authUser} onOpen={go} onNew={() => setModal('new')} />}
-      </main>
+            ? <><TopBar eyebrow="Project" title="Not found" /><div className="p-6 text-sm text-slate-500">That project no longer exists. <button className="text-indigo-600 underline" onClick={() => go(null)}>Back to the dashboard</button></div></>
+            : <Dashboard data={data} authUser={authUser} online={online} onOpen={go} onNew={() => setModal('new')} />}
+      </div>
       {modal === 'people' && <PeopleModal data={data} onClose={() => setModal(null)} />}
       {modal === 'new' && <NewProjectModal data={data} authUser={authUser} onClose={() => setModal(null)} onCreated={id => { setModal(null); go(id); }} />}
     </div>
