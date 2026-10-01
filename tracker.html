@@ -1074,7 +1074,7 @@ function ChangesDrawer({ project, data, authUser, tab, onTab, onClose }) {
   return (
     <Drawer title="Changes" onClose={onClose} testid="changes-drawer">
       <div className="flex gap-1 px-4 py-2 border-b border-slate-200 shrink-0">
-        {[['activity', 'Project activity'], ['workflow', 'Workflow update' + (diff.length ? ' · ' + diff.length : '')]].map(([id, label]) => (
+        {[['activity', 'Project activity'], ['workflow', 'Workflow update' + (diff.filter(d => d.major).length ? ' · ' + diff.filter(d => d.major).length : '')]].map(([id, label]) => (
           <button key={id} onClick={() => onTab(id)} data-tab={id}
             className={`text-xs font-medium px-3 py-1.5 rounded-md ${tab === id ? 'bg-indigo-50 text-indigo-700' : 'text-slate-500 hover:bg-slate-100'}`}>{label}</button>
         ))}
@@ -1107,20 +1107,33 @@ function ChangesDrawer({ project, data, authUser, tab, onTab, onClose }) {
           {!drift && <p className="text-sm text-slate-500 mb-3">This project matches the current "{project.workflowName}" workflow.</p>}
           {drift && !drift.missing && <div className="mb-5">
             <SectionLabel>Not yet in this project</SectionLabel>
-            {!diff.length && <p className="text-xs text-slate-500 mb-2">Nothing this project uses has changed — the stored copy is only formatted differently.</p>}
-            <ul className="space-y-1.5 mb-3" data-testid="workflow-diff">
-              {[...diff.filter(d => d.major), ...diff.filter(d => !d.major)].map((d, i) => {
-                const [icon, color] = DIFF_STYLE[d.kind];
-                return (
-                  <li key={i} className={`flex items-start gap-2 text-xs ${d.major ? 'text-slate-800' : 'text-slate-400'}`} data-major={d.major ? 'yes' : 'no'}>
-                    <span className="mt-0.5" style={{ color: d.major ? color : '#cbd5e1' }}><Icon name={icon} size={12} /></span>
-                    <span>{d.doc && <span className="inline-flex items-center gap-1 text-slate-500 mr-1"><span className="w-1.5 h-1.5 rounded-full" style={{ background: d.doc.color }} />{d.doc.name}:</span>}{d.text}{!d.major && <span className="text-[10px] text-slate-400"> · minor</span>}</span>
-                  </li>
-                );
-              })}
-            </ul>
-            <Btn sm variant={sum.major ? 'primary' : 'secondary'} onClick={() => applyWorkflowUpdate(project, data, drift, authUser)}><Icon name="sync" size={13} />{diff.length ? 'Update to latest workflow' : 'Mark as up to date'}</Btn>
-            <p className="text-[11px] text-slate-400 mt-1.5">Progress on steps that still exist is kept. Minor changes (notes, storage, trigger wording) are listed but don't raise the Workflow changed warning.</p>
+            {(() => {
+              // Substantial changes are listed one by one. Minor ones (notes,
+              // storage, trigger wording) are summed into a single line — on
+              // real data they can run to dozens and bury what matters.
+              const major = diff.filter(d => d.major);
+              const minor = diff.filter(d => !d.major);
+              const minorWhat = [...new Set(minor.flatMap(d => (d.text.split(': changed ')[1] || '').split(', ')).filter(Boolean))];
+              return <>
+                {!major.length && <p className="text-xs text-slate-500 mb-2">Nothing that affects tracking has changed.</p>}
+                {major.length > 0 && <ul className="space-y-1.5 mb-2" data-testid="workflow-diff">
+                  {major.map((d, i) => {
+                    const [icon, color] = DIFF_STYLE[d.kind];
+                    return (
+                      <li key={i} className="flex items-start gap-2 text-xs text-slate-800">
+                        <span className="mt-0.5" style={{ color }}><Icon name={icon} size={12} /></span>
+                        <span>{d.doc && <span className="inline-flex items-center gap-1 text-slate-500 mr-1"><span className="w-1.5 h-1.5 rounded-full" style={{ background: d.doc.color }} />{d.doc.name}:</span>}{d.text}</span>
+                      </li>
+                    );
+                  })}
+                </ul>}
+                {minor.length > 0 && <p className="text-xs text-slate-400 mb-3" data-testid="minor-summary">
+                  {major.length ? 'Also minor' : 'Only minor'} detail changes on {minor.length} {minor.length === 1 ? 'step' : 'steps'} ({minorWhat.join(', ')}).
+                </p>}
+                <Btn sm variant={sum.major ? 'primary' : 'secondary'} onClick={() => applyWorkflowUpdate(project, data, drift, authUser)}><Icon name="sync" size={13} />{diff.length ? 'Update to latest workflow' : 'Mark as up to date'}</Btn>
+                <p className="text-[11px] text-slate-400 mt-1.5">Progress on steps that still exist is kept. The full edit history is on the Workflow Map, under History.</p>
+              </>;
+            })()}
           </div>}
 
         </>}

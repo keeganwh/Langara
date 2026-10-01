@@ -226,7 +226,7 @@ const cell = (d, docId, stepId) => {
   await p.evaluate(() => firebase.database().ref('tracker/ping').set(3)); await p.waitForTimeout(150);
   await p.evaluate(() => { if (!document.querySelector('[data-testid=changes-drawer]')) document.querySelector('[data-testid=changes-btn]').click(); }); await p.waitForTimeout(100);
   await click(p, '[data-testid=changes-drawer] button[data-tab=workflow]'); await p.waitForTimeout(150);
-  ok('the drawer still lists the minor change, marked minor', await p.evaluate(() => /Draft: changed notes\s*· minor/.test(document.querySelector('[data-testid=workflow-diff]').innerText)));
+  ok('minor changes collapse to one summary line', await p.evaluate(() => /minor detail changes on 1 step \(notes\)/.test(document.querySelector('[data-testid=minor-summary]').innerText)));
 
   console.log('\nIcons');
   ok('no emoji in the rendered page', await p.evaluate(() => !/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/u.test(document.body.innerText)));

@@ -510,7 +510,7 @@ differences and the **order of a step's roles** (toggling a role off and on
 reorders the list — the likeliest source of false alarms, since the stored
 hash is order-sensitive). The pill shows only for **substantial** changes
 (steps, documents, tasks, roles, meeting group, information only); notes,
-storage and trigger wording are listed in the drawer as minor. The drawer's
+storage and trigger wording are summed into one "minor detail changes" line in the drawer (they ran to 30+ lines on real data). The drawer's
 Workflow update tab lists only what this project's copy is missing, with the
 Update button. The workflow's full edit history lives on the Workflow Map
 (History, beside Publish) — by request the tracker shows project-level
