@@ -5,6 +5,15 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>CS Program Tracker</title>
   <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Brand colour: Langara orange #F15A22 (500). Tailwind's indigo scale is
+       remapped to it, so every indigo-* class in this page is the brand colour.
+       dev/tracker-preview.js reads this block to build the offline preview. -->
+  <script id="tw-brand">
+    tailwind.config = { theme: { extend: { colors: { indigo: {
+      50: '#FEF4EF', 100: '#FDE4D8', 200: '#FBC6AE', 300: '#F89F7A', 400: '#F47A48',
+      500: '#F15A22', 600: '#DD4513', 700: '#B83611', 800: '#932D15', 900: '#772814', 950: '#411208',
+    } } } } };
+  </script>
   <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
   <script src="https://unpkg.com/@babel/standalone@7.23.10/babel.min.js"></script>
@@ -13,7 +22,7 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
   <style>
     body { font-family: system-ui, -apple-system, sans-serif; }
-    input:focus, select:focus, textarea:focus { outline: 2px solid #6366f1; outline-offset: 1px; }
+    input:focus, select:focus, textarea:focus { outline: 2px solid #F15A22; outline-offset: 1px; }
     .fade-in { animation: fadeIn 0.15s ease; }
     @keyframes fadeIn { from { opacity:0; transform:translateY(-4px); } to { opacity:1; transform:translateY(0); } }
     ::-webkit-scrollbar { width:8px; height:10px; }
@@ -1859,7 +1868,7 @@ function ProjectRow({ project, people, onOpen }) {
 // checklist tick per project, and a change applied to several documents at
 // once (the meeting shortcut) collapses into one line.
 const KIND_STYLE = {
-  created:  { icon: 'plus',    color: '#4f46e5' },
+  created:  { icon: 'plus',    color: '#F15A22' },
   status:   { icon: 'pending', color: '#64748b' },
   tick:     { icon: 'check',   color: '#059669' },
   sentback: { icon: 'ret',     color: '#7c3aed' },
@@ -2127,7 +2136,7 @@ function Dashboard({ data, authUser, online, onOpen, onNew }) {
   const dates = upcomingDates(active, 14);
   const stale = stats.filter(x => !x.st.done && (Date.now() - x.st.lastAt) > STALE_DAYS * 86400000);
   const tiles = [
-    { label: 'Active projects', value: active.filter(p => !projectStats(p).done).length, icon: 'dashboard', color: '#4f46e5', sub: stats.filter(x => x.st.done).length + ' complete', always: true },
+    { label: 'Active projects', value: active.filter(p => !projectStats(p).done).length, icon: 'dashboard', color: '#F15A22', sub: stats.filter(x => x.st.done).length + ' complete', always: true },
     { label: 'Held up', value: held, icon: 'held', color: '#d97706', sub: 'steps waiting', flag: 'held' },
     { label: 'Sent back', value: sentBack, icon: 'ret', color: '#7c3aed', sub: 'being reworked', flag: 'sentback' },
     { label: 'Overdue', value: stats.reduce((n, x) => n + x.st.overdue, 0), icon: 'warn', color: '#dc2626', sub: dates.filter(d => d.days >= 0 && d.days <= 7).length + ' due this week', flag: 'overdue' },
@@ -2157,7 +2166,7 @@ function Dashboard({ data, authUser, online, onOpen, onNew }) {
         </div>
 
         <div className="grid xl:grid-cols-[minmax(0,1fr)_360px] gap-4 items-start">
-          <section className="bg-white border border-slate-200 rounded-xl overflow-hidden min-w-0" data-testid="projects">
+          <section className="bg-white border border-slate-200 rounded-xl min-w-0" data-testid="projects">
             <div className="flex flex-wrap items-center gap-2 px-3 py-2.5 border-b border-slate-200">
               <div className="relative w-full sm:w-1/3">
                 <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400"><Icon name="review" size={14} /></span>
@@ -2171,7 +2180,7 @@ function Dashboard({ data, authUser, online, onOpen, onNew }) {
                 actions={[{ label: 'All', value: () => new Set(allTypes) }]} />
               <button onClick={onNew} data-testid="new-project"
                 className="ml-auto inline-flex items-center gap-2 text-sm font-semibold text-white rounded-lg pl-2 pr-4 py-1.5 shadow-md hover:shadow-lg transition-shadow"
-                style={{ background: 'linear-gradient(135deg, #4f46e5, #7c3aed)' }}>
+                style={{ background: 'linear-gradient(135deg, #F47A48, #DD4513)' }}>
                 <span className="w-6 h-6 rounded-md bg-white/20 flex items-center justify-center"><Icon name="plus" size={15} /></span>New project
               </button>
             </div>
@@ -2183,7 +2192,7 @@ function Dashboard({ data, authUser, online, onOpen, onNew }) {
           </section>
 
           <div className="space-y-4 min-w-0">
-            <Panel title="Needs your attention" icon="t_cust" testid="attention" accent="#4f46e5" sub="Your steps that are active or next">
+            <Panel title="Needs your attention" icon="t_cust" testid="attention" accent="#F15A22" sub="Your steps that are active or next">
               {!me && <p className="text-sm text-slate-600">Your sign-in ({authUser.email}) is not on the People list yet, so nothing can be assigned to you. Add yourself under <strong>People</strong>.</p>}
               {me && !attention.length && <p className="text-sm text-slate-500">Nothing pending for you.</p>}
               {me && attention.length > 0 && <div className="divide-y -mx-1">

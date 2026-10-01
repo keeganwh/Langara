@@ -462,6 +462,14 @@ People / Sign out at the foot), a top bar of the same fixed `CHROME_BAR_H`
 Workflow Tool had a 0.7px step there until it got the same constant), and a
 toolbar row of `tb-btn` buttons with the same `ViewToggle` pill.
 
+**Brand colour.** The tracker's highlight is Langara orange `#F15A22`. Rather
+than replace every class, a `<script id="tw-brand">` block remaps Tailwind's
+`indigo` scale to an orange scale (500 = `#F15A22`, 600 = `#DD4513` for
+buttons, where white text needs the extra contrast), so `indigo-*` classes in
+`tracker.html` mean brand orange. `dev/tracker-preview.js` reads that block to
+compile the offline preview with the same theme. Violet stays the "sent back"
+status colour. The Workflow Tool still uses Tailwind's real indigo.
+
 - **Dashboard** — compact one-line tiles (click one to filter to it), then the
   project list with search and three checkable dropdowns (`MultiSelect`):
   **Status** (project flags from `projectFlags()`; complete and archived hidden
