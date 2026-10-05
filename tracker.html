@@ -59,6 +59,17 @@
     .tb-btn { min-width: 128px; justify-content: center; }
     .drawer { animation: drawerIn .18s ease; }
     @keyframes drawerIn { from { transform: translateX(24px); opacity: .4; } to { transform: none; opacity: 1; } }
+    /* Sidebar rail: icons only. Hovering one floats the full button over it
+       (fixed-position, so the scrolling rail cannot clip it) and slides its
+       label out. */
+    .rail-btn { display: inline-flex; align-items: center; height: 40px; padding: 0 4px; border-radius: 10px; }
+    .rail-fly { position: fixed; z-index: 99980; display: flex; align-items: center; }
+    .rail-fly-btn { display: inline-flex; align-items: center; gap: 10px; height: 100%; padding: 0 4px; border-radius: 10px;
+                    background: #fff; box-shadow: 0 6px 18px rgba(15,23,42,.18); white-space: nowrap; text-align: left; line-height: 1.2; }
+    .rail-fly-label { display: inline-block; overflow: hidden; padding-right: 12px; animation: railOut .2s ease forwards; }
+    @keyframes railOut { from { max-width: 0; opacity: 0; padding-right: 0; } to { max-width: 280px; opacity: 1; padding-right: 12px; } }
+    .slide-in { animation: slideIn .18s ease; }
+    @keyframes slideIn { from { transform: translateX(-24px); opacity: .5; } to { transform: none; opacity: 1; } }
     .line-clamp-2 { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
   </style>
 </head>
@@ -2110,6 +2121,15 @@ function Dashboard({ data, authUser, online, onOpen, onNew }) {
   const [flags, setFlags] = useState(() => new Set(DEFAULT_FLAGS));
   const [who, setWho] = useState(null);       // null = everyone
   const [types, setTypes] = useState(null);   // null = every workflow
+  const [report, setReport] = useState(null); // narrow view: which report panel is open
+  const narrow = useNarrow();
+  const repRef = useRef(null);
+  useEffect(() => {
+    if (!report) return;
+    const off = (e) => { if (repRef.current && !repRef.current.contains(e.target)) setReport(null); };
+    document.addEventListener('mousedown', off);
+    return () => document.removeEventListener('mousedown', off);
+  }, [report]);
   const attention = attentionFor(data.projects, data.people, me);
   const active = data.projects.filter(p => !p.archived);
 
@@ -2143,88 +2163,135 @@ function Dashboard({ data, authUser, online, onOpen, onNew }) {
     { label: 'Stale', value: stale.length, icon: 'clock', color: '#64748b', sub: 'quiet ' + STALE_DAYS + '+ days', flag: 'stale' },
   ];
 
+  // A tile filters the list to its projects; clicking it again restores the
+  // default filter, so tiles toggle rather than only switching on.
+  const tileOn = (t) => t.flag && flags.size === 1 && flags.has(t.flag);
+  const clickTile = (t) => { if (!t.flag) return; setFlags(tileOn(t) ? new Set(DEFAULT_FLAGS) : new Set([t.flag])); };
+
+  const attentionPanel = (
+    <Panel title="Needs your attention" icon="t_cust" testid="attention" accent="#F15A22" sub="Your steps that are active or next">
+      {!me && <p className="text-sm text-slate-600">Your sign-in ({authUser.email}) is not on the People list yet, so nothing can be assigned to you. Add yourself under <strong>Settings → People</strong>.</p>}
+      {me && !attention.length && <p className="text-sm text-slate-500">Nothing pending for you.</p>}
+      {me && attention.length > 0 && <div className="divide-y -mx-1">
+        {attention.map((it, i) => {
+          const due = dueLabel(it.cell.dueDate);
+          return (
+            <button key={i} onClick={() => onOpen(it.project.id)} className="w-full text-left px-1 py-1.5 flex items-center gap-2 hover:bg-slate-50 rounded">
+              <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: it.doc.color }} />
+              <span className="min-w-0 flex-1">
+                <span className="block text-sm font-medium text-slate-800 truncate">{it.step.stageName}</span>
+                <span className="block text-[11px] text-slate-500 truncate">{it.doc.name} · {it.project.name}</span>
+              </span>
+              <span className="flex flex-col items-end gap-0.5 flex-shrink-0">
+                <StatusChip status={it.cell.status} sm />
+                {due && <span className={`text-[10px] border rounded-full px-1.5 ${TONE[due.tone]}`}>{due.text}</span>}
+              </span>
+            </button>
+          );
+        })}
+      </div>}
+    </Panel>
+  );
+  const recentLast = Math.max(0, ...active.flatMap(p => Object.values(p.activity).map(a => a.at || 0)));
+  const reports = [
+    { id: 'status', title: 'Project status', icon: 'dashboard', accent: '#059669', testid: 'report-status', value: data.projects.length, sub: 'projects',
+      body: <StatusDonut projects={data.projects} /> },
+    { id: 'dates', title: 'Next 14 days', icon: 'calendar', accent: '#0284c7', testid: 'report-dates', value: dates.length, sub: dates.length === 1 ? 'date' : 'dates',
+      body: <DateList items={dates} onOpen={it => onOpen(it.project.id)} empty="No due or meeting dates coming up." /> },
+    { id: 'recent', title: 'Recent updates', icon: 'history', accent: '#0f766e', testid: 'recent', value: recentLast ? timeAgo(recentLast) : '—', sub: 'last update',
+      body: <RecentUpdates projects={active} onOpen={onOpen} /> },
+  ];
+  const openRep = reports.find(r => r.id === report);
+
+  const projectsBox = (
+    <section className="bg-white border border-slate-200 rounded-xl min-w-0" data-testid="projects">
+      {/* Narrow: search + New project on line 1, the filters on line 2. */}
+      <div className={`flex items-center gap-2 px-3 py-2.5 border-b border-slate-200 ${narrow ? 'flex-wrap' : ''}`}>
+        <div className={`relative ${narrow ? 'flex-1 min-w-0 order-1' : 'w-1/3'}`}>
+          <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400"><Icon name="review" size={14} /></span>
+          <input className="w-full border border-slate-300 rounded-lg pl-8 pr-2.5 py-1.5 text-sm bg-white" placeholder="Search projects" value={q} onChange={e => setQ(e.target.value)} />
+        </div>
+        <div className={`flex items-center gap-2 ${narrow ? 'order-3 w-full' : ''}`} data-testid="filters">
+          <MultiSelect label="Status" testid="f-status" options={PROJECT_FLAGS} value={flags} onChange={setFlags} defaultSize={DEFAULT_FLAGS.length}
+            actions={[{ label: 'Default', value: () => new Set(DEFAULT_FLAGS) }, { label: 'All', value: () => new Set(PROJECT_FLAGS.map(f => f.id)) }]} />
+          <MultiSelect label="People" testid="f-people" options={peopleOpts} value={whoSet} onChange={v => setWho(v.size === allPeople.size ? null : v)}
+            actions={[...(me ? [{ label: 'Only me', value: () => new Set([me.id]) }] : []), { label: 'Everyone', value: () => new Set(allPeople) }]} />
+          <MultiSelect label="Type" testid="f-type" options={typeOpts} value={typeSet} onChange={v => setTypes(v.size === allTypes.size ? null : v)}
+            actions={[{ label: 'All', value: () => new Set(allTypes) }]} />
+        </div>
+        <button onClick={onNew} data-testid="new-project"
+          className={`ml-auto inline-flex items-center gap-2 text-sm font-semibold text-white rounded-lg pl-2 pr-4 py-1.5 shadow-md hover:shadow-lg transition-shadow flex-shrink-0 ${narrow ? 'order-2' : ''}`}
+          style={{ background: 'linear-gradient(135deg, #F47A48, #DD4513)' }}>
+          <span className="w-6 h-6 rounded-md bg-white/20 flex items-center justify-center"><Icon name="plus" size={15} /></span>New project
+        </button>
+      </div>
+      {filtered && list.length > 0 && <div className="px-4 py-1.5 text-[11px] text-slate-500 border-b border-slate-100 bg-slate-50">Showing {list.length} of {data.projects.length} projects · <button className="text-indigo-600 hover:underline" onClick={clear}>Show all</button></div>}
+      {!list.length && <div className="text-sm text-slate-500 px-4 py-8 text-center">
+        {data.projects.length ? <>No projects match these filters. <button className="text-indigo-600 hover:underline" onClick={clear}>Show all</button></> : 'No projects yet. Start one from a workflow with New project.'}
+      </div>}
+      {list.map(p => <ProjectRow key={p.id} project={p} people={data.people} onOpen={onOpen} />)}
+    </section>
+  );
+
+  const tileEl = (t, compact) => {
+    const on = t.value || t.always;
+    const sel = tileOn(t);
+    return (
+      <button key={t.label} onClick={() => clickTile(t)} data-on={sel ? 'yes' : 'no'}
+        title={t.flag ? (sel ? 'Show the default list again' : 'Show only these projects') : ''}
+        className={`w-full bg-white border rounded-xl flex items-center relative overflow-hidden text-left ${compact ? 'px-2.5 py-1.5 gap-2' : 'px-3 py-2 gap-2.5'} ${t.flag ? 'hover:shadow-sm' : 'cursor-default'} ${sel ? 'ring-2 ring-offset-1' : 'border-slate-200'}`}
+        style={{ opacity: on || sel ? 1 : .65, borderColor: sel ? t.color : undefined, '--tw-ring-color': t.color }}>
+        <span className="absolute inset-y-0 left-0 w-1" style={{ background: on ? t.color : '#e2e8f0' }} />
+        <span className={`${compact ? 'w-6 h-6' : 'w-8 h-8'} rounded-full flex items-center justify-center flex-shrink-0`} style={{ background: (on ? t.color : '#94a3b8') + '1a', color: on ? t.color : '#94a3b8' }}><Icon name={t.icon} size={compact ? 13 : 16} /></span>
+        <span className={`${compact ? 'text-lg' : 'text-2xl'} font-bold leading-none tabular-nums`} style={{ color: on ? t.color : '#94a3b8' }}>{t.value}</span>
+        <span className="min-w-0 leading-tight">
+          <span className="block text-xs font-semibold text-slate-700 truncate">{t.label}</span>
+          {!compact && <span className="block text-[11px] text-slate-400 truncate">{t.sub}</span>}
+        </span>
+      </button>
+    );
+  };
+
   return (
     <>
       <TopBar eyebrow="Program Tracker" title="Dashboard" sub={<SyncLine online={online}>{' · ' + active.length + ' active ' + (active.length === 1 ? 'project' : 'projects')}</SyncLine>} />
       <div className="flex-1 min-h-0 overflow-auto p-4">
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-4" data-testid="tiles">
-          {tiles.map(t => {
-            const on = t.value || t.always;
-            return (
-              <button key={t.label} onClick={() => t.flag && setFlags(new Set([t.flag]))} title={t.flag ? 'Show only these projects' : ''}
-                className={`bg-white border border-slate-200 rounded-xl px-3 py-2 flex items-center gap-2.5 relative overflow-hidden text-left ${t.flag ? 'hover:shadow-sm' : 'cursor-default'}`} style={{ opacity: on ? 1 : .65 }}>
-                <span className="absolute inset-y-0 left-0 w-1" style={{ background: on ? t.color : '#e2e8f0' }} />
-                <span className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: (on ? t.color : '#94a3b8') + '1a', color: on ? t.color : '#94a3b8' }}><Icon name={t.icon} size={16} /></span>
-                <span className="text-2xl font-bold leading-none tabular-nums" style={{ color: on ? t.color : '#94a3b8' }}>{t.value}</span>
-                <span className="min-w-0 leading-tight">
-                  <span className="block text-xs font-semibold text-slate-700 truncate">{t.label}</span>
-                  <span className="block text-[11px] text-slate-400 truncate">{t.sub}</span>
-                </span>
-              </button>
-            );
-          })}
-        </div>
-
-        <div className="grid xl:grid-cols-[minmax(0,1fr)_360px] gap-4 items-start">
-          <section className="bg-white border border-slate-200 rounded-xl min-w-0" data-testid="projects">
-            <div className="flex flex-wrap items-center gap-2 px-3 py-2.5 border-b border-slate-200">
-              <div className="relative w-full sm:w-1/3">
-                <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400"><Icon name="review" size={14} /></span>
-                <input className="w-full border border-slate-300 rounded-lg pl-8 pr-2.5 py-1.5 text-sm bg-white" placeholder="Search projects" value={q} onChange={e => setQ(e.target.value)} />
-              </div>
-              <MultiSelect label="Status" testid="f-status" options={PROJECT_FLAGS} value={flags} onChange={setFlags} defaultSize={DEFAULT_FLAGS.length}
-                actions={[{ label: 'Default', value: () => new Set(DEFAULT_FLAGS) }, { label: 'All', value: () => new Set(PROJECT_FLAGS.map(f => f.id)) }]} />
-              <MultiSelect label="People" testid="f-people" options={peopleOpts} value={whoSet} onChange={v => setWho(v.size === allPeople.size ? null : v)}
-                actions={[...(me ? [{ label: 'Only me', value: () => new Set([me.id]) }] : []), { label: 'Everyone', value: () => new Set(allPeople) }]} />
-              <MultiSelect label="Type" testid="f-type" options={typeOpts} value={typeSet} onChange={v => setTypes(v.size === allTypes.size ? null : v)}
-                actions={[{ label: 'All', value: () => new Set(allTypes) }]} />
-              <button onClick={onNew} data-testid="new-project"
-                className="ml-auto inline-flex items-center gap-2 text-sm font-semibold text-white rounded-lg pl-2 pr-4 py-1.5 shadow-md hover:shadow-lg transition-shadow"
-                style={{ background: 'linear-gradient(135deg, #F47A48, #DD4513)' }}>
-                <span className="w-6 h-6 rounded-md bg-white/20 flex items-center justify-center"><Icon name="plus" size={15} /></span>New project
-              </button>
+        {narrow ? <>
+          {/* Narrow: Needs your attention in full, then one row of small cards —
+              stats filter the list (toggling), reports drop a panel open below. */}
+          <div className="mb-3">{attentionPanel}</div>
+          <div ref={repRef} className="mb-3">
+            <div className="grid gap-2" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(168px, 1fr))' }} data-testid="tiles">
+              {tiles.map(t => tileEl(t, true))}
+              {reports.map(r => (
+                <button key={r.id} onClick={() => setReport(report === r.id ? null : r.id)} data-testid={'card-' + r.id}
+                  className={`w-full bg-white border rounded-xl px-2.5 py-1.5 flex items-center gap-2 text-left relative overflow-hidden ${report === r.id ? 'ring-2 ring-offset-1' : 'border-slate-200 hover:shadow-sm'}`}
+                  style={{ borderColor: report === r.id ? r.accent : undefined, '--tw-ring-color': r.accent }}>
+                  <span className="absolute inset-y-0 left-0 w-1" style={{ background: r.accent }} />
+                  <span className="w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: r.accent + '1a', color: r.accent }}><Icon name={r.icon} size={13} /></span>
+                  <span className="min-w-0 leading-tight flex-1">
+                    <span className="block text-xs font-semibold text-slate-700 truncate">{r.title}</span>
+                    <span className="block text-[11px] text-slate-400 truncate">{r.value} {r.sub}</span>
+                  </span>
+                  <Icon name={report === r.id ? 'chev_u' : 'chev_d'} size={12} className="text-slate-400 flex-shrink-0" />
+                </button>
+              ))}
             </div>
-            {filtered && list.length > 0 && <div className="px-4 py-1.5 text-[11px] text-slate-500 border-b border-slate-100 bg-slate-50">Showing {list.length} of {data.projects.length} projects · <button className="text-indigo-600 hover:underline" onClick={clear}>Show all</button></div>}
-            {!list.length && <div className="text-sm text-slate-500 px-4 py-8 text-center">
-              {data.projects.length ? <>No projects match these filters. <button className="text-indigo-600 hover:underline" onClick={clear}>Show all</button></> : 'No projects yet. Start one from a workflow with New project.'}
+            {openRep && <div className="mt-2 fade-in" data-testid="report-drop">
+              <Panel title={openRep.title} icon={openRep.icon} testid={openRep.testid} accent={openRep.accent}>{openRep.body}</Panel>
             </div>}
-            {list.map(p => <ProjectRow key={p.id} project={p} people={data.people} onOpen={onOpen} />)}
-          </section>
-
-          <div className="space-y-4 min-w-0">
-            <Panel title="Needs your attention" icon="t_cust" testid="attention" accent="#F15A22" sub="Your steps that are active or next">
-              {!me && <p className="text-sm text-slate-600">Your sign-in ({authUser.email}) is not on the People list yet, so nothing can be assigned to you. Add yourself under <strong>People</strong>.</p>}
-              {me && !attention.length && <p className="text-sm text-slate-500">Nothing pending for you.</p>}
-              {me && attention.length > 0 && <div className="divide-y -mx-1">
-                {attention.map((it, i) => {
-                  const due = dueLabel(it.cell.dueDate);
-                  return (
-                    <button key={i} onClick={() => onOpen(it.project.id)} className="w-full text-left px-1 py-1.5 flex items-center gap-2 hover:bg-slate-50 rounded">
-                      <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: it.doc.color }} />
-                      <span className="min-w-0 flex-1">
-                        <span className="block text-sm font-medium text-slate-800 truncate">{it.step.stageName}</span>
-                        <span className="block text-[11px] text-slate-500 truncate">{it.doc.name} · {it.project.name}</span>
-                      </span>
-                      <span className="flex flex-col items-end gap-0.5 flex-shrink-0">
-                        <StatusChip status={it.cell.status} sm />
-                        {due && <span className={`text-[10px] border rounded-full px-1.5 ${TONE[due.tone]}`}>{due.text}</span>}
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>}
-            </Panel>
-            <Panel title="Project status" icon="dashboard" testid="report-status" accent="#059669">
-              <StatusDonut projects={data.projects} />
-            </Panel>
-            <Panel title="Next 14 days" icon="calendar" testid="report-dates" accent="#0284c7">
-              <DateList items={dates} onOpen={it => onOpen(it.project.id)} empty="No due or meeting dates coming up." />
-            </Panel>
-            <Panel title="Recent updates" icon="history" testid="recent" accent="#0f766e">
-              <RecentUpdates projects={active} onOpen={onOpen} />
-            </Panel>
           </div>
-        </div>
+          {projectsBox}
+        </> : <>
+          <div className="grid grid-cols-5 gap-3 mb-4" data-testid="tiles">{tiles.map(t => tileEl(t, false))}</div>
+          <div className="grid grid-cols-[minmax(0,1fr)_360px] gap-4 items-start">
+            {projectsBox}
+            <div className="space-y-4 min-w-0">
+              {attentionPanel}
+              {reports.map(r => <Panel key={r.id} title={r.title} icon={r.icon} testid={r.testid} accent={r.accent}>{r.body}</Panel>)}
+            </div>
+          </div>
+        </>}
       </div>
     </>
   );
@@ -2258,31 +2325,137 @@ function SettingsModal({ authUser, onOpen, onClose }) {
   );
 }
 
-function Sidebar({ data, route, go, authUser, onModal }) {
-  const projects = data.projects.filter(p => !p.archived);
-  const item = (active) => `group flex items-center gap-2 px-2 py-2 rounded-lg cursor-pointer mb-1 transition-colors ${active ? 'bg-indigo-600 text-white' : 'text-slate-700 hover:bg-slate-100'}`;
+// ── Collapsible sidebar ────────────────────────────────────────────────────────
+// Same behaviour as the Workflow Tool. Wide windows remember whether the
+// sidebar was open; below NARROW_BELOW it always starts as the slim icon rail,
+// and opening it slides the full sidebar over the page (click away to close).
+// In the rail each icon grows into its full button on hover.
+const NARROW_BELOW = 1280, RAIL_W = 64, SIDEBAR_W = 240;
+const SIDEBAR_KEY = 'cs_tracker_sidebar_open_v1';
+function useNarrow() {
+  const q = '(max-width: ' + (NARROW_BELOW - 1) + 'px)';
+  const [narrow, setNarrow] = useState(() => window.matchMedia ? window.matchMedia(q).matches : false);
+  useEffect(() => {
+    if (!window.matchMedia) return;
+    const m = window.matchMedia(q);
+    const on = () => setNarrow(m.matches);
+    m.addEventListener ? m.addEventListener('change', on) : m.addListener(on);
+    return () => { m.removeEventListener ? m.removeEventListener('change', on) : m.removeListener(on); };
+  }, []);
+  return narrow;
+}
+function useSidebar() {
+  const narrow = useNarrow();
+  const [pref, setPref] = useState(() => { try { return localStorage.getItem(SIDEBAR_KEY) !== '0'; } catch (e) { return true; } });
+  const [overlay, setOverlay] = useState(false);
+  useEffect(() => { if (!narrow) setOverlay(false); }, [narrow]);
+  const toggle = () => {
+    if (narrow) return setOverlay(o => !o);
+    setPref(p => { try { localStorage.setItem(SIDEBAR_KEY, p ? '0' : '1'); } catch (e) {} return !p; });
+  };
+  const collapse = () => { if (narrow) return setOverlay(false); setPref(false); try { localStorage.setItem(SIDEBAR_KEY, '0'); } catch (e) {} };
+  return { narrow, expanded: narrow ? overlay : pref, overlay: narrow && overlay, toggle, collapse, close: () => setOverlay(false) };
+}
+// Two letters from the first two words ("New Program" → NP; one word → its
+// first two letters), ignoring punctuation.
+const railInitials = (name) => {
+  const w = (name || '?').replace(/[^\p{L}\p{N}\s]/gu, ' ').trim().split(/\s+/).filter(Boolean);
+  return (w.length > 1 ? w[0][0] + w[1][0] : (w[0] || '?').slice(0, 2)).toUpperCase();
+};
+// One rail entry: the icon (or initials) on its own. On hover the full button
+// floats over it, its label sliding out to the right. It is drawn fixed-position
+// through a portal because the rail scrolls, and a scrolling box clips anything
+// that overflows sideways. `lead` sits before the icon (the Workflow Tool's grip).
+function RailItem({ icon, badge, label, sub, onClick, href, active, testid, lead }) {
+  const [rect, setRect] = useState(null);
+  const ref = useRef(null);
+  const show = () => { const r = ref.current && ref.current.getBoundingClientRect(); if (r) setRect({ top: r.top, left: r.left, height: r.height }); };
+  const hide = () => setRect(null);
+  const glyph = badge || <span className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${active ? 'bg-indigo-600 text-white' : 'text-slate-500'}`}><Icon name={icon} size={17} /></span>;
+  const act = () => { hide(); if (onClick) onClick(); };
+  const fly = rect && ReactDOM.createPortal(
+    <div className="rail-fly" style={{ top: rect.top, left: rect.left, height: rect.height }} onMouseLeave={hide} data-testid="rail-fly">
+      {href ? <a href={href} className="rail-fly-btn">{glyph}<span className="rail-fly-label"><span className="block text-sm font-medium text-slate-800">{label}</span>{sub && <span className="block text-[11px] text-slate-500">{sub}</span>}</span></a>
+            : <button onClick={act} className="rail-fly-btn">{glyph}<span className="rail-fly-label"><span className="block text-sm font-medium text-slate-800">{label}</span>{sub && <span className="block text-[11px] text-slate-500">{sub}</span>}</span></button>}
+    </div>, document.body);
   return (
-    <aside className="bg-white border-r border-slate-200 flex flex-col shrink-0 overflow-hidden" style={{ width: 240 }}>
-      <button onClick={() => go(null)} className="w-full text-left px-4 border-b border-slate-200 hover:bg-slate-50 transition-colors flex flex-col justify-center shrink-0"
-        style={{ height: CHROME_BAR_H }} title="Dashboard">
-        <div className="font-bold text-slate-800 text-sm leading-tight">Program Tracker</div>
-        <div className="text-xs text-slate-400 mt-0.5">Langara Continuing Studies</div>
-      </button>
+    <div className="flex items-center" data-testid={testid}>
+      {lead}
+      {href
+        ? <a ref={ref} href={href} className="rail-btn" aria-label={label} onMouseEnter={show} onFocus={show}>{glyph}</a>
+        : <button ref={ref} onClick={act} className="rail-btn" aria-label={label} onMouseEnter={show} onFocus={show}>{glyph}</button>}
+      {fly}
+    </div>
+  );
+}
+// Initials circle; the outline carries the project's state.
+const PROJECT_RING = { complete: ['#059669', 'Complete'], held: ['#d97706', 'Held up'], sentback: ['#7c3aed', 'Sent back'],
+  overdue: ['#dc2626', 'Overdue'], progress: ['#2563eb', 'In progress'], notstarted: ['#94a3b8', 'Not started'], archived: ['#cbd5e1', 'Archived'] };
+function projectRing(p) {
+  const cat = donutCategory(p);
+  const st = projectStats(p);
+  if ((cat === 'progress' || cat === 'notstarted') && (st.overdue || (p.dueDate && daysUntil(p.dueDate) < 0))) return PROJECT_RING.overdue;
+  return PROJECT_RING[cat];
+}
+function InitialsBadge({ name, ring, active }) {
+  return <span className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 text-[11px] font-bold"
+    style={{ border: '2px solid ' + ring, background: active ? '#DD4513' : '#fff', color: active ? '#fff' : '#334155' }}>{railInitials(name)}</span>;
+}
+
+function Sidebar({ data, route, go, authUser, onModal, sb }) {
+  const projects = data.projects.filter(p => !p.archived);
+  const pick = (id) => { go(id); sb.close(); };
+  const item = (active) => `group flex items-center gap-2 px-2 py-2 rounded-lg cursor-pointer mb-1 transition-colors ${active ? 'bg-indigo-600 text-white' : 'text-slate-700 hover:bg-slate-100'}`;
+  const brand = (
+    <button onClick={() => pick(null)} className="w-full text-left border-b border-slate-200 hover:bg-slate-50 transition-colors flex flex-col justify-center shrink-0 overflow-hidden"
+      style={{ height: CHROME_BAR_H, paddingLeft: sb.expanded ? 16 : 0, alignItems: sb.expanded ? 'stretch' : 'center' }} title="Dashboard">
+      {sb.expanded ? <>
+        <div className="font-bold text-slate-800 text-sm leading-tight whitespace-nowrap">Program Tracker</div>
+        <div className="text-xs text-slate-400 mt-0.5 whitespace-nowrap">Langara Continuing Studies</div>
+      </> : <div className="font-bold text-slate-800 text-sm">PT</div>}
+    </button>
+  );
+  if (!sb.expanded) return (
+    <aside className="bg-white border-r border-slate-200 flex flex-col shrink-0 h-full" style={{ width: RAIL_W }} data-testid="rail">
+      {brand}
+      <div className="flex-1 overflow-y-auto py-2 flex flex-col items-start gap-1 pl-3">
+        <RailItem icon="sb_open" label="Expand sidebar" onClick={sb.toggle} testid="rail-expand" />
+        <RailItem icon="dashboard" label="Dashboard" active={!route} onClick={() => pick(null)} />
+        <RailItem icon="plus" label="New project" onClick={() => onModal('new')} />
+        <div className="w-8 border-t border-slate-200 my-1" />
+        {projects.map(p => {
+          const [ring, label] = projectRing(p);
+          return <RailItem key={p.id} badge={<InitialsBadge name={p.name} ring={ring} active={route === p.id} />}
+            label={p.name} sub={label + ' · ' + projectStats(p).pct + '%'} onClick={() => pick(p.id)} testid="rail-project" />;
+        })}
+      </div>
+      <div className="py-2 pl-3 border-t border-slate-200 flex flex-col gap-1">
+        <RailItem icon="map" label="Workflow Tool" href={MAP_URL} />
+        <RailItem icon="settings" label="Settings" onClick={() => onModal('settings')} testid="settings-btn" />
+      </div>
+    </aside>
+  );
+  return (
+    <aside className={`bg-white border-r border-slate-200 flex flex-col shrink-0 overflow-hidden h-full ${sb.overlay ? 'shadow-2xl slide-in' : ''}`} style={{ width: SIDEBAR_W }}>
+      {brand}
       <div className="flex-1 overflow-y-auto p-3">
-        <div onClick={() => go(null)} className={item(!route)} data-testid="nav-dashboard">
+        <div onClick={() => pick(null)} className={item(!route)} data-testid="nav-dashboard">
           <Icon name="dashboard" size={15} className={!route ? 'text-indigo-200' : 'text-slate-400'} />
           <span className="text-sm font-medium">Dashboard</span>
         </div>
         <div className="flex items-center justify-between mt-4 mb-2 px-1">
           <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">Projects</span>
-          <button onClick={() => onModal('new')} className="text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50 rounded p-1 transition-colors" title="New project"><Icon name="plus" size={16} /></button>
+          <div className="flex items-center gap-0.5">
+            <button onClick={() => onModal('new')} className="text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50 rounded p-1 transition-colors" title="New project"><Icon name="plus" size={16} /></button>
+            <button onClick={sb.toggle} className="text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded p-1 transition-colors" title="Collapse sidebar" data-testid="collapse-sidebar"><Icon name="sb_close" size={16} /></button>
+          </div>
         </div>
         {!projects.length && <div className="text-xs text-slate-400 px-2">No projects yet.</div>}
         {projects.map(p => {
           const st = projectStats(p);
           const on = route === p.id;
           return (
-            <div key={p.id} onClick={() => go(p.id)} className={item(on)} title={p.name}>
+            <div key={p.id} onClick={() => pick(p.id)} className={item(on)} title={p.name}>
               <span className="text-sm font-medium truncate flex-1">{p.name}</span>
               {st.held > 0 && <span className={on ? 'text-amber-200' : 'text-amber-600'} title="Held up"><Icon name="held" size={13} /></span>}
               <span className={`text-[10px] tabular-nums ${on ? 'text-indigo-200' : 'text-slate-400'}`}>{st.pct}%</span>
@@ -2306,6 +2479,7 @@ function App({ authUser }) {
   const [data, online] = useTrackerData(authUser);
   const [route, setRoute] = useState(readRoute());
   const [modal, setModal] = useState(null);   // 'people' | 'new'
+  const sb = useSidebar();
   useEffect(() => {
     const on = () => setRoute(readRoute());
     window.addEventListener('hashchange', on);
@@ -2318,7 +2492,13 @@ function App({ authUser }) {
   if (!data) return <div className="flex items-center justify-center h-screen text-slate-400 text-sm">Loading…</div>;
   return (
     <div className="flex h-screen overflow-hidden bg-slate-100">
-      <Sidebar data={data} route={route} go={go} authUser={authUser} onModal={setModal} />
+      {/* Narrow: the rail holds its place and the opened sidebar slides over the page. */}
+      <div className="relative shrink-0 h-full z-40" style={{ width: sb.narrow ? RAIL_W : (sb.expanded ? SIDEBAR_W : RAIL_W) }}>
+        <div className={sb.overlay ? 'absolute inset-y-0 left-0' : 'h-full'}>
+          <Sidebar data={data} route={route} go={go} authUser={authUser} onModal={setModal} sb={sb} />
+        </div>
+      </div>
+      {sb.overlay && <div className="fixed inset-0 bg-slate-900/20 z-30" onClick={sb.close} data-testid="sidebar-backdrop" />}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         {route && project
           ? <ProjectView key={project.id} project={project} data={data} authUser={authUser} online={online} onBack={() => go(null)} />

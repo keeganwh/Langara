@@ -69,6 +69,18 @@
 
     /* Both views' toolbars start with the same two controls, same size, same place */
     .tb-btn { min-width: 128px; justify-content: center; }
+    /* Sidebar rail: icons only. Hovering one floats the full button over it
+       (fixed-position, so the scrolling rail cannot clip it) and slides its
+       label out. */
+    .rail-btn { display: inline-flex; align-items: center; height: 40px; padding: 0 4px; border-radius: 10px; }
+    .rail-fly { position: fixed; z-index: 99980; display: flex; align-items: center; }
+    .rail-fly-btn { display: inline-flex; align-items: center; gap: 10px; height: 100%; padding: 0 4px; border-radius: 10px;
+                    background: #fff; box-shadow: 0 6px 18px rgba(15,23,42,.18); white-space: nowrap; text-align: left; line-height: 1.2; }
+    .rail-fly-label { display: inline-block; overflow: hidden; padding-right: 12px; animation: railOut .2s ease forwards; }
+    @keyframes railOut { from { max-width: 0; opacity: 0; padding-right: 0; } to { max-width: 280px; opacity: 1; padding-right: 12px; } }
+    .slide-in { animation: slideIn .18s ease; }
+    @keyframes slideIn { from { transform: translateX(-24px); opacity: .5; } to { transform: none; opacity: 1; } }
+
 
     /* Role / filed chips — the data carries the weight, the key stays quiet */
     .meta-key { font-size: 9px; letter-spacing: .08em; text-transform: uppercase;
@@ -3556,6 +3568,69 @@ function WorkflowHistory({ projectType, onClose }) {
     </div>, document.body);
 }
 
+// ── Collapsible sidebar ────────────────────────────────────────────────────────
+// Same behaviour as the Program Tracker. Wide windows remember whether the
+// sidebar was open; below NARROW_BELOW it always starts as the slim icon rail,
+// and opening it slides the full sidebar over the page (click away to close).
+// In the rail each icon grows into its full button on hover.
+const NARROW_BELOW = 1280, RAIL_W = 64, SIDEBAR_W = 240;
+const SIDEBAR_KEY = 'cs_pipeline_sidebar_open_v1';
+function useNarrow() {
+  const q = '(max-width: ' + (NARROW_BELOW - 1) + 'px)';
+  const [narrow, setNarrow] = useState(() => window.matchMedia ? window.matchMedia(q).matches : false);
+  useEffect(() => {
+    if (!window.matchMedia) return;
+    const m = window.matchMedia(q);
+    const on = () => setNarrow(m.matches);
+    m.addEventListener ? m.addEventListener('change', on) : m.addListener(on);
+    return () => { m.removeEventListener ? m.removeEventListener('change', on) : m.removeListener(on); };
+  }, []);
+  return narrow;
+}
+function useSidebar() {
+  const narrow = useNarrow();
+  const [pref, setPref] = useState(() => { try { return localStorage.getItem(SIDEBAR_KEY) !== '0'; } catch (e) { return true; } });
+  const [overlay, setOverlay] = useState(false);
+  useEffect(() => { if (!narrow) setOverlay(false); }, [narrow]);
+  const toggle = () => {
+    if (narrow) return setOverlay(o => !o);
+    setPref(p => { try { localStorage.setItem(SIDEBAR_KEY, p ? '0' : '1'); } catch (e) {} return !p; });
+  };
+  const collapse = () => { if (narrow) return setOverlay(false); setPref(false); try { localStorage.setItem(SIDEBAR_KEY, '0'); } catch (e) {} };
+  return { narrow, expanded: narrow ? overlay : pref, overlay: narrow && overlay, toggle, collapse, close: () => setOverlay(false) };
+}
+// Two letters from the first two words ("New Program" → NP; one word → its
+// first two letters), ignoring punctuation.
+const railInitials = (name) => {
+  const w = (name || '?').replace(/[^\p{L}\p{N}\s]/gu, ' ').trim().split(/\s+/).filter(Boolean);
+  return (w.length > 1 ? w[0][0] + w[1][0] : (w[0] || '?').slice(0, 2)).toUpperCase();
+};
+// One rail entry: the icon (or initials) on its own. On hover the full button
+// floats over it, its label sliding out to the right. It is drawn fixed-position
+// through a portal because the rail scrolls, and a scrolling box clips anything
+// that overflows sideways. `lead` sits before the icon (the Workflow Tool's grip).
+function RailItem({ icon, badge, label, sub, onClick, href, active, testid, lead }) {
+  const [rect, setRect] = useState(null);
+  const ref = useRef(null);
+  const show = () => { const r = ref.current && ref.current.getBoundingClientRect(); if (r) setRect({ top: r.top, left: r.left, height: r.height }); };
+  const hide = () => setRect(null);
+  const glyph = badge || <span className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${active ? 'bg-indigo-600 text-white' : 'text-slate-500'}`}><Icon name={icon} size={17} /></span>;
+  const act = () => { hide(); if (onClick) onClick(); };
+  const fly = rect && ReactDOM.createPortal(
+    <div className="rail-fly" style={{ top: rect.top, left: rect.left, height: rect.height }} onMouseLeave={hide} data-testid="rail-fly">
+      {href ? <a href={href} className="rail-fly-btn">{glyph}<span className="rail-fly-label"><span className="block text-sm font-medium text-slate-800">{label}</span>{sub && <span className="block text-[11px] text-slate-500">{sub}</span>}</span></a>
+            : <button onClick={act} className="rail-fly-btn">{glyph}<span className="rail-fly-label"><span className="block text-sm font-medium text-slate-800">{label}</span>{sub && <span className="block text-[11px] text-slate-500">{sub}</span>}</span></button>}
+    </div>, document.body);
+  return (
+    <div className="flex items-center" data-testid={testid}>
+      {lead}
+      {href
+        ? <a ref={ref} href={href} className="rail-btn" aria-label={label} onMouseEnter={show} onFocus={show}>{glyph}</a>
+        : <button ref={ref} onClick={act} className="rail-btn" aria-label={label} onMouseEnter={show} onFocus={show}>{glyph}</button>}
+      {fly}
+    </div>
+  );
+}
 // The brand block (above the sidebar) and the top bar share one fixed height,
 // so their bottom borders meet in a single line. Sized by content they were
 // 0.7px apart.
@@ -3565,7 +3640,8 @@ function App({ authUser }) {
   const [store, updateStore, syncStatus, refreshStore] = useStore();
   const activeUsers = usePresence(authUser);
   const [modal, setModal] = useState(null);
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const sb = useSidebar();
+  const sidebarOpen = sb.expanded;
   const [historyOpen, setHistoryOpen] = useState(false);
   const [view, setView] = useState('documents'); // 'documents' | 'flow'
   const [sidebarWidth, setSidebarWidth] = useState(240);
@@ -3684,10 +3760,50 @@ function App({ authUser }) {
     updateStore(s => ({ ...s, templates: s.templates.filter(t => t.id !== id) }));
   };
 
+  const ptDrag = (pt) => ({
+    draggable: true,
+    onDragStart: e => { ptDragRef.current = pt.id; e.dataTransfer.effectAllowed = 'move'; },
+    onDragEnd: () => { ptDragRef.current = null; setPtDropId(null); },
+    onDragOver: e => { if (ptDragRef.current && ptDragRef.current !== pt.id) { e.preventDefault(); setPtDropId(pt.id); } },
+    onDragLeave: () => setPtDropId(cur => cur === pt.id ? null : cur),
+    onDrop: e => { e.preventDefault(); reorderPT(ptDragRef.current, pt.id); },
+  });
+  const pickPT = (id) => { setActivePT(id); sb.close(); };
+  const rail = (
+    <aside className="bg-white border-r border-slate-200 flex flex-col shrink-0 no-print h-full" style={{ width: RAIL_W }} data-testid="rail">
+      <div className="border-b border-slate-200 flex items-center justify-center font-bold text-slate-800 text-sm shrink-0" style={{ height: CHROME_BAR_H }} title="Workflow Tool">WT</div>
+      <div className="flex-1 overflow-y-auto py-2 flex flex-col items-start gap-1 pl-1">
+        <div className="pl-3"><RailItem icon="sb_open" label="Expand sidebar" onClick={sb.toggle} testid="rail-expand" /></div>
+        <div className="pl-3"><RailItem icon="plus" label="New workflow" onClick={() => setModal('newPT')} /></div>
+        <div className="w-8 border-t border-slate-200 my-1 ml-3" />
+        {store.projectTypes.map(pt => {
+          const on = pt.id === (activePT && activePT.id);
+          return (
+            <div key={pt.id} {...ptDrag(pt)} className={`relative ${ptDragRef.current === pt.id ? 'opacity-40' : ''}`} data-testid="rail-workflow">
+              {ptDropId === pt.id && <div className="absolute left-1 right-1 -top-0.5 h-0.5 rounded bg-indigo-400" />}
+              <RailItem label={pt.name} onClick={() => pickPT(pt.id)}
+                lead={<span className="text-slate-300 select-none" style={{ cursor: 'grab' }} title="Drag to reorder"><Icon name="grip" size={12} /></span>}
+                badge={<span className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 text-[11px] font-bold"
+                  style={{ border: '2px solid ' + (on ? '#DD4513' : '#cbd5e1'), background: on ? '#DD4513' : '#fff', color: on ? '#fff' : '#334155' }}>{railInitials(pt.name)}</span>} />
+            </div>
+          );
+        })}
+      </div>
+      <div className="py-2 pl-3 border-t border-slate-200 flex flex-col gap-1">
+        <RailItem icon="v_docs" label="Program Tracker" href="tracker.html" />
+        <RailItem icon="settings" label="Settings" onClick={() => setModal('settings')} />
+      </div>
+    </aside>
+  );
+
   return (
     <div className="flex h-screen overflow-hidden bg-slate-100">
-      {/* Sidebar */}
-      <aside className="bg-white border-r border-slate-200 flex flex-col shrink-0 no-print overflow-hidden" style={{ width: sidebarOpen ? sidebarWidth : 0, position: 'relative' }}>
+      {/* Sidebar. Wide: full or rail, remembered. Narrow (below NARROW_BELOW):
+          the rail holds its place and the opened sidebar slides over the page. */}
+      <div className="relative shrink-0 h-full z-40 no-print" style={{ width: sb.narrow || !sidebarOpen ? RAIL_W : sidebarWidth }}>
+      <div className={sb.overlay ? 'absolute inset-y-0 left-0' : 'h-full'}>
+      {!sidebarOpen ? rail :
+      <aside className={`bg-white border-r border-slate-200 flex flex-col shrink-0 no-print overflow-hidden h-full ${sb.overlay ? 'shadow-2xl slide-in' : ''}`} style={{ width: sidebarWidth, position: 'relative' }}>
         {/* Brand — a button already, so the dashboard it will link to later has
             somewhere to go. It deliberately does nothing for now. */}
         <button
@@ -3707,7 +3823,7 @@ function App({ authUser }) {
               <button onClick={() => setModal('newPT')}
                 className="text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50 rounded p-1 transition-colors"
                 title="New workflow"><Icon name="plus" size={16} /></button>
-              <button onClick={() => setSidebarOpen(false)}
+              <button onClick={sb.collapse} data-testid="collapse-sidebar"
                 className="text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded p-1 transition-colors"
                 title="Collapse sidebar"><Icon name="sb_close" size={16} /></button>
             </div>
@@ -3715,13 +3831,8 @@ function App({ authUser }) {
 
           {store.projectTypes.map((pt, idx) => (
             <div key={pt.id}
-              draggable
-              onDragStart={e => { ptDragRef.current = pt.id; e.dataTransfer.effectAllowed = 'move'; }}
-              onDragEnd={() => { ptDragRef.current = null; setPtDropId(null); }}
-              onDragOver={e => { if (ptDragRef.current && ptDragRef.current !== pt.id) { e.preventDefault(); setPtDropId(pt.id); } }}
-              onDragLeave={() => setPtDropId(cur => cur === pt.id ? null : cur)}
-              onDrop={e => { e.preventDefault(); reorderPT(ptDragRef.current, pt.id); }}
-              onClick={() => setActivePT(pt.id)}
+              {...ptDrag(pt)}
+              onClick={() => pickPT(pt.id)}
               className={`group relative flex items-center gap-1 px-2 py-2 rounded-lg cursor-pointer mb-1 transition-colors ${pt.id === activePT?.id ? 'bg-indigo-600 text-white' : 'text-slate-700 hover:bg-slate-100'} ${ptDragRef.current === pt.id ? 'opacity-40' : ''}`}>
               {ptDropId === pt.id && (
                 <div className="absolute left-1 right-1 -top-0.5 h-0.5 rounded bg-indigo-400" />
@@ -3770,12 +3881,11 @@ function App({ authUser }) {
             const onMove = ev => {
               if (!sidebarDragRef.current) return;
               const newWidth = ev.clientX;
-              if (newWidth < 48) {
-                setSidebarOpen(false);
+              if (newWidth < 120) {
+                sidebarDragRef.current = false;
+                sb.collapse();
               } else {
-                const clamped = Math.min(400, Math.max(48, newWidth));
-                setSidebarWidth(clamped);
-                setSidebarOpen(true);
+                setSidebarWidth(Math.min(400, newWidth));
               }
             };
             const onUp = () => {
@@ -3787,7 +3897,10 @@ function App({ authUser }) {
             document.addEventListener('mouseup', onUp);
           }}
         />
-      </aside>
+      </aside>}
+      </div>
+      </div>
+      {sb.overlay && <div className="fixed inset-0 bg-slate-900/20 z-30 no-print" onClick={sb.close} data-testid="sidebar-backdrop" />}
 
       {/* Main area */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
@@ -3795,11 +3908,6 @@ function App({ authUser }) {
             collapse into the sidebar, view toggle and Save as Template into the
             toolbar below, account into Settings. */}
         <header className="bg-white border-b border-slate-200 px-4 flex items-center gap-3 shrink-0 no-print" style={{ height: CHROME_BAR_H }}>
-          {!sidebarOpen && (
-            <button onClick={() => setSidebarOpen(true)}
-              className="text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded p-1.5 transition-colors shrink-0"
-              title="Expand sidebar"><Icon name="sb_open" size={17} /></button>
-          )}
           <div className="flex-1 min-w-0">
             {activePT ? (
               <>

@@ -294,6 +294,21 @@ to **off**; the bare view shows only presence/absence, which is the point.
 If these should ever become shared team settings, they move into `store` and
 need a `normalizeStore` default.
 
+## Collapsible sidebar (both apps)
+
+Shared code, copied between `workflow-tool.html` and `tracker.html` — keep
+them identical: `useNarrow` / `useSidebar`, `RailItem`, `railInitials`, and the
+`.rail-*` CSS. Wide windows (`NARROW_BELOW`, 1280px) remember open/closed per
+viewer in `localStorage` (`cs_pipeline_sidebar_open_v1`,
+`cs_tracker_sidebar_open_v1`). Narrow windows always start as the **rail**
+(`RAIL_W`, 64px); opening it slides the full sidebar over the page with a
+backdrop that closes it. The rail shows icons and two-letter initials circles
+(first letters of the first two words); the Workflow Tool's rail keeps the drag
+grip, and the tracker's circle outline is the project's state
+(`projectRing()`). Hovering a rail icon floats the full button over it with
+the label sliding out — **drawn fixed-position through a portal**, because the
+rail scrolls and a scrolling box clips anything that overflows sideways.
+
 ## Change history
 
 Every save appends what changed to `pipelineLog/<workflowId>/<push>`
@@ -471,7 +486,8 @@ compile the offline preview with the same theme. Violet stays the "sent back"
 status colour. The Workflow Tool carries the identical `tw-brand` block (read by
 `dev/preview.js`); keep the two in sync.
 
-- **Dashboard** — compact one-line tiles (click one to filter to it), then the
+- **Dashboard** — compact one-line tiles (click one to filter to it; click it
+  again to return to the default filter), then the
   project list with search and three checkable dropdowns (`MultiSelect`):
   **Status** (project flags from `projectFlags()`; complete and archived hidden
   by default), **People** (you first; Only me / Everyone), **Type** (workflow).
@@ -479,6 +495,11 @@ status colour. The Workflow Tool carries the identical `tw-brand` block (read by
   filter. Right column: Needs your attention, a **project status donut**
   (`StatusDonut`, each project counted once by `donutCategory()`, range all /
   12 / 6 months, legend with counts), next 14 days, recent updates.
+- **Narrow dashboard** (below 1280px) — Needs your attention as a full panel
+  first, then one grid of small cards: the stat tiles (toggle filters) and
+  Project status / Next 14 days / Recent updates, which drop their panel open
+  below the cards (click again or click away to close). The projects toolbar
+  puts search and New project on line 1, the filters on line 2.
 - **Project rows** — title, "workflow · Due · Updated", the people on it as
   separate initials; a wide outlined bar with the % at the end of the fill and
   document chips in an equal grid, each filled to its own progress.
@@ -544,7 +565,7 @@ pending); the steps a send-back reset to pending still show their round badge.
   next for their document, sorted by due date.
 - Routing is the hash (`#/p/<id>`), so projects can be linked directly.
 
-Checks: `cd dev && npm run tracker` (57 checks, own Firebase stub with nested
+Checks: `cd dev && npm run tracker` (68 checks, own Firebase stub with nested
 paths and live listeners — see `dev/tracker-preview.js`).
 
 ## Conventions to follow

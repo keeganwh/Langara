@@ -229,6 +229,29 @@ const cell = (d, docId, stepId) => {
   await click(p, '[data-testid=changes-drawer] button[data-tab=workflow]'); await p.waitForTimeout(150);
   ok('minor changes collapse to one summary line', await p.evaluate(() => /minor detail changes on 1 step \(notes\)/.test(document.querySelector('[data-testid=minor-summary]').innerText)));
 
+  console.log('\nNarrow window');
+  await p.setViewportSize({ width: 1100, height: 900 });
+  await p.evaluate(() => { location.hash = '#/'; }); await p.waitForTimeout(300);
+  ok('below 1280px the sidebar is the icon rail', await p.evaluate(() => !!document.querySelector('[data-testid=rail]')));
+  ok('rail shows each project as initials', await p.evaluate(() => /^CE$/.test(document.querySelector('[data-testid=rail-project]').innerText.trim()) || document.querySelector('[data-testid=rail-project]').innerText.trim().length === 2));
+  ok('Needs your attention comes first', await p.evaluate(() => { const a = document.querySelector('[data-testid=attention]'), pr = document.querySelector('[data-testid=projects]'); return a.compareDocumentPosition(pr) & Node.DOCUMENT_POSITION_FOLLOWING; }));
+  ok('search and New project share the first toolbar line', await p.evaluate(() => { const s = document.querySelector('[data-testid=projects] input').getBoundingClientRect(), n = document.querySelector('[data-testid=new-project]').getBoundingClientRect(), f = document.querySelector('[data-testid=filters]').getBoundingClientRect(); return Math.abs(s.top - n.top) < 12 && f.top > s.bottom; }));
+  await p.evaluate(() => document.querySelector('[data-testid=card-dates]').click()); await p.waitForTimeout(150);
+  ok('a report card drops its panel open', await p.evaluate(() => !!document.querySelector('[data-testid=report-drop] [data-testid=report-dates]')));
+  await p.evaluate(() => document.querySelector('[data-testid=card-dates]').click()); await p.waitForTimeout(150);
+  ok('clicking it again closes it', await p.evaluate(() => !document.querySelector('[data-testid=report-drop]')));
+  const held = () => p.evaluate(() => [...document.querySelectorAll('[data-testid=tiles] button')].find(b => b.innerText.includes('Held up')).click());
+  await held(); await p.waitForTimeout(100);
+  ok('a stat tile switches its filter on', await p.evaluate(() => /Status\s*1/.test(document.querySelector('[data-testid=f-status]').innerText)));
+  await held(); await p.waitForTimeout(100);
+  ok('clicking the tile again switches it off', await p.evaluate(() => /Status\s*5/.test(document.querySelector('[data-testid=f-status]').innerText)));
+  await p.evaluate(() => document.querySelector('[data-testid=rail-expand] button').click()); await p.waitForTimeout(200);
+  ok('opening the sidebar on a narrow window overlays the page', await p.evaluate(() => !!document.querySelector('[data-testid=sidebar-backdrop]') && !!document.querySelector('[data-testid=nav-dashboard]')));
+  await p.evaluate(() => document.querySelector('[data-testid=sidebar-backdrop]').click()); await p.waitForTimeout(150);
+  ok('clicking away closes it', await p.evaluate(() => !!document.querySelector('[data-testid=rail]')));
+  await p.setViewportSize({ width: 1400, height: 900 }); await p.waitForTimeout(200);
+  ok('a wide window opens the full sidebar again', await p.evaluate(() => !document.querySelector('[data-testid=rail]')));
+
   console.log('\nIcons');
   ok('no emoji in the rendered page', await p.evaluate(() => !/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/u.test(document.body.innerText)));
 
