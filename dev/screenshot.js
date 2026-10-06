@@ -12,7 +12,7 @@ const out = process.argv[3] || path.join(__dirname, '.out', view + '.png');
 (async () => {
   const browser = await chromium.launch(fs.existsSync(EXEC) ? { executablePath: EXEC } : {});
   const p = await browser.newPage({ viewport: { width: 1500, height: 1000 }, deviceScaleFactor: 2 });
-  await p.goto(PAGE); await p.waitForTimeout(1400);
+  await p.goto(PAGE); await p.waitForTimeout(1400); await p.evaluate(() => { const w = document.querySelector('[data-testid=nav-workflow]'); if (w) w.click(); }); await p.waitForTimeout(300);
 
   if (view === 'flow') { await p.click('text=🪜 Step Flow'); await p.waitForTimeout(600); }
   if (view === 'rowlock') { await p.locator('button', { hasText: 'Row Lock' }).click(); await p.waitForTimeout(700); }

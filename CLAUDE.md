@@ -294,6 +294,14 @@ to **off**; the bare view shows only presence/absence, which is the point.
 If these should ever become shared team settings, they move into `store` and
 need a `normalizeStore` default.
 
+## Workflow Tool dashboard
+
+The Workflow Tool opens on `HomeView` (`home` state in `App`; the brand block
+and the sidebar's Dashboard return to it). Five same-shaped cards: Make a new
+workflow, Edit a workflow, Publish or share, See recent changes, Development
+Tracker. Those needing a workflow ask which in a list first. Checks click the
+first `nav-workflow` after loading to get past it.
+
 ## Collapsible sidebar (both apps)
 
 Shared code, copied between `workflow-tool.html` and `tracker.html` — keep
@@ -308,6 +316,10 @@ grip, and the tracker's circle outline is the project's state
 (`projectRing()`). Hovering a rail icon floats the full button over it with
 the label sliding out — **drawn fixed-position through a portal**, because the
 rail scrolls and a scrolling box clips anything that overflows sideways.
+Dashboard, the other app and Settings sit at the **top** of both sidebars
+(and rails), under the brand block; the foot is empty. In the open sidebar a
+cut-off workflow or project name floats in full on hover (`HoverTitle`, the
+same portal idea, `.hover-title` CSS).
 
 ## Change history
 
@@ -421,7 +433,10 @@ and will happily draw longer than the segment it terminates, overhanging
 backwards past the start of the line and reading as an arrow pointing the
 wrong way at narrow widths.
 
-## The Program Tracker (`tracker.html`)
+## The Development Tracker (`tracker.html`)
+
+(Formerly "Program Tracker" — renamed in the UI only; the file and the
+`tracker/` data path keep their names.)
 
 A second page, for **running** workflows rather than mapping them. The Workflow
 Map (`workflow-tool.html`) stays the reference/design tool; the tracker
@@ -450,7 +465,21 @@ tracker
     │   (batch projects instead of documents[] store: batch: true,
     │    template[] (one workflow copy), items[] { id, name }, sharedDocIds[])
     └── activity/<push>  { at, by, text, kind, docId, step, status }
+└── meetings/<id>      { name, date }                    — the meeting schedule
 ```
+
+- **Meeting schedule.** `MeetingScheduleModal` (Schedule, on the Meetings
+  panel) adds one name with a list of dates. A meeting matches a step by
+  name, loosely (`meetingMatches`: they share a word other than meeting /
+  review / approval …), so "JCCS Meeting" matches "JCCS Review". The Meetings
+  panel covers 30 days and merges a step's meeting date into a scheduled
+  meeting on the same date and matching name; scheduled meetings show even
+  with 0 projects. The step panel's meeting date is a custom calendar
+  (`MeetingDateField` / `MeetingCalendar`) that highlights matching scheduled
+  dates; picking an unscheduled one asks "was the meeting rescheduled?"
+  (Yes moves the nearest scheduled one) and flags it "Not on the schedule".
+- **Person colours.** `personHue()`: `person.hue` if picked under People,
+  else a hue from the name. `Avatar` uses it.
 
 - **Writes go to the narrowest path** (`update` on one cell, `push` for history
   and activity) and the page renders from live `on('value')` listeners. This is
@@ -520,9 +549,13 @@ status colour. The Workflow Tool carries the identical `tw-brand` block (read by
   which drop their report panel open below the cards (click again or away to
   close) — sitting right above the projects list they filter. The projects toolbar
   puts search and New project on line 1, the filters on line 2.
-- **Project rows** — title, "workflow · Due · Updated", the people on it as
-  separate initials; a wide outlined bar with the % at the end of the fill and
-  document chips in an equal grid, each filled to its own progress.
+- **Project rows** — title, then "workflow · Due · Updated" with the people's
+  initials on the same line; a bar coloured by `projectTone()` (held up >
+  sent back > in progress > not started; green when complete). Document chips
+  are hidden; a chevron opens one row's. The list (which scrolls on its own
+  on wide windows) has two per-viewer toggles on the Select-all row,
+  `cs_tracker_list_prefs_v1`: **Documents** (chips on every row) and
+  **Detailed progress** (the bar split per document, `docTone()`).
 - **Recent updates** are grouped by project and thinned (`recentByProject`):
   only the newest checklist tick per project, and entries with the same kind,
   step and status within 10 minutes collapse into one line. Activity entries
@@ -650,7 +683,7 @@ pending); the steps a send-back reset to pending still show their round badge.
   next for their document, sorted by due date.
 - Routing is the hash (`#/p/<id>`), so projects can be linked directly.
 
-Checks: `cd dev && npm run tracker` (104 checks, own Firebase stub with nested
+Checks: `cd dev && npm run tracker` (115 checks, own Firebase stub with nested
 paths and live listeners — see `dev/tracker-preview.js`).
 
 ## Conventions to follow

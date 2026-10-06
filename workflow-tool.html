@@ -274,7 +274,10 @@
       .pub-block { margin-bottom:0.22in; }
       .pub-legend { break-inside:avoid; }
     }
-  </style>
+  .hover-title { position: fixed; z-index: 100000; pointer-events: none; display: flex; align-items: center; padding: 4px 8px;
+  background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; box-shadow: 0 8px 24px rgba(15,23,42,.14);
+  font-size: 14px; font-weight: 500; color: #1e293b; white-space: nowrap; }
+</style>
 </head>
 <body class="bg-slate-100 min-h-screen">
 <div id="root"></div>
@@ -416,6 +419,8 @@ const ICON_PATHS = {
   empty_flow:   "<circle cx=\"6\" cy=\"19\" r=\"3\" /> <path d=\"M9 19h8.5a3.5 3.5 0 0 0 0-7h-11a3.5 3.5 0 0 1 0-7H15\" /> <circle cx=\"18\" cy=\"5\" r=\"3\" />",
   empty_pub:    "<path d=\"M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z\" /> <path d=\"M12 17h.01\" /> <path d=\"M9.1 9a3 3 0 0 1 5.82 1c0 2-3 3-3 3\" />",
   empty_wf:     "<rect width=\"8\" height=\"4\" x=\"8\" y=\"2\" rx=\"1\" ry=\"1\" /> <path d=\"M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2\" /> <path d=\"M12 11h4\" /> <path d=\"M12 16h4\" /> <path d=\"M8 11h.01\" /> <path d=\"M8 16h.01\" />",
+  dashboard:  "<rect width=\"7\" height=\"9\" x=\"3\" y=\"3\" rx=\"1\" /> <rect width=\"7\" height=\"5\" x=\"14\" y=\"3\" rx=\"1\" /> <rect width=\"7\" height=\"9\" x=\"14\" y=\"12\" rx=\"1\" /> <rect width=\"7\" height=\"5\" x=\"3\" y=\"16\" rx=\"1\" />",
+  map:        "<circle cx=\"6\" cy=\"19\" r=\"3\" /> <path d=\"M9 19h8.5a3.5 3.5 0 0 0 0-7h-11a3.5 3.5 0 0 1 0-7H15\" /> <circle cx=\"18\" cy=\"5\" r=\"3\" />",
 };
 const ICON_NAMES = {"review": "search", "approval": "thumbs-up", "consultation": "message-circle-question-mark", "prepared_by": "file-pen", "custom": "circle-chevron-right", "storage": "folder-symlink", "ret": "rotate-ccw", "t_imm": "corner-down-right", "t_meet": "calendar-clock", "sync": "link", "notes": "notebook-pen", "info": "info", "t_man": "hand", "t_task": "clipboard-check", "t_cust": "bell"}; // Lucide names, for reference
 const ACTION_COLOR = { review: '#0284c7', approval: '#059669', consultation: '#7c3aed',
@@ -677,7 +682,7 @@ function LoginScreen() {
 // loaded, and appends what changed in each workflow to
 // pipelineLog/<workflowId>. The baseline is reset on every load and refresh,
 // so another person's edits pulled in by a refresh are never logged as yours.
-// The Program Tracker reads the same log.
+// The Development Tracker reads the same log.
 const LOG_PATH = 'pipelineLog';
 const LOG_STEP_FIELDS = [
   ['actions', 'tasks', true], ['presenterIds', 'presenters', true], ['carrierIds', 'carriers', true],
@@ -3569,7 +3574,7 @@ function WorkflowHistory({ projectType, onClose }) {
 }
 
 // ── Collapsible sidebar ────────────────────────────────────────────────────────
-// Same behaviour as the Program Tracker. Wide windows remember whether the
+// Same behaviour as the Development Tracker. Wide windows remember whether the
 // sidebar was open; below NARROW_BELOW it always starts as the slim icon rail,
 // and opening it slides the full sidebar over the page (click away to close).
 // In the rail each icon grows into its full button on hover.
@@ -3636,6 +3641,72 @@ function RailItem({ icon, badge, label, sub, onClick, href, active, testid, lead
 // 0.7px apart.
 const CHROME_BAR_H = 68;
 
+// Same as the tracker: the full name of a sidebar item floats over it on
+// hover when the name is cut off, through a portal so the sidebar can't clip it.
+function HoverTitle({ text, className }) {
+  const [rect, setRect] = useState(null);
+  const ref = useRef(null);
+  const show = () => { const el = ref.current; if (el && el.scrollWidth > el.clientWidth) { const r = el.getBoundingClientRect(); setRect({ top: r.top, left: r.left, height: r.height }); } };
+  return (
+    <span ref={ref} className={className} onMouseEnter={show} onMouseLeave={() => setRect(null)}>
+      {text}
+      {rect && ReactDOM.createPortal(
+        <span className="hover-title" style={{ top: rect.top - 4, left: rect.left - 8, minHeight: rect.height + 8 }} data-testid="hover-title">{text}</span>, document.body)}
+    </span>
+  );
+}
+
+// ── Home (dashboard) ──────────────────────────────────────────────────────────
+// Where the Workflow Tool opens: a handful of things to do, each the same
+// shape of card. Those that need a workflow ask which one first.
+function HomeView({ store, onNew, onEdit, onPublish, onHistory }) {
+  const [pickFor, setPickFor] = useState(null);   // 'edit' | 'publish' | 'history'
+  const cards = [
+    { id: 'new', icon: 'plus', color: '#F15A22', title: 'Make a new workflow', text: 'Start from scratch or from a template.', run: onNew },
+    { id: 'edit', icon: 'edit', color: '#2563eb', title: 'Edit a workflow', text: 'Open a workflow to change its documents and steps.', run: () => setPickFor('edit') },
+    { id: 'publish', icon: 'publish', color: '#059669', title: 'Publish or share', text: 'Make a read-only link to send around, or refresh one.', run: () => setPickFor('publish') },
+    { id: 'history', icon: 'history', color: '#7c3aed', title: 'See recent changes', text: 'What changed in a workflow, and who changed it.', run: () => setPickFor('history') },
+    { id: 'tracker', icon: 'v_docs', color: '#0f766e', title: 'Development Tracker', text: 'Track projects running through these workflows.', href: 'tracker.html' },
+  ];
+  const pickTitle = { edit: 'Which workflow do you want to edit?', publish: 'Which workflow do you want to publish?', history: 'Whose changes do you want to see?' }[pickFor];
+  const choose = (id) => { const f = pickFor; setPickFor(null); ({ edit: onEdit, publish: onPublish, history: onHistory })[f](id); };
+  return (
+    <div className="h-full overflow-auto p-6" data-testid="home">
+      <div className="max-w-4xl mx-auto">
+        <h2 className="text-xl font-bold text-slate-800 mb-1">What are we doing today?</h2>
+        <p className="text-sm text-slate-500 mb-5">Pick one to get started.</p>
+        <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))' }}>
+          {cards.map(c => {
+            const inner = <>
+              <span className="w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: c.color + '1a', color: c.color }}><Icon name={c.icon} size={22} /></span>
+              <span className="min-w-0">
+                <span className="block text-[15px] font-bold text-slate-800">{c.title}</span>
+                <span className="block text-xs text-slate-500 mt-0.5">{c.text}</span>
+              </span>
+            </>;
+            const cls = 'bg-white border border-slate-200 rounded-xl p-4 flex items-start gap-3 text-left hover:shadow-md hover:border-slate-300 transition-all relative overflow-hidden';
+            return c.href
+              ? <a key={c.id} href={c.href} className={cls} style={{ borderTop: '3px solid ' + c.color }} data-testid={'home-' + c.id}>{inner}</a>
+              : <button key={c.id} onClick={c.run} className={cls} style={{ borderTop: '3px solid ' + c.color }} data-testid={'home-' + c.id}>{inner}</button>;
+          })}
+        </div>
+      </div>
+      {pickFor && <Modal title={pickTitle} onClose={() => setPickFor(null)}>
+        <div className="divide-y border rounded-lg" data-testid="home-pick">
+          {store.projectTypes.map(pt => (
+            <button key={pt.id} onClick={() => choose(pt.id)} className="w-full text-left px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2">
+              <span className="flex-1 truncate">{pt.name}</span>
+              <span className="text-[11px] text-slate-400">{(pt.documents || []).length} documents</span>
+              <Icon name="chev_r" size={13} className="text-slate-400" />
+            </button>
+          ))}
+          {!store.projectTypes.length && <div className="p-3 text-sm text-slate-400">No workflows yet.</div>}
+        </div>
+      </Modal>}
+    </div>
+  );
+}
+
 function App({ authUser }) {
   const [store, updateStore, syncStatus, refreshStore] = useStore();
   const activeUsers = usePresence(authUser);
@@ -3654,6 +3725,8 @@ function App({ authUser }) {
   // others, which is React error #310 and a blank page.
   const ptDragRef = React.useRef(null);
   const [ptDropId, setPtDropId] = useState(null);
+  // The Workflow Tool opens on its dashboard; picking a workflow leaves it.
+  const [home, setHome] = useState(true);
 
   if (!store) return (
     <div className="flex items-center justify-center h-screen bg-slate-100">
@@ -3701,6 +3774,7 @@ function App({ authUser }) {
   const createPT = (pt) => {
     updateStore(s => ({ ...s, projectTypes: [...s.projectTypes, pt], activeProjectTypeId: pt.id }));
     setModal(null);
+    setHome(false);
   };
 
   const copyStepToProject = (step, targetProjectId, targetDocId) => {
@@ -3768,16 +3842,21 @@ function App({ authUser }) {
     onDragLeave: () => setPtDropId(cur => cur === pt.id ? null : cur),
     onDrop: e => { e.preventDefault(); reorderPT(ptDragRef.current, pt.id); },
   });
-  const pickPT = (id) => { setActivePT(id); sb.close(); };
+  const pickPT = (id) => { setActivePT(id); setHome(false); sb.close(); };
+  const goHome = () => { setHome(true); sb.close(); };
   const rail = (
     <aside className="bg-white border-r border-slate-200 flex flex-col shrink-0 no-print h-full" style={{ width: RAIL_W }} data-testid="rail">
-      <div className="border-b border-slate-200 flex items-center justify-center font-bold text-slate-800 text-sm shrink-0" style={{ height: CHROME_BAR_H }} title="Workflow Tool">WT</div>
+      <button onClick={goHome} className="border-b border-slate-200 flex items-center justify-center font-bold text-slate-800 text-sm shrink-0 hover:bg-slate-50" style={{ height: CHROME_BAR_H }} title="Dashboard">WT</button>
       <div className="flex-1 overflow-y-auto py-2 flex flex-col items-start gap-1 pl-1">
         <div className="pl-3"><RailItem icon="sb_open" label="Expand sidebar" onClick={sb.toggle} testid="rail-expand" /></div>
+        <div className="pl-3"><RailItem icon="dashboard" label="Dashboard" active={home} onClick={goHome} /></div>
+        <div className="pl-3"><RailItem icon="v_docs" label="Development Tracker" href="tracker.html" /></div>
+        <div className="pl-3"><RailItem icon="settings" label="Settings" onClick={() => setModal('settings')} /></div>
+        <div className="w-8 border-t border-slate-200 my-1 ml-3" />
         <div className="pl-3"><RailItem icon="plus" label="New workflow" onClick={() => setModal('newPT')} /></div>
         <div className="w-8 border-t border-slate-200 my-1 ml-3" />
         {store.projectTypes.map(pt => {
-          const on = pt.id === (activePT && activePT.id);
+          const on = !home && pt.id === (activePT && activePT.id);
           return (
             <div key={pt.id} {...ptDrag(pt)} className={`relative ${ptDragRef.current === pt.id ? 'opacity-40' : ''}`} data-testid="rail-workflow">
               {ptDropId === pt.id && <div className="absolute left-1 right-1 -top-0.5 h-0.5 rounded bg-indigo-400" />}
@@ -3788,10 +3867,6 @@ function App({ authUser }) {
             </div>
           );
         })}
-      </div>
-      <div className="py-2 pl-3 border-t border-slate-200 flex flex-col gap-1">
-        <RailItem icon="v_docs" label="Program Tracker" href="tracker.html" />
-        <RailItem icon="settings" label="Settings" onClick={() => setModal('settings')} />
       </div>
     </aside>
   );
@@ -3807,17 +3882,22 @@ function App({ authUser }) {
         {/* Brand — a button already, so the dashboard it will link to later has
             somewhere to go. It deliberately does nothing for now. */}
         <button
-          onClick={() => { /* reserved: home / dashboard */ }}
+          onClick={goHome}
           className="w-full text-left px-4 border-b border-slate-200 hover:bg-slate-50 transition-colors flex flex-col justify-center shrink-0"
           style={{ height: CHROME_BAR_H }}
-          title="Workflow Tool">
+          title="Dashboard">
           <div className="font-bold text-slate-800 text-sm leading-tight">Workflow Tool</div>
           <div className="text-xs text-slate-400 mt-0.5">Langara Continuing Studies</div>
         </button>
 
         <div className="flex-1 overflow-y-auto p-3">
+          {[['dashboard', 'Dashboard', goHome, home, 'nav-dashboard'], ['v_docs', 'Development Tracker', 'tracker.html', false, 'tracker-link'], ['settings', 'Settings', () => setModal('settings'), false, 'nav-settings']].map(([icon, label, act, on, tid]) => {
+            const cls = `flex items-center gap-2 px-2 py-2 rounded-lg cursor-pointer mb-1 transition-colors ${on ? 'bg-indigo-600 text-white' : 'text-slate-700 hover:bg-slate-100'}`;
+            const body = <><Icon name={icon} size={15} className={on ? 'text-indigo-200' : 'text-slate-400'} /><span className="text-sm font-medium">{label}</span></>;
+            return typeof act === 'string' ? <a key={label} href={act} className={cls} data-testid={tid}>{body}</a> : <div key={label} onClick={act} className={cls} data-testid={tid}>{body}</div>;
+          })}
           {/* Project Types */}
-          <div className="flex items-center justify-between mb-2 px-1">
+          <div className="flex items-center justify-between mb-2 mt-4 px-1">
             <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">Workflows</span>
             <div className="flex items-center gap-0.5">
               <button onClick={() => setModal('newPT')}
@@ -3833,14 +3913,15 @@ function App({ authUser }) {
             <div key={pt.id}
               {...ptDrag(pt)}
               onClick={() => pickPT(pt.id)}
-              className={`group relative flex items-center gap-1 px-2 py-2 rounded-lg cursor-pointer mb-1 transition-colors ${pt.id === activePT?.id ? 'bg-indigo-600 text-white' : 'text-slate-700 hover:bg-slate-100'} ${ptDragRef.current === pt.id ? 'opacity-40' : ''}`}>
+              data-testid="nav-workflow"
+              className={`group relative flex items-center gap-1 px-2 py-2 rounded-lg cursor-pointer mb-1 transition-colors ${!home && pt.id === activePT?.id ? 'bg-indigo-600 text-white' : 'text-slate-700 hover:bg-slate-100'} ${ptDragRef.current === pt.id ? 'opacity-40' : ''}`}>
               {ptDropId === pt.id && (
                 <div className="absolute left-1 right-1 -top-0.5 h-0.5 rounded bg-indigo-400" />
               )}
               <span className={`shrink-0 select-none leading-none ${pt.id === activePT?.id ? 'text-indigo-200' : 'text-slate-300'}`}
                 style={{ cursor: 'grab', fontSize: 13, letterSpacing: '-1px' }}
                 title="Drag to reorder"><Icon name="grip" size={13} /></span>
-              <span className="text-sm font-medium truncate flex-1">{pt.name}</span>
+              <HoverTitle text={pt.name} className="text-sm font-medium truncate flex-1 min-w-0" />
               {pt.id !== activePT?.id && (
                 <button onClick={e => { e.stopPropagation(); deletePT(pt.id); }}
                   className="opacity-0 group-hover:opacity-100 shrink-0 w-5 h-5 rounded text-xs flex items-center justify-center text-red-400 hover:text-red-600 hover:bg-red-50"
@@ -3863,17 +3944,6 @@ function App({ authUser }) {
           )}
         </div>
 
-        {/* Everything that used to live here now sits behind Settings */}
-        <div className="p-3 border-t border-slate-200 space-y-1.5">
-          <a href="tracker.html" data-testid="tracker-link"
-            className="w-full px-3 py-2.5 rounded-lg text-sm text-slate-700 border border-slate-200 hover:bg-slate-50 flex items-center gap-2.5 transition-colors">
-            <Icon name="v_docs" size={16} className="text-slate-500" /> Program Tracker
-          </a>
-          <button onClick={() => setModal('settings')}
-            className="w-full px-3 py-2.5 rounded-lg text-sm text-slate-700 border border-slate-200 hover:bg-slate-50 flex items-center gap-2.5 transition-colors">
-            <Icon name="settings" size={16} className="text-slate-500" /> Settings
-          </button>
-        </div>
         <div
           style={{ position:'absolute', top:0, right:0, width:4, height:'100%', cursor:'col-resize', zIndex:10, userSelect:'none' }}
           onMouseDown={e => {
@@ -3909,7 +3979,12 @@ function App({ authUser }) {
             toolbar below, account into Settings. */}
         <header className="bg-white border-b border-slate-200 px-4 flex items-center gap-3 shrink-0 no-print" style={{ height: CHROME_BAR_H }}>
           <div className="flex-1 min-w-0">
-            {activePT ? (
+            {home ? (
+              <>
+                <div className="text-[9px] font-bold tracking-[.13em] text-slate-400 uppercase leading-none mb-0.5">Workflow Tool</div>
+                <h1 className="font-bold text-slate-900 text-[17px] truncate leading-tight tracking-tight">Dashboard</h1>
+              </>
+            ) : activePT ? (
               <>
                 <div className="text-[9px] font-bold tracking-[.13em] text-slate-400 uppercase leading-none mb-0.5">Workflow</div>
                 <h1 className="font-bold text-slate-900 text-[17px] truncate leading-tight tracking-tight">{activePT.name}</h1>
@@ -3951,7 +4026,7 @@ function App({ authUser }) {
             </div>
           )}
 
-          {activePT && (
+          {activePT && !home && (
             <button onClick={() => setHistoryOpen(true)} data-testid="history-btn"
               className="shrink-0 inline-flex items-center gap-1.5 text-xs font-semibold rounded-lg px-3 py-2 border bg-white text-slate-600 border-slate-300 hover:bg-slate-50 transition-colors"
               title="What has changed in this workflow, and who changed it">
@@ -3959,7 +4034,7 @@ function App({ authUser }) {
             </button>
           )}
 
-          {activePT && (() => {
+          {activePT && !home && (() => {
             const st = publicationStatus(store, activePT);
             const cls = st.state === 'current' ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
                       : st.state === 'stale'   ? 'bg-amber-50 text-amber-700 border-amber-300'
@@ -3979,7 +4054,12 @@ function App({ authUser }) {
         </header>
 
         <div className="flex-1 min-h-0 min-w-0 overflow-hidden">
-          {activePT ? (view === 'flow' ? (
+          {home ? (
+            <HomeView store={store} onNew={() => setModal('newPT')}
+              onEdit={id => { setActivePT(id); setHome(false); }}
+              onPublish={id => { setActivePT(id); setModal('publish'); }}
+              onHistory={id => { setActivePT(id); setHistoryOpen(true); }} />
+          ) : activePT ? (view === 'flow' ? (
             <StepFlowView projectType={activePT} roles={store.roles} syncGroupMeta={store.syncGroupMeta}
               onUpdateProjectType={updatePT}
               view={view} onSetView={setView}

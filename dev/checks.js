@@ -37,7 +37,7 @@ const text = p => p.evaluate(() => document.body.innerText);   // innerText, not
   p.on('dialog', d => d.accept());
 
   console.log('\nApp');
-  await p.goto(PAGE); await p.waitForTimeout(1400);
+  await p.goto(PAGE); await p.waitForTimeout(1400); await p.evaluate(() => { const w = document.querySelector('[data-testid=nav-workflow]'); if (w) w.click(); }); await p.waitForTimeout(300);
   const t0 = await text(p);
   ok('boots and renders the Documents view', t0.includes('Add Document') || t0.includes('Add Step'));
   ok('no in-app print button (printing is via the published page)', !t0.includes('Print / Export PDF'));
@@ -140,9 +140,9 @@ const text = p => p.evaluate(() => document.body.innerText);   // innerText, not
   console.log('\nVisual pass');
   // The publishing checks above navigate to the published page — come back, and
   // clear the display preferences the earlier checks left in localStorage.
-  await p.goto(PAGE); await p.waitForTimeout(600);
+  await p.goto(PAGE); await p.waitForTimeout(600); await p.evaluate(() => { const w = document.querySelector('[data-testid=nav-workflow]'); if (w) w.click(); }); await p.waitForTimeout(300);
   await p.evaluate(() => { localStorage.removeItem('cs_pipeline_doc_prefs_v1'); });
-  await p.goto(PAGE); await p.waitForTimeout(1400);
+  await p.goto(PAGE); await p.waitForTimeout(1400); await p.evaluate(() => { const w = document.querySelector('[data-testid=nav-workflow]'); if (w) w.click(); }); await p.waitForTimeout(300);
   await p.evaluate(() => window.scrollTo(0, 0));
   ok('no emoji left in the step cards', await p.evaluate(() => {
     // card content only — the hover controls use typographic glyphs (v, x, arrows)
@@ -212,7 +212,7 @@ const text = p => p.evaluate(() => document.body.innerText);   // innerText, not
   // is worth a clean page rather than a weaker assertion.
   const fp = await ctx.newPage();
   await fp.setViewportSize({ width: 1500, height: 950 });
-  await fp.goto(PAGE); await fp.waitForTimeout(1600);
+  await fp.goto(PAGE); await fp.waitForTimeout(1600); await fp.evaluate(() => { const w = document.querySelector('[data-testid=nav-workflow]'); if (w) w.click(); }); await fp.waitForTimeout(300);
   const fadeOpacity = () => fp.evaluate(() => {
     const f = [...document.querySelectorAll('.sticky')]
       .find(e => (e.style.background || '').includes('linear-gradient'));
@@ -284,7 +284,7 @@ const text = p => p.evaluate(() => document.body.innerText);   // innerText, not
   console.log('\nStep Flow');
   // Fresh load: these assertions hit-test real coordinates, so they need a page
   // the earlier checks have not scrolled.
-  await p.goto(PAGE); await p.waitForTimeout(1500);
+  await p.goto(PAGE); await p.waitForTimeout(1500); await p.evaluate(() => { const w = document.querySelector('[data-testid=nav-workflow]'); if (w) w.click(); }); await p.waitForTimeout(300);
   await p.evaluate(() => {
     const b = [...document.querySelectorAll('button')].find(x => x.textContent.includes('Step Flow'));
     if (b) b.click();
@@ -327,7 +327,7 @@ const text = p => p.evaluate(() => document.body.innerText);   // innerText, not
   await p.waitForTimeout(500);
 
   console.log('\nIcon language');
-  await p.goto(PAGE); await p.waitForTimeout(1500);
+  await p.goto(PAGE); await p.waitForTimeout(1500); await p.evaluate(() => { const w = document.querySelector('[data-testid=nav-workflow]'); if (w) w.click(); }); await p.waitForTimeout(300);
   ok('no emoji anywhere in the rendered app', await p.evaluate(() => {
     // innerText, not textContent: the program source is inlined in the page.
     const t = document.body.innerText;
@@ -344,12 +344,21 @@ const text = p => p.evaluate(() => document.body.innerText);   // innerText, not
     const aside = b.closest('aside');
     return b.getBoundingClientRect().top <= aside.getBoundingClientRect().top + 4;
   }));
+  ok('Dashboard, Development Tracker and Settings sit at the top of the sidebar', await p.evaluate(() => {
+    const d = document.querySelector('[data-testid=nav-dashboard]'), w = document.querySelector('[data-testid=nav-workflow]');
+    return !!d && !!document.querySelector('[data-testid=tracker-link]') && (d.compareDocumentPosition(w) & Node.DOCUMENT_POSITION_FOLLOWING);
+  }));
+  await p.evaluate(() => document.querySelector('[data-testid=nav-dashboard]').click()); await p.waitForTimeout(200);
+  ok('the dashboard offers the same-shaped options', await p.evaluate(() => ['new', 'edit', 'publish', 'history', 'tracker'].every(k => !!document.querySelector('[data-testid=home-' + k + ']'))));
+  await p.evaluate(() => document.querySelector('[data-testid=home-edit]').click()); await p.waitForTimeout(150);
+  await p.evaluate(() => document.querySelector('[data-testid=home-pick] button').click()); await p.waitForTimeout(250);
+  ok('Edit a workflow asks which, then opens it', await p.evaluate(() => !document.querySelector('[data-testid=home]') && !!document.querySelector('.doc-grid, [data-testid=row-locked]')));
   ok('the sidebar footer is a single Settings button', await p.evaluate(() => {
     const t = document.querySelector('aside').innerText;
     return t.includes('Settings') && !t.includes('Backup') && !t.includes('Reset to Defaults');
   }));
   ok('Settings opens the moved items', await p.evaluate(async () => {
-    const b = [...document.querySelectorAll('aside button')].find(x => x.textContent.trim() === 'Settings');
+    const b = document.querySelector('aside [data-testid=nav-settings]');
     if (!b) return false;
     b.click();
     await new Promise(r => setTimeout(r, 350));

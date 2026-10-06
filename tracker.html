@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>CS Program Tracker</title>
+  <title>CS Development Tracker</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <!-- Brand colour: Langara orange #F15A22 (500). Tailwind's indigo scale is
        remapped to it, so every indigo-* class in this page is the brand colour.
@@ -71,7 +71,10 @@
     .slide-in { animation: slideIn .18s ease; }
     @keyframes slideIn { from { transform: translateX(-24px); opacity: .5; } to { transform: none; opacity: 1; } }
     .line-clamp-2 { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-  </style>
+  .hover-title { position: fixed; z-index: 100000; pointer-events: none; display: flex; align-items: center; padding: 4px 8px;
+  background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; box-shadow: 0 8px 24px rgba(15,23,42,.14);
+  font-size: 14px; font-weight: 500; color: #1e293b; white-space: nowrap; }
+</style>
 </head>
 <body class="bg-slate-100 min-h-screen">
 <div id="root"></div>
@@ -500,11 +503,22 @@ const initials = (name) => {
   return (w.length > 1 ? w[0][0] + w[w.length - 1][0] : (w[0] || '?').slice(0, 2)).toUpperCase();
 };
 
+// Each person has a hue: their own pick (`person.hue`) or one worked out from
+// their name, so it never changes between visits.
+const PERSON_HUES = [8, 28, 45, 90, 140, 170, 195, 215, 240, 265, 290, 330];
+function personHue(person) {
+  if (!person) return 220;
+  if (typeof person.hue === 'number') return person.hue;
+  let h = 0; const s = person.name || person.email || '';
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
+  return PERSON_HUES[h % PERSON_HUES.length];
+}
 function Avatar({ person, size = 22 }) {
+  const hue = personHue(person);
   return (
     <span title={person ? person.name + (person.email ? ' · ' + person.email : '') : 'Unknown'}
-      className="inline-flex items-center justify-center rounded-full bg-indigo-100 text-indigo-700 font-semibold border border-white"
-      style={{ width: size, height: size, fontSize: size * 0.42 }}>{initials(person && person.name)}</span>
+      className="inline-flex items-center justify-center rounded-full font-semibold border border-white"
+      style={{ width: size, height: size, fontSize: size * 0.42, background: 'hsl(' + hue + ' 85% 90%)', color: 'hsl(' + hue + ' 65% 32%)' }} data-testid="avatar">{initials(person && person.name)}</span>
   );
 }
 
@@ -615,7 +629,10 @@ function useTrackerData(authUser) {
       .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
     const workflows = (map.projectTypes || []).map(pt => ({ ...pt, documents: pt.documents || [] }));
     ROLE_LIST = map.roles || [];
-    return { roles: map.roles || [], workflows, people, projects, syncGroupMeta: map.syncGroupMeta || {} };
+    const meetings = Object.entries(trk.meetings || {}).map(([id, m]) => ({ ...m, id })).filter(m => m.date)
+      .sort((a, b) => a.date.localeCompare(b.date));
+    MEETING_LIST = meetings;
+    return { roles: map.roles || [], workflows, people, projects, meetings, syncGroupMeta: map.syncGroupMeta || {} };
   }, [map, trk]);
   return [data, online];
 }
@@ -715,7 +732,7 @@ function LoginScreen() {
   return (
     <div className="min-h-screen bg-slate-100 flex items-center justify-center p-4">
       <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-8">
-        <h1 className="text-xl font-bold text-slate-800 mb-1">CS Program Tracker</h1>
+        <h1 className="text-xl font-bold text-slate-800 mb-1">CS Development Tracker</h1>
         <p className="text-sm text-slate-500 mb-6">Continuing Studies · Langara College</p>
         <form onSubmit={submit} className="space-y-4">
           <div>
@@ -744,7 +761,7 @@ function PeopleModal({ data, onClose }) {
     const d = editing;
     if (!d.name.trim()) return;
     const id = d.id || uid();
-    dbSet('people/' + id, { name: d.name.trim(), email: d.email.trim(), roleIds: d.roleIds });
+    dbSet('people/' + id, { name: d.name.trim(), email: d.email.trim(), roleIds: d.roleIds, hue: typeof d.hue === 'number' ? d.hue : null });
     setEditing(null);
   };
   const del = (p) => {
@@ -778,6 +795,17 @@ function PeopleModal({ data, onClose }) {
       {editing && <div>
         <Field label="Name"><input autoFocus className={inputCls} value={editing.name} onChange={e => setEditing({ ...editing, name: e.target.value })} /></Field>
         <Field label="Email" hint="The address they sign in with."><input className={inputCls} value={editing.email} onChange={e => setEditing({ ...editing, email: e.target.value })} /></Field>
+        <Field label="Colour" hint="Picked automatically from the name; choose another if you like.">
+          <div className="flex items-center gap-1.5 flex-wrap" data-testid="hue-pick">
+            {PERSON_HUES.map(h => {
+              const on = personHue(editing) === h;
+              return <button key={h} onClick={() => setEditing({ ...editing, hue: h })} title="Use this colour"
+                className={`w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-semibold ${on ? 'ring-2 ring-offset-1 ring-slate-500' : ''}`}
+                style={{ background: 'hsl(' + h + ' 85% 90%)', color: 'hsl(' + h + ' 65% 32%)' }}>{initials(editing.name) || 'A'}</button>;
+            })}
+            {typeof editing.hue === 'number' && <button className="text-xs text-slate-500 hover:underline ml-1" onClick={() => setEditing({ ...editing, hue: null })}>Automatic</button>}
+          </div>
+        </Field>
         <Field label="Default roles" hint="A role can have more than one person.">
           <div className="flex flex-wrap gap-2">
             {data.roles.map(r => {
@@ -1256,7 +1284,7 @@ function StepModal({ project, doc, step, data, authUser, onClose }) {
       <div className="grid grid-cols-3 gap-3">
         <Field label="Start"><input type="date" className={inputCls} value={cell.startDate} onChange={e => setField('startDate', e.target.value)} /></Field>
         <Field label="Due"><input type="date" className={inputCls} value={cell.dueDate} onChange={e => setField('dueDate', e.target.value)} /></Field>
-        <Field label={step.triggerType === 'scheduled_meeting' ? 'Meeting date' : 'Meeting date (if any)'}><input type="date" className={inputCls} value={cell.meetingDate} onChange={e => setField('meetingDate', e.target.value)} /></Field>
+        <Field label={step.triggerType === 'scheduled_meeting' ? 'Meeting date' : 'Meeting date (if any)'}><MeetingDateField step={step} value={cell.meetingDate} onChange={v => setField('meetingDate', v)} /></Field>
       </div>
 
 <StepPeople project={project} doc={doc} step={step} cell={cell} data={data} authUser={authUser} path={path} />
@@ -2165,10 +2193,31 @@ function Stat({ label, value, sub, tone }) {
 
 // Upcoming meetings as events: one per date + step name, with the projects
 // going to it (a batch counts once).
-function meetingEvents(dates) {
+// ── Meeting schedule ───────────────────────────────────────────────────────────
+// tracker/meetings/<id> { name, date }. A scheduled meeting matches a step by
+// name, loosely: they match when they share a significant word, so "JCCS
+// Meeting" matches a step called "JCCS Review". Words like meeting / review /
+// approval are ignored for this.
+let MEETING_LIST = [];
+const MEETING_STOP = new Set(['meeting', 'meetings', 'review', 'approval', 'approved', 'the', 'of', 'and', 'for', 'to', 'a', 'mtg', 'session']);
+const meetingWords = (name) => (name || '').toLowerCase().split(/[^a-z0-9]+/).filter(w => w && !MEETING_STOP.has(w));
+function meetingMatches(name, stepName) {
+  const a = meetingWords(name), b = new Set(meetingWords(stepName));
+  return a.some(w => b.has(w));
+}
+const meetingsForStep = (step) => MEETING_LIST.filter(m => meetingMatches(m.name, step.stageName));
+
+function meetingEvents(dates, meetings, withinDays) {
   const ev = {};
+  // Scheduled meetings in range show even before any project is going.
+  (meetings || []).forEach(m => {
+    const n = daysUntil(m.date);
+    if (n < 0 || n > withinDays) return;
+    ev['m:' + m.id] = { key: 'm:' + m.id, date: m.date, days: n, name: m.name, scheduled: true, projects: [] };
+  });
   dates.filter(d => d.kind === 'meeting' && d.days >= 0).forEach(d => {
-    const k = d.date + '|' + stepKey(d.step.stageName);
+    const sched = (meetings || []).find(m => m.date === d.date && meetingMatches(m.name, d.step.stageName));
+    const k = sched ? 'm:' + sched.id : d.date + '|' + stepKey(d.step.stageName);
     const e = ev[k] || (ev[k] = { key: k, date: d.date, days: d.days, name: d.step.stageName, projects: [] });
     if (!e.projects.some(x => x.project.id === d.project.id)) e.projects.push({ project: d.project, docs: [] });
     const pe = e.projects.find(x => x.project.id === d.project.id);
@@ -2176,9 +2225,139 @@ function meetingEvents(dates) {
   });
   return Object.values(ev).sort((a, b) => a.date.localeCompare(b.date));
 }
+// Add meetings to the schedule: one name, then a list of dates.
+function MeetingScheduleModal({ data, onClose }) {
+  const [name, setName] = useState('');
+  const [dates, setDates] = useState(['']);
+  const names = [...new Set(data.meetings.map(m => m.name))];
+  const ok = name.trim() && dates.some(Boolean);
+  const save = () => {
+    const upd = {};
+    dates.filter(Boolean).forEach(d => { upd[uid()] = { name: name.trim(), date: d }; });
+    dbUpdate('meetings', upd);
+    setDates(['']);
+  };
+  const upcoming = data.meetings.filter(m => daysUntil(m.date) >= 0);
+  return (
+    <Modal title="Meeting schedule" wide onClose={onClose} footer={<Btn variant="secondary" onClick={onClose}>Done</Btn>}>
+      <p className="text-xs text-slate-500 mb-3">Scheduled meetings show on the dashboard and are highlighted in a step's meeting-date calendar when the step's name matches (e.g. "JCCS Meeting" matches "JCCS Review").</p>
+      <div className="border rounded-lg p-3 mb-4 bg-slate-50">
+        <Field label="Meeting">
+          <input className={inputCls} value={name} onChange={e => setName(e.target.value)} placeholder="e.g. JCCS Meeting" list="meeting-names" data-testid="meeting-name" />
+          <datalist id="meeting-names">{names.map(n => <option key={n} value={n} />)}</datalist>
+        </Field>
+        <Field label="Dates" hint="Add as many as you know.">
+          <div className="space-y-1.5" data-testid="meeting-dates">
+            {dates.map((d, i) => (
+              <div key={i} className="flex items-center gap-2">
+                <input type="date" className={inputCls} value={d} onChange={e => setDates(dates.map((x, j) => j === i ? e.target.value : x))} />
+                {dates.length > 1 && <button className="text-slate-400 hover:text-slate-700" onClick={() => setDates(dates.filter((x, j) => j !== i))} aria-label="Remove date"><Icon name="x" size={14} /></button>}
+              </div>
+            ))}
+            <button className="text-xs text-indigo-600 hover:underline inline-flex items-center gap-1" onClick={() => setDates([...dates, ''])} data-testid="meeting-add-date"><Icon name="plus" size={12} />Another date</button>
+          </div>
+        </Field>
+        <Btn disabled={!ok} onClick={save}><Icon name="plus" size={13} />Add to schedule</Btn>
+      </div>
+      <div className="text-sm font-semibold text-slate-700 mb-1">Coming up</div>
+      {!upcoming.length && <p className="text-xs text-slate-400">Nothing scheduled.</p>}
+      <ul className="divide-y border rounded-lg" data-testid="meeting-schedule">
+        {upcoming.map(m => (
+          <li key={m.id} className="flex items-center gap-2 px-3 py-1.5 text-sm">
+            <span className="w-24 text-slate-500 text-xs">{fmtDate(m.date)}</span>
+            <span className="flex-1 text-slate-800">{m.name}</span>
+            <button className="text-slate-400 hover:text-red-600" title="Remove from schedule" onClick={() => dbRemove('meetings/' + m.id)}><Icon name="trash" size={13} /></button>
+          </li>
+        ))}
+      </ul>
+    </Modal>
+  );
+}
+
+// A month calendar for a step's meeting date. Days with a scheduled meeting
+// matching the step are highlighted so they are easy to pick.
+function MeetingCalendar({ value, marks, onPick, onClose }) {
+  const start = value || (marks[0] && marks[0].date) || todayStr();
+  const [ym, setYm] = useState(start.slice(0, 7));
+  const ref = useRef(null);
+  useEffect(() => {
+    const off = (e) => { if (ref.current && !ref.current.contains(e.target)) onClose(); };
+    document.addEventListener('mousedown', off);
+    return () => document.removeEventListener('mousedown', off);
+  }, []);
+  const [y, m] = ym.split('-').map(Number);
+  const first = new Date(y, m - 1, 1);
+  const days = new Date(y, m, 0).getDate();
+  const pad = (n) => String(n).padStart(2, '0');
+  const shift = (k) => { const d = new Date(y, m - 1 + k, 1); setYm(d.getFullYear() + '-' + pad(d.getMonth() + 1)); };
+  const cells = [];
+  for (let i = 0; i < first.getDay(); i++) cells.push(null);
+  for (let d = 1; d <= days; d++) cells.push(ym + '-' + pad(d));
+  const today = todayStr();
+  return (
+    <div ref={ref} className="absolute z-40 mt-1 bg-white border border-slate-200 rounded-lg shadow-xl p-2 w-64 fade-in" data-testid="meeting-cal">
+      <div className="flex items-center justify-between mb-1">
+        <button className="p-1 text-slate-500 hover:text-slate-800" onClick={() => shift(-1)} aria-label="Previous month"><Icon name="chev_l" size={14} /></button>
+        <span className="text-sm font-semibold text-slate-700">{first.toLocaleDateString(undefined, { month: 'long', year: 'numeric' })}</span>
+        <button className="p-1 text-slate-500 hover:text-slate-800" onClick={() => shift(1)} aria-label="Next month"><Icon name="chev_r" size={14} /></button>
+      </div>
+      <div className="grid grid-cols-7 gap-0.5 text-center text-[10px] text-slate-400 mb-0.5">{['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((d, i) => <span key={i}>{d}</span>)}</div>
+      <div className="grid grid-cols-7 gap-0.5">
+        {cells.map((d, i) => {
+          if (!d) return <span key={i} />;
+          const mk = marks.filter(x => x.date === d);
+          const sel = d === value;
+          return (
+            <button key={i} onClick={() => onPick(d)} title={mk.map(x => x.name).join(', ')} data-marked={mk.length ? 'yes' : 'no'}
+              className={`h-8 rounded text-xs relative ${sel ? 'bg-indigo-600 text-white font-bold' : mk.length ? 'bg-indigo-50 text-indigo-700 font-semibold border border-indigo-300 hover:bg-indigo-100' : 'text-slate-700 hover:bg-slate-100'} ${d === today && !sel ? 'underline' : ''}`}>
+              {Number(d.slice(8))}
+              {mk.length > 0 && !sel && <span className="absolute bottom-0.5 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-indigo-500" />}
+            </button>
+          );
+        })}
+      </div>
+      {marks.length > 0 && <div className="text-[10px] text-slate-500 mt-1.5 flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-indigo-50 border border-indigo-300" />Scheduled: {[...new Set(marks.map(x => x.name))].join(', ')}</div>}
+      {value && <button className="text-[11px] text-slate-500 hover:underline mt-1" onClick={() => onPick('')}>Clear date</button>}
+    </div>
+  );
+}
+
+// The step panel's meeting date: the calendar above, and if a date is picked
+// that the schedule doesn't have, a question — was the meeting rescheduled?
+function MeetingDateField({ step, value, onChange }) {
+  const [open, setOpen] = useState(false);
+  const [ask, setAsk] = useState(null);
+  const marks = meetingsForStep(step);
+  const pick = (d) => {
+    setOpen(false);
+    if (!d || !marks.length || marks.some(m => m.date === d)) return onChange(d);
+    // Closest scheduled meeting to the picked date, preferring the one the
+    // step was set to.
+    const near = marks.find(m => m.date === value) || marks.slice().sort((a, b) => Math.abs(daysUntil(a.date) - daysUntil(d)) - Math.abs(daysUntil(b.date) - daysUntil(d)))[0];
+    setAsk({ d, near });
+  };
+  return (
+    <div className="relative">
+      <button onClick={() => setOpen(!open)} className={inputCls + ' text-left flex items-center gap-2'} data-testid="meeting-date-btn">
+        <Icon name="calendar" size={14} className="text-slate-400" />
+        <span className={value ? 'text-slate-800' : 'text-slate-400'}>{value ? fmtDate(value) : 'Pick a date'}</span>
+        {value && marks.length > 0 && !marks.some(m => m.date === value) && <span className="ml-auto text-[10px] text-amber-700 bg-amber-50 border border-amber-200 rounded px-1.5" data-testid="meeting-off-schedule">Not on the schedule</span>}
+      </button>
+      {open && <MeetingCalendar value={value} marks={marks} onPick={pick} onClose={() => setOpen(false)} />}
+      {ask && <Modal title="Was the meeting rescheduled?" onClose={() => setAsk(null)} footer={<>
+        <Btn variant="secondary" onClick={() => setAsk(null)}>Cancel</Btn>
+        <Btn variant="secondary" onClick={() => { onChange(ask.d); setAsk(null); }} >No, just use this date</Btn>
+        <Btn onClick={() => { dbUpdate('meetings/' + ask.near.id, { date: ask.d }); onChange(ask.d); setAsk(null); }} >Yes, move it</Btn>
+      </>}>
+        <p className="text-sm text-slate-700" data-testid="reschedule-ask">No {ask.near.name} is scheduled on {fmtDate(ask.d)}. Has the {fmtDate(ask.near.date)} {ask.near.name} been moved to {fmtDate(ask.d)}? Moving it updates the schedule for everyone.</p>
+      </Modal>}
+    </div>
+  );
+}
+
 function MeetingList({ events, onOpen }) {
   const [open, setOpen] = useState({});
-  if (!events.length) return <p className="text-xs text-slate-400">No meetings in the next 14 days.</p>;
+  if (!events.length) return <p className="text-xs text-slate-400">No meetings in the next 30 days.</p>;
   return (
     <ul className="divide-y">
       {events.map(e => {
@@ -2371,7 +2550,24 @@ function Panel({ title, icon, children, testid, right, accent = '#64748b', count
 
 // One row per project. Left: what it is and when it's due. Right: overall
 // progress, and one chip per document filled to its own progress.
-function ProjectRow({ project, people, onOpen, selected, onSelect }) {
+// A project's state for its bar: the most pressing status on any open step.
+// Held up wins over sent back, which wins over in progress.
+function projectTone(project, st) {
+  if (st.done) return STATUS.complete.color;
+  if (st.held) return STATUS.held_up.color;
+  if (st.sentBack) return '#7c3aed';
+  const started = project.documents.some(d => d.steps.some(s => cellOf(project, d.id, s.id).status !== 'pending'));
+  return started ? STATUS.in_progress.color : STATUS.pending.color;
+}
+// A document's tone: its current step's status, or complete.
+function docTone(project, d) {
+  const w = docWindow(project, d);
+  if (w.cur < 0) return { color: STATUS.complete.color, w };
+  const c = cellOf(project, d.id, d.steps[w.cur].id);
+  return { color: c.round > 1 && c.status !== 'pending' ? '#7c3aed' : STATUS[c.status].color, w, c };
+}
+function ProjectRow({ project, people, onOpen, selected, onSelect, showDocs, detailed }) {
+  const [docsOpen, setDocsOpen] = useState(false);
   const st = projectStats(project);
   // Everyone on any step, through a role or tagged directly.
   const pids = new Set();
@@ -2380,10 +2576,14 @@ function ProjectRow({ project, people, onOpen, selected, onSelect }) {
   const due = !st.done ? dueLabel(project.dueDate) : null;
   const stale = !project.archived && !st.done && (Date.now() - st.lastAt) > STALE_DAYS * 86400000;
   const updated = new Date(st.lastAt).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+  const tone = projectTone(project, st);
+  const docs = showDocs || docsOpen;
+  const total = project.documents.reduce((n, d) => n + d.steps.length, 0) || 1;
   return (
-    <div className={`flex items-stretch border-b last:border-b-0 ${selected ? 'bg-indigo-50/60' : ''}`}>
+    <div className={`border-b last:border-b-0 ${selected ? 'bg-indigo-50/60' : ''}`}>
+    <div className="flex items-stretch">
     {onSelect && <label className="flex items-start pl-3 pt-4 cursor-pointer" title="Select"><input type="checkbox" checked={!!selected} onChange={e => onSelect(e.target.checked)} data-testid="row-select" /></label>}
-    <button onClick={() => onOpen(project.id)} className="flex-1 min-w-0 text-left grid grid-cols-1 md:grid-cols-[minmax(240px,1fr)_minmax(0,1.3fr)] gap-x-6 gap-y-2 px-4 py-3 hover:bg-slate-50" data-testid="project-row">
+    <button onClick={() => onOpen(project.id)} className="flex-1 min-w-0 text-left grid grid-cols-1 md:grid-cols-[minmax(240px,1fr)_minmax(0,1.3fr)] gap-x-6 gap-y-2 px-4 py-3 hover:bg-slate-50 items-center" data-testid="project-row">
       <div className="min-w-0">
         <div className="flex items-center gap-1.5 min-w-0">
           <span className="text-[15px] font-bold text-slate-800 truncate">{project.name}</span>
@@ -2391,26 +2591,43 @@ function ProjectRow({ project, people, onOpen, selected, onSelect }) {
           {st.sentBack > 0 && <span className="text-violet-600 flex-shrink-0" title={st.sentBack + (st.sentBack === 1 ? ' step' : ' steps') + ' sent back for another round'}><Icon name="ret" size={15} /></span>}
           {stale && <span className="text-slate-400 flex-shrink-0" title={'No activity in ' + STALE_DAYS + '+ days'}><Icon name="clock" size={15} /></span>}
         </div>
-        <div className="text-xs text-slate-500 mt-0.5">
-          {project.workflowName}{project.batch ? ' · ' + project.items.length + (project.items.length === 1 ? ' initiative' : ' initiatives') : ''}
-          {' · '}
+        <div className="text-xs text-slate-500 mt-0.5 flex items-center gap-x-1 gap-y-1 flex-wrap">
+          <span>{project.workflowName}{project.batch ? ' · ' + project.items.length + (project.items.length === 1 ? ' initiative' : ' initiatives') : ''}</span>
+          <span>·</span>
           {st.done ? <span className="text-emerald-700 font-medium">Complete</span>
             : project.dueDate ? <span className={due && due.tone !== 'slate' ? (due.tone === 'red' ? 'text-red-700 font-medium' : 'text-amber-700 font-medium') : ''}>Due: {fmtDate(project.dueDate)}{due && due.tone !== 'slate' ? ' (' + due.text.toLowerCase() + ')' : ''}</span>
-            : 'No due date'}
-          {' · '}Updated: {updated}
+            : <span>No due date</span>}
+          <span>·</span><span>Updated: {updated}</span>
+          {ppl.length > 0 && <span className="inline-flex items-center gap-0.5 ml-1" data-testid="project-people">{ppl.map(p => <Avatar key={p.id} person={p} size={18} />)}</span>}
         </div>
-        {ppl.length > 0 && <div className="flex items-center gap-1 flex-wrap mt-1.5" data-testid="project-people">
-          {ppl.map(p => <Avatar key={p.id} person={p} size={24} />)}
-        </div>}
       </div>
-      <div className="min-w-0">
-        <div className="relative h-5 bg-slate-100 border border-slate-300 rounded-full overflow-hidden" data-testid="overall-bar">
-          <div className="absolute inset-y-0 left-0 bg-emerald-500 transition-all" style={{ width: st.pct + '%' }} />
-          {/* The % sits at the end of the fill: inside it once there is room, just past it before then. */}
-          <span className={`absolute inset-y-0 flex items-center text-[11px] font-bold ${st.pct >= 12 ? 'text-white' : 'text-slate-600'}`}
-            style={st.pct >= 12 ? { right: 'calc(' + (100 - st.pct) + '% + 6px)' } : { left: 'calc(' + st.pct + '% + 6px)' }}>{st.pct}%</span>
-        </div>
-        <div className="grid gap-1.5 mt-1.5" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(128px, 1fr))' }} data-testid="doc-chips">
+      <div className="min-w-0 flex items-center gap-2">
+        {detailed
+          ? <div className="relative flex-1 h-5 flex gap-0.5" data-testid="overall-bar" data-detailed="yes">
+              {project.documents.map(d => {
+                const t = docTone(project, d);
+                return (
+                  <span key={d.id} className="relative h-full rounded-sm overflow-hidden border" title={d.name + ' — ' + (t.c ? d.steps[t.w.cur].stageName + ' (' + STATUS[t.c.status].label + ')' : 'done') + ', ' + t.w.pct + '%'}
+                    style={{ flex: d.steps.length / total, borderColor: t.color + '99', background: t.color + '1f' }}>
+                    <span className="absolute inset-y-0 left-0" style={{ width: t.w.pct + '%', background: t.color }} />
+                  </span>
+                );
+              })}
+            </div>
+          : <div className="relative flex-1 h-5 bg-slate-100 border border-slate-300 rounded-full overflow-hidden" data-testid="overall-bar" data-tone={tone}>
+              <div className="absolute inset-y-0 left-0 transition-all" style={{ width: st.pct + '%', background: tone }} />
+              {/* The % sits at the end of the fill: inside it once there is room, just past it before then. */}
+              <span className={`absolute inset-y-0 flex items-center text-[11px] font-bold ${st.pct >= 12 ? 'text-white' : 'text-slate-600'}`}
+                style={st.pct >= 12 ? { right: 'calc(' + (100 - st.pct) + '% + 6px)' } : { left: 'calc(' + st.pct + '% + 6px)' }}>{st.pct}%</span>
+            </div>}
+        {detailed && <span className="text-[11px] font-bold text-slate-600 w-8 text-right">{st.pct}%</span>}
+        {!showDocs && <span role="button" tabIndex={0} onClick={e => { e.stopPropagation(); setDocsOpen(!docsOpen); }} title={docsOpen ? 'Hide documents' : 'Show documents'}
+          className="text-slate-400 hover:text-slate-700 p-0.5 rounded" data-testid="row-docs-toggle"><Icon name={docsOpen ? 'chev_u' : 'chev_d'} size={14} /></span>}
+      </div>
+    </button>
+    </div>
+    {docs && <div data-testid="doc-chips-wrap">
+        <div className="grid gap-1.5 mt-1.5 pl-[34px] pr-4 pb-2.5" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(128px, 1fr))' }} data-testid="doc-chips">
           {project.batch && project.items.map(it => {
             const s = itemStats(project, it.id);
             return (
@@ -2438,8 +2655,7 @@ function ProjectRow({ project, people, onOpen, selected, onSelect }) {
             );
           })}
         </div>
-      </div>
-    </button>
+    </div>}
     </div>
   );
 }
@@ -2747,7 +2963,7 @@ function mergeToBatch(projects, target, name, authUser) {
   });
 }
 
-function BulkBar({ selected, shown, data, authUser, onSelectAll, onClear, onOpen }) {
+function BulkBar({ selected, shown, data, authUser, onSelectAll, onClear, onOpen, extra }) {
   const [modal, setModal] = useState(null);   // 'status' | 'dates' | 'delete' | 'batch'
   const [status, setStatus] = useState('in_progress');
   const [reason, setReason] = useState('');
@@ -2806,6 +3022,7 @@ function BulkBar({ selected, shown, data, authUser, onSelectAll, onClear, onOpen
         <button className={btn + ' text-red-700 border-red-200'} onClick={() => setModal('delete')} data-testid="bulk-delete"><Icon name="trash" size={12} />Delete</button>
         <button className="text-slate-500 hover:underline ml-1" onClick={onClear}>Clear</button>
       </>}
+      {extra && <span className="ml-auto flex items-center gap-3">{extra}</span>}
       {modal === 'status' && <Modal title={'Set the current step of ' + n + (n === 1 ? ' project' : ' projects')} onClose={close} footer={<>
         <Btn variant="secondary" onClick={close}>Cancel</Btn>
         <Btn disabled={needsReason && !reason.trim()} onClick={applyStatus}>Apply</Btn>
@@ -2863,6 +3080,7 @@ function BulkBar({ selected, shown, data, authUser, onSelectAll, onClear, onOpen
   );
 }
 
+const LIST_PREFS_KEY = 'cs_tracker_list_prefs_v1';
 function Dashboard({ data, authUser, online, onOpen, onNew }) {
   const [sel, setSel] = useState(() => new Set());
   const me = meOf(data.people, authUser);
@@ -2872,6 +3090,9 @@ function Dashboard({ data, authUser, online, onOpen, onNew }) {
   const [types, setTypes] = useState(null);   // null = every workflow
   const [report, setReport] = useState(null); // narrow view: which report panel is open
   const [attAll, setAttAll] = useState(false);
+  // Per-viewer list display: document chips and the per-document bar.
+  const [listPrefs, setListPrefsState] = useState(() => { try { return JSON.parse(localStorage.getItem(LIST_PREFS_KEY) || '{}'); } catch (e) { return {}; } });
+  const setListPref = (k, v) => setListPrefsState(prev => { const n = { ...prev, [k]: v }; try { localStorage.setItem(LIST_PREFS_KEY, JSON.stringify(n)); } catch (e) {} return n; });
   const narrow = useNarrow();
   const repRef = useRef(null);
   useEffect(() => {
@@ -2922,7 +3143,8 @@ function Dashboard({ data, authUser, online, onOpen, onNew }) {
   let held = 0, sentBack = 0;
   stats.forEach(x => { held += x.st.held; sentBack += x.st.sentBack; });
   const dates = upcomingDates(active, 14);
-  const meetings = meetingEvents(dates);
+  const meetings = meetingEvents(upcomingDates(active, 30), data.meetings, 30);
+  const [schedOpen, setSchedOpen] = useState(false);
   const stale = stats.filter(x => !x.st.done && (Date.now() - x.st.lastAt) > STALE_DAYS * 86400000);
   const tiles = [
     { label: 'Active projects', short: 'Active', value: active.filter(p => !projectStats(p).done).length, icon: 'dashboard', color: '#F15A22', sub: stats.filter(x => x.st.done).length + ' complete', always: true },
@@ -2971,7 +3193,7 @@ function Dashboard({ data, authUser, online, onOpen, onNew }) {
   const reports = [
     { id: 'status', short: 'Status', title: 'Project status', icon: 'dashboard', accent: '#059669', testid: 'report-status', value: data.projects.length, sub: 'projects',
       body: <StatusDonut projects={data.projects} /> },
-    { id: 'dates', short: 'Meetings', title: 'Meetings, next 14 days', icon: 'calendar', accent: '#0284c7', testid: 'report-dates', value: meetings.length, sub: meetings.length === 1 ? 'meeting' : 'meetings',
+    { id: 'dates', short: 'Meetings', title: 'Meetings, next 30 days', right: <button onClick={() => setSchedOpen(true)} className="text-[11px] text-indigo-600 hover:underline inline-flex items-center gap-1" data-testid="schedule-btn"><Icon name="plus" size={11} />Schedule</button>, icon: 'calendar', accent: '#0284c7', testid: 'report-dates', value: meetings.length, sub: meetings.length === 1 ? 'meeting' : 'meetings',
       body: <MeetingList events={meetings} onOpen={onOpen} /> },
     { id: 'recent', short: 'Updates', title: 'Recent updates', icon: 'history', accent: '#0f766e', testid: 'recent', value: recentLast ? timeAgo(recentLast) : '—', sub: 'last update',
       body: <RecentUpdates projects={active} onOpen={onOpen} /> },
@@ -2979,7 +3201,7 @@ function Dashboard({ data, authUser, online, onOpen, onNew }) {
   const openRep = reports.find(r => r.id === report);
 
   const projectsBox = (
-    <section className="bg-white border border-slate-200 rounded-xl min-w-0" data-testid="projects">
+    <section className={`bg-white border border-slate-200 rounded-xl min-w-0 flex flex-col ${narrow ? '' : 'overflow-hidden'}`} style={narrow ? undefined : { maxHeight: 'calc(100vh - 205px)' }} data-testid="projects">
       {/* Narrow: search + New project on line 1, the filters on line 2. */}
       <div className={`flex items-center gap-2 px-3 py-2.5 border-b border-slate-200 ${narrow ? 'flex-wrap' : ''}`}>
         <div className={`relative ${narrow ? 'flex-1 min-w-0 order-1' : 'w-1/3'}`}>
@@ -3005,9 +3227,16 @@ function Dashboard({ data, authUser, online, onOpen, onNew }) {
         {data.projects.length ? <>No projects match these filters. <button className="text-indigo-600 hover:underline" onClick={clear}>Show all</button></> : 'No projects yet. Start one from a workflow with New project.'}
       </div>}
       {list.length > 0 && <BulkBar selected={list.filter(p => sel.has(p.id))} shown={list} data={data} authUser={authUser} onOpen={onOpen}
-        onSelectAll={() => setSel(new Set(list.map(p => p.id)))} onClear={() => setSel(new Set())} />}
-      {list.map(p => <ProjectRow key={p.id} project={p} people={data.people} onOpen={onOpen} selected={sel.has(p.id)}
+        onSelectAll={() => setSel(new Set(list.map(p => p.id)))} onClear={() => setSel(new Set())}
+        extra={<>{[['docs', 'Documents', 'Show every project\'s document progress'], ['detailed', 'Detailed progress', 'Split each bar by document, coloured by its status']].map(([k, label, tip]) => (
+            <label key={k} title={tip} className="inline-flex items-center gap-1.5 text-xs text-slate-600 cursor-pointer whitespace-nowrap" data-testid={'pref-' + k}>
+              <input type="checkbox" checked={!!listPrefs[k]} onChange={e => setListPref(k, e.target.checked)} />{label}
+            </label>
+          ))}</>} />}
+      <div className={narrow ? '' : 'flex-1 min-h-0 overflow-y-auto'} data-testid="project-scroll">
+      {list.map(p => <ProjectRow key={p.id} project={p} people={data.people} onOpen={onOpen} selected={sel.has(p.id)} showDocs={!!listPrefs.docs} detailed={!!listPrefs.detailed}
         onSelect={on => setSel(prev => { const n = new Set(prev); on ? n.add(p.id) : n.delete(p.id); return n; })} />)}
+      </div>
     </section>
   );
 
@@ -3042,7 +3271,8 @@ function Dashboard({ data, authUser, online, onOpen, onNew }) {
 
   return (
     <>
-      <TopBar eyebrow="Program Tracker" title="Dashboard" sub={<SyncLine online={online}>{' · ' + active.length + ' active ' + (active.length === 1 ? 'project' : 'projects')}</SyncLine>} />
+      {schedOpen && <MeetingScheduleModal data={data} onClose={() => setSchedOpen(false)} />}
+      <TopBar eyebrow="Development Tracker" title="Dashboard" sub={<SyncLine online={online}>{' · ' + active.length + ' active ' + (active.length === 1 ? 'project' : 'projects')}</SyncLine>} />
       <div className="flex-1 min-h-0 overflow-auto p-4">
         {narrow ? <>
           {/* Narrow: Needs your attention in full, then one row of small cards —
@@ -3063,7 +3293,7 @@ function Dashboard({ data, authUser, online, onOpen, onNew }) {
               ))}
             </div>
             {openRep && <div className="mt-2 fade-in" data-testid="report-drop">
-              <Panel title={openRep.title} icon={openRep.icon} testid={openRep.testid} accent={openRep.accent}>{openRep.body}</Panel>
+              <Panel title={openRep.title} icon={openRep.icon} testid={openRep.testid} accent={openRep.accent} right={openRep.right}>{openRep.body}</Panel>
             </div>}
           </div>
           {projectsBox}
@@ -3073,7 +3303,7 @@ function Dashboard({ data, authUser, online, onOpen, onNew }) {
             {projectsBox}
             <div className="space-y-4 min-w-0">
               {attentionPanel}
-              {reports.map(r => <Panel key={r.id} title={r.title} icon={r.icon} testid={r.testid} accent={r.accent}>{r.body}</Panel>)}
+              {reports.map(r => <Panel key={r.id} title={r.title} icon={r.icon} testid={r.testid} accent={r.accent} right={r.right}>{r.body}</Panel>)}
             </div>
           </div>
         </>}
@@ -3187,6 +3417,22 @@ function InitialsBadge({ name, ring, active }) {
     style={{ border: '2px solid ' + ring, background: active ? '#DD4513' : '#fff', color: active ? '#fff' : '#334155' }}>{railInitials(name)}</span>;
 }
 
+// The full name of a sidebar item, floated over it on hover when the name is
+// cut off — the same look as the rail's flyout, drawn through a portal so the
+// scrolling sidebar can't clip it.
+function HoverTitle({ text, className }) {
+  const [rect, setRect] = useState(null);
+  const ref = useRef(null);
+  const show = () => { const el = ref.current; if (el && el.scrollWidth > el.clientWidth) { const r = el.getBoundingClientRect(); setRect({ top: r.top, left: r.left, height: r.height }); } };
+  return (
+    <span ref={ref} className={className} onMouseEnter={show} onMouseLeave={() => setRect(null)}>
+      {text}
+      {rect && ReactDOM.createPortal(
+        <span className="hover-title" style={{ top: rect.top - 4, left: rect.left - 8, minHeight: rect.height + 8 }} data-testid="hover-title">{text}</span>, document.body)}
+    </span>
+  );
+}
+
 function Sidebar({ data, route, go, authUser, onModal, sb }) {
   const projects = data.projects.filter(p => !p.archived);
   const pick = (id) => { go(id); sb.close(); };
@@ -3195,9 +3441,9 @@ function Sidebar({ data, route, go, authUser, onModal, sb }) {
     <button onClick={() => pick(null)} className="w-full text-left border-b border-slate-200 hover:bg-slate-50 transition-colors flex flex-col justify-center shrink-0 overflow-hidden"
       style={{ height: CHROME_BAR_H, paddingLeft: sb.expanded ? 16 : 0, alignItems: sb.expanded ? 'stretch' : 'center' }} title="Dashboard">
       {sb.expanded ? <>
-        <div className="font-bold text-slate-800 text-sm leading-tight whitespace-nowrap">Program Tracker</div>
+        <div className="font-bold text-slate-800 text-sm leading-tight whitespace-nowrap">Development Tracker</div>
         <div className="text-xs text-slate-400 mt-0.5 whitespace-nowrap">Langara Continuing Studies</div>
-      </> : <div className="font-bold text-slate-800 text-sm">PT</div>}
+      </> : <div className="font-bold text-slate-800 text-sm">DT</div>}
     </button>
   );
   if (!sb.expanded) return (
@@ -3206,17 +3452,15 @@ function Sidebar({ data, route, go, authUser, onModal, sb }) {
       <div className="flex-1 overflow-y-auto py-2 flex flex-col items-start gap-1 pl-3">
         <RailItem icon="sb_open" label="Expand sidebar" onClick={sb.toggle} testid="rail-expand" />
         <RailItem icon="dashboard" label="Dashboard" active={!route} onClick={() => pick(null)} />
-        <RailItem icon="plus" label="New project" onClick={() => onModal('new')} />
+        <RailItem icon="map" label="Workflow Tool" href={MAP_URL} />
+        <RailItem icon="settings" label="Settings" onClick={() => onModal('settings')} testid="settings-btn" />
         <div className="w-8 border-t border-slate-200 my-1" />
+        <RailItem icon="plus" label="New project" onClick={() => onModal('new')} />
         {projects.map(p => {
           const [ring, label] = projectRing(p);
           return <RailItem key={p.id} badge={<InitialsBadge name={p.name} ring={ring} active={route === p.id} />}
             label={p.name} sub={label + ' · ' + projectStats(p).pct + '%'} onClick={() => pick(p.id)} testid="rail-project" />;
         })}
-      </div>
-      <div className="py-2 pl-3 border-t border-slate-200 flex flex-col gap-1">
-        <RailItem icon="map" label="Workflow Tool" href={MAP_URL} />
-        <RailItem icon="settings" label="Settings" onClick={() => onModal('settings')} testid="settings-btn" />
       </div>
     </aside>
   );
@@ -3227,6 +3471,14 @@ function Sidebar({ data, route, go, authUser, onModal, sb }) {
         <div onClick={() => pick(null)} className={item(!route)} data-testid="nav-dashboard">
           <Icon name="dashboard" size={15} className={!route ? 'text-indigo-200' : 'text-slate-400'} />
           <span className="text-sm font-medium">Dashboard</span>
+        </div>
+        <a href={MAP_URL} className={item(false)} data-testid="nav-switch">
+          <Icon name="map" size={15} className="text-slate-400" />
+          <span className="text-sm font-medium">Workflow Tool</span>
+        </a>
+        <div onClick={() => onModal('settings')} className={item(false)} data-testid="settings-btn">
+          <Icon name="settings" size={15} className="text-slate-400" />
+          <span className="text-sm font-medium">Settings</span>
         </div>
         <div className="flex items-center justify-between mt-4 mb-2 px-1">
           <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">Projects</span>
@@ -3240,21 +3492,13 @@ function Sidebar({ data, route, go, authUser, onModal, sb }) {
           const st = projectStats(p);
           const on = route === p.id;
           return (
-            <div key={p.id} onClick={() => pick(p.id)} className={item(on)} title={p.name}>
-              <span className="text-sm font-medium truncate flex-1">{p.name}</span>
+            <div key={p.id} onClick={() => pick(p.id)} className={item(on)}>
+              <HoverTitle text={p.name} className="text-sm font-medium truncate flex-1 min-w-0" />
               {st.held > 0 && <span className={on ? 'text-amber-200' : 'text-amber-600'} title="Held up"><Icon name="held" size={13} /></span>}
               <span className={`text-[10px] tabular-nums ${on ? 'text-indigo-200' : 'text-slate-400'}`}>{st.pct}%</span>
             </div>
           );
         })}
-      </div>
-      <div className="p-3 border-t border-slate-200 space-y-1.5">
-        <a href={MAP_URL} className="w-full px-3 py-2.5 rounded-lg text-sm text-slate-700 border border-slate-200 hover:bg-slate-50 flex items-center gap-2.5 transition-colors">
-          <Icon name="map" size={16} className="text-slate-500" /> Workflow Tool
-        </a>
-        <button onClick={() => onModal('settings')} data-testid="settings-btn" className="w-full px-3 py-2.5 rounded-lg text-sm text-slate-700 border border-slate-200 hover:bg-slate-50 flex items-center gap-2.5 transition-colors">
-          <Icon name="settings" size={16} className="text-slate-500" /> Settings
-        </button>
       </div>
     </aside>
   );
@@ -3272,7 +3516,7 @@ function App({ authUser }) {
   }, []);
   const go = useCallback((id) => { location.hash = id ? '#/p/' + id : '#/'; setRoute(id); }, []);
   const project = data && route ? data.projects.find(p => p.id === route) : null;
-  useEffect(() => { document.title = project ? project.name + ' · Program Tracker' : 'Program Tracker'; }, [project && project.name]);
+  useEffect(() => { document.title = project ? project.name + ' · Development Tracker' : 'Development Tracker'; }, [project && project.name]);
 
   if (!data) return <div className="flex items-center justify-center h-screen text-slate-400 text-sm">Loading…</div>;
   return (

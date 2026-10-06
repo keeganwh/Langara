@@ -42,6 +42,17 @@ about to do something risky, take both.
 
 ## Released versions
 
+### v2.7 — dashboards, meeting schedule, Development Tracker
+Archive branch: `archive/v2.7-pre-dashboards` (commit `0be0b21`, the version before)
+
+Workflow Tool opens on a dashboard of actions; both sidebars put Dashboard,
+the other app and Settings at the top. The tracker is renamed Development
+Tracker (file still `tracker.html`). Tracker: meeting schedule
+(`tracker/meetings`) with a highlighted calendar on steps, person colours,
+status-coloured / per-document progress bars, document chips off by
+default, independently scrolling project list. New data (`meetings`,
+`people/*/hue`, `hiddenDocs`) is ignored by older pages.
+
 ### v2.6 — tracker batches, task statuses
 Archive branch: `archive/v2.6-pre-batch`
 
