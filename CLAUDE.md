@@ -576,7 +576,11 @@ status colour. The Workflow Tool carries the identical `tw-brand` block (read by
 - **Apply to all initiatives** is a checkbox beside the step panel's Status
   label. Ticking it (`tickAll`) copies the current status, held reason and
   meeting date to the other initiatives at once, so choosing the status first
-  still works; the meeting checkbox behaves the same.
+  still works; the meeting checkbox behaves the same. The Tasks list has its
+  own separate Apply to all initiatives checkbox: ticking copies the task
+  statuses across, and while on every task change (`setTaskAll`) goes to each
+  initiative's copy. The "mark the step complete?" question is asked once and
+  the answer applies to every initiative (`setTask`'s `autoComplete`).
 - **Deleting a project** asks in a `ConfirmModal`, not a typed prompt. Delete
   and Archive sit together on the left of the settings footer. Both show a
   5-second **Undo** toast (`UndoToast`, `showUndo`): `deleteProjects` reads
@@ -625,7 +629,7 @@ pending); the steps a send-back reset to pending still show their round badge.
   next for their document, sorted by due date.
 - Routing is the hash (`#/p/<id>`), so projects can be linked directly.
 
-Checks: `cd dev && npm run tracker` (94 checks, own Firebase stub with nested
+Checks: `cd dev && npm run tracker` (96 checks, own Firebase stub with nested
 paths and live listeners — see `dev/tracker-preview.js`).
 
 ## Conventions to follow

@@ -324,6 +324,18 @@ const cell = (d, docId, stepId) => {
   ok('merged progress moves to docId__initiativeId', !!mb && (!srcWithProg || Object.keys(mb.progress || {}).some(k => /^d1__/.test(k))));
   ok('the originals are archived with a note', singles.every(([id]) => d.tracker.projects[id].archived && /Added to the batch "Merged Batch"/.test(d.tracker.projects[id].notes)));
 
+  // Tasks across initiatives, in the merged batch (every document per initiative).
+  const mbId = Object.entries(d.tracker.projects).find(([, x]) => x.name === 'Merged Batch')[0];
+  await p.evaluate((id) => { location.hash = '#/p/' + id; }, mbId); await p.waitForTimeout(300);
+  await p.evaluate(() => { const b = document.querySelector('button[data-view=overview]'); if (b) b.click(); }); await p.waitForTimeout(200);
+  await p.evaluate(() => { const c = [...document.querySelectorAll('[data-kind=now]')].find(x => /Draft/.test(x.innerText) && /Concept Paper/.test(x.closest('[data-testid=ov-doc]') ? x.closest('[data-testid=ov-doc]').innerText : x.innerText)); (c || document.querySelector('[data-kind=now]')).click(); }); await p.waitForTimeout(200);
+  ok('the tasks list offers its own Apply to all initiatives', await p.evaluate(() => !!document.querySelector('[data-testid=all-tasks]')));
+  await p.evaluate(() => document.querySelector('[data-testid=all-tasks] input').click()); await p.waitForTimeout(100);
+  await p.evaluate(() => { const c = [...document.querySelectorAll('[data-testid=panel-task]')].find(x => !x.checked); c && c.click(); }); await p.waitForTimeout(300);
+  d = await db(p);
+  { const b = d.tracker.projects[mbId]; const counts = b.items.map(it => Object.keys((((b.progress || {})['d1__' + it.id] || {}).s1 || {}).checks || {}).length);
+    ok('a task ticked with it on is ticked on every initiative', counts.every(n => n > 0)); }
+
   console.log('\nNarrow window');
   await p.setViewportSize({ width: 1100, height: 900 });
   await p.evaluate(() => { location.hash = '#/'; }); await p.waitForTimeout(300);

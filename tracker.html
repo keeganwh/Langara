@@ -1106,6 +1106,7 @@ function StepModal({ project, doc, step, data, authUser, onClose }) {
   const meetingName = step.syncGroupId && project.syncGroupMeta[step.syncGroupId] ? project.syncGroupMeta[step.syncGroupId].name : '';
   // In a batch, the same step of the same document in every other item.
   const [allItems, setAllItems] = useState(false);
+  const [allTasks, setAllTasks] = useState(false);
   const itemSiblings = doc.itemId ? project.documents.filter(d => d.srcDocId === doc.srcDocId && d.id !== doc.id)
     .map(d => ({ doc: d, step: d.steps.find(s => s.id === step.id) })).filter(x => x.step) : [];
   const targets = (() => {
@@ -1124,6 +1125,18 @@ function StepModal({ project, doc, step, data, authUser, onClose }) {
       const c = cellOf(project, x.doc.id, x.step.id);
       if (cell.status !== 'pending' && (c.status !== cell.status || (cell.heldReason || '') !== (c.heldReason || ''))) setStepStatus(project, x.doc, x.step, cell.status, cell.heldReason || null, authUser);
       if (cell.meetingDate && c.meetingDate !== cell.meetingDate) dbUpdate(cellPath(project.id, x.doc.id, x.step.id), { meetingDate: cell.meetingDate });
+    });
+  };
+  // Tasks: ticking copies this step's task statuses to every initiative.
+  const tickTasks = (on) => {
+    setAllTasks(on);
+    if (!on) return;
+    itemSiblings.forEach(x => {
+      const c = cellOf(project, x.doc.id, x.step.id);
+      step.actions.forEach((a, i) => {
+        const want = taskStatus(roundChecks(cell), i);
+        if (taskStatus(roundChecks(c), i) !== want) setTask(project, x.doc, x.step, c, i, want, authUser, false);
+      });
     });
   };
   const setStatus = (status, reason) => targets.forEach(t => setStepStatus(project, t.doc, t.step, status, reason, authUser));
@@ -1205,11 +1218,22 @@ function StepModal({ project, doc, step, data, authUser, onClose }) {
       </div>
 
       {step.actions.length > 0 && (
-        <Field label={'Tasks · ' + checkCount(step, cell).done + ' of ' + step.actions.length} hint={cell.round > 1 ? 'Round ' + cell.round + ' — the checklist starts fresh each round.' : 'From the step\'s actions in the Workflow Map.'}>
-          <div className="border rounded-lg divide-y" data-testid="checklist">
-            {step.actions.map((a, i) => <TaskRow key={i} project={project} doc={doc} step={step} cell={cell} i={i} data={data} authUser={authUser} />)}
+        <div className="mb-4">
+          <div className="flex items-center gap-3 mb-1">
+            <span className="text-sm font-semibold text-slate-700">{'Tasks · ' + checkCount(step, cell).done + ' of ' + step.actions.length}</span>
+            {itemSiblings.length > 0 && (
+              <label className="inline-flex items-center gap-1.5 text-xs text-slate-600 cursor-pointer" data-testid="all-tasks"
+                title={'Also sets task statuses for: ' + itemSiblings.map(x => x.doc.itemName).join(', ')}>
+                <input type="checkbox" checked={allTasks} onChange={e => tickTasks(e.target.checked)} />
+                Apply to all initiatives ({itemSiblings.length + 1})
+              </label>
+            )}
           </div>
-        </Field>
+          <p className="text-xs text-slate-400 mb-1.5">{cell.round > 1 ? 'Round ' + cell.round + ' — the checklist starts fresh each round.' : 'From the step\'s actions in the Workflow Map.'}</p>
+          <div className="border rounded-lg divide-y" data-testid="checklist">
+            {step.actions.map((a, i) => <TaskRow key={i} project={project} doc={doc} step={step} cell={cell} i={i} data={data} authUser={authUser} also={allTasks ? itemSiblings : null} />)}
+          </div>
+        </div>
       )}
 
       {(step.notes || step.storageLocation || step.triggerType) && (
@@ -1624,7 +1648,10 @@ function setStepStatus(project, doc, step, status, reason, authUser) {
 // Set one task's status. The step follows in two cases only: a held-up task
 // holds the step up, and when every task is complete or skipped the step
 // offers to mark itself complete.
-function setTask(project, doc, step, cell, i, status, authUser) {
+// `autoComplete` answers the "mark the step complete?" question without
+// asking (true/false); left undefined it asks. Returns the answer, so one
+// question can cover a task applied to every initiative.
+function setTask(project, doc, step, cell, i, status, authUser, autoComplete) {
   const p = cellPath(project.id, doc.id, step.id) + '/checks/r' + cell.round + '/t' + i;
   const a = step.actions[i];
   if (status === 'pending') dbRemove(p);
@@ -1635,17 +1662,28 @@ function setTask(project, doc, step, cell, i, status, authUser) {
   if (status === 'held_up' && cell.status !== 'held_up') {
     setStepStatus(project, doc, step, 'held_up', 'Task held up: ' + taskText(a), authUser);
   } else if (step.actions.every((x, j) => taskDone(taskStatus(next, j))) && !isClosed(cell.status)) {
-    if (confirm('Every task on "' + step.stageName + '" is complete or skipped. Mark the step complete?')) setStepStatus(project, doc, step, 'complete', null, authUser);
+    const yes = autoComplete !== undefined ? autoComplete : confirm('Every task on "' + step.stageName + '" is complete or skipped. Mark the step complete?');
+    if (yes) setStepStatus(project, doc, step, 'complete', null, authUser);
+    return yes;
   }
+  return autoComplete;
+}
+// The same task on other initiatives' copies of this step.
+function setTaskAll(project, doc, step, cell, i, status, authUser, also) {
+  const ans = setTask(project, doc, step, cell, i, status, authUser);
+  (also || []).forEach(x => {
+    const c = cellOf(project, x.doc.id, x.step.id);
+    if (taskStatus(roundChecks(c), i) !== status) setTask(project, x.doc, x.step, c, i, status, authUser, !!ans);
+  });
 }
 // The checkbox: complete, or back to not started.
-const toggleTask = (project, doc, step, cell, i, authUser) =>
-  setTask(project, doc, step, cell, i, taskStatus(roundChecks(cell), i) === 'complete' ? 'pending' : 'complete', authUser);
+const toggleTask = (project, doc, step, cell, i, authUser, also) =>
+  setTaskAll(project, doc, step, cell, i, taskStatus(roundChecks(cell), i) === 'complete' ? 'pending' : 'complete', authUser, also);
 
 // One task: checkbox (complete), a ▾ menu for the other statuses, and the
 // initials of whoever holds the role the task names.
 const TASK_MENU = ['pending', 'in_progress', 'held_up', 'skipped', 'complete'];
-function TaskRow({ project, doc, step, cell, i, data, authUser, compact }) {
+function TaskRow({ project, doc, step, cell, i, data, authUser, compact, also }) {
   const [menu, setMenu] = useState(false);
   const ref = useRef(null);
   useEffect(() => {
@@ -1668,7 +1706,7 @@ function TaskRow({ project, doc, step, cell, i, data, authUser, compact }) {
           (click it to change). The ▾ beside it opens every status. */}
       <span className="flex items-center flex-shrink-0 mt-0.5">
         {st === 'pending' || st === 'complete'
-          ? <input type="checkbox" className="flex-shrink-0" checked={st === 'complete'} onChange={() => toggleTask(project, doc, step, cell, i, authUser)} data-testid={compact ? 'card-task' : 'panel-task'} />
+          ? <input type="checkbox" className="flex-shrink-0" checked={st === 'complete'} onChange={() => toggleTask(project, doc, step, cell, i, authUser, also)} data-testid={compact ? 'card-task' : 'panel-task'} />
           : <button onClick={() => setMenu(!menu)} title={S.label + ' — change'} data-testid="task-marker" className="flex items-center justify-center" style={{ color: S.color, width: 13, height: 13 }}><Icon name={S.icon} size={compact ? 13 : 14} /></button>}
         <button onClick={() => setMenu(!menu)} className="text-slate-400 hover:text-slate-700 rounded" title="Set task status" aria-label="Set task status" data-testid="task-menu-btn">
           <Icon name="chev_d" size={compact ? 10 : 12} />
@@ -1683,7 +1721,7 @@ function TaskRow({ project, doc, step, cell, i, data, authUser, compact }) {
       {menu && (
         <div className="absolute left-0 top-full mt-0.5 z-30 bg-white border border-slate-200 rounded-lg shadow-lg py-1 min-w-[150px] fade-in" data-testid="task-menu">
           {TASK_MENU.map(id => (
-            <button key={id} onClick={() => { setMenu(false); if (id !== st) setTask(project, doc, step, cell, i, id, authUser); }}
+            <button key={id} onClick={() => { setMenu(false); if (id !== st) setTaskAll(project, doc, step, cell, i, id, authUser, also); }}
               className={`w-full text-left flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-slate-50 ${id === st ? 'font-semibold' : ''}`}>
               <span style={{ color: STATUS[id].color }}><Icon name={STATUS[id].icon} size={12} /></span>{id === 'pending' ? 'Not started' : STATUS[id].label}
               {id === st && <span className="ml-auto text-slate-400"><Icon name="check" size={11} /></span>}
