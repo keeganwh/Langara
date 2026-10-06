@@ -42,6 +42,15 @@ about to do something risky, take both.
 
 ## Released versions
 
+### v2.5 — collapsible sidebars, narrow-window dashboard
+Commit `4f6078d`
+
+Both apps: the sidebar collapses to an icon rail (auto below 1280px, opens
+as an overlay there); hover a rail icon to see its full button. Tracker
+dashboard: stat tiles toggle their filter, and narrow windows get Needs your
+attention first, a row of small cards with drop-down reports, and a two-line
+projects toolbar. No data changes — roll back by reverting the commit.
+
 ### v2.4 — workflow change history
 Archive branch: `archive/v2.4-pre-history`
 
