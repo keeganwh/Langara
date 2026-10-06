@@ -2156,7 +2156,7 @@ function Dashboard({ data, authUser, online, onOpen, onNew }) {
   const dates = upcomingDates(active, 14);
   const stale = stats.filter(x => !x.st.done && (Date.now() - x.st.lastAt) > STALE_DAYS * 86400000);
   const tiles = [
-    { label: 'Active projects', value: active.filter(p => !projectStats(p).done).length, icon: 'dashboard', color: '#F15A22', sub: stats.filter(x => x.st.done).length + ' complete', always: true },
+    { label: 'Active projects', short: 'Active', value: active.filter(p => !projectStats(p).done).length, icon: 'dashboard', color: '#F15A22', sub: stats.filter(x => x.st.done).length + ' complete', always: true },
     { label: 'Held up', value: held, icon: 'held', color: '#d97706', sub: 'steps waiting', flag: 'held' },
     { label: 'Sent back', value: sentBack, icon: 'ret', color: '#7c3aed', sub: 'being reworked', flag: 'sentback' },
     { label: 'Overdue', value: stats.reduce((n, x) => n + x.st.overdue, 0), icon: 'warn', color: '#dc2626', sub: dates.filter(d => d.days >= 0 && d.days <= 7).length + ' due this week', flag: 'overdue' },
@@ -2194,11 +2194,11 @@ function Dashboard({ data, authUser, online, onOpen, onNew }) {
   );
   const recentLast = Math.max(0, ...active.flatMap(p => Object.values(p.activity).map(a => a.at || 0)));
   const reports = [
-    { id: 'status', title: 'Project status', icon: 'dashboard', accent: '#059669', testid: 'report-status', value: data.projects.length, sub: 'projects',
+    { id: 'status', short: 'Status', title: 'Project status', icon: 'dashboard', accent: '#059669', testid: 'report-status', value: data.projects.length, sub: 'projects',
       body: <StatusDonut projects={data.projects} /> },
-    { id: 'dates', title: 'Next 14 days', icon: 'calendar', accent: '#0284c7', testid: 'report-dates', value: dates.length, sub: dates.length === 1 ? 'date' : 'dates',
+    { id: 'dates', short: 'Upcoming', title: 'Next 14 days', icon: 'calendar', accent: '#0284c7', testid: 'report-dates', value: dates.length, sub: dates.length === 1 ? 'date' : 'dates',
       body: <DateList items={dates} onOpen={it => onOpen(it.project.id)} empty="No due or meeting dates coming up." /> },
-    { id: 'recent', title: 'Recent updates', icon: 'history', accent: '#0f766e', testid: 'recent', value: recentLast ? timeAgo(recentLast) : '—', sub: 'last update',
+    { id: 'recent', short: 'Updates', title: 'Recent updates', icon: 'history', accent: '#0f766e', testid: 'recent', value: recentLast ? timeAgo(recentLast) : '—', sub: 'last update',
       body: <RecentUpdates projects={active} onOpen={onOpen} /> },
   ];
   const openRep = reports.find(r => r.id === report);
@@ -2236,17 +2236,27 @@ function Dashboard({ data, authUser, online, onOpen, onNew }) {
   const tileEl = (t, compact) => {
     const on = t.value || t.always;
     const sel = tileOn(t);
+    const tip = t.flag ? (sel ? 'Show the default list again' : 'Show only these projects') : t.sub;
+    if (compact) return (
+      <button key={t.label} onClick={() => clickTile(t)} data-on={sel ? 'yes' : 'no'} title={t.label + ' · ' + t.sub + (t.flag ? ' — ' + tip : '')}
+        className={`w-full h-8 bg-white border rounded-lg px-2 flex items-center gap-1.5 relative overflow-hidden text-left ${t.flag ? 'hover:shadow-sm' : 'cursor-default'} ${sel ? 'ring-2 ring-offset-1' : 'border-slate-200'}`}
+        style={{ opacity: on || sel ? 1 : .6, borderColor: sel ? t.color : undefined, '--tw-ring-color': t.color }}>
+        <span className="absolute inset-y-0 left-0 w-0.5" style={{ background: on ? t.color : '#e2e8f0' }} />
+        <span style={{ color: on ? t.color : '#94a3b8' }} className="flex-shrink-0"><Icon name={t.icon} size={13} /></span>
+        <span className="text-sm font-bold tabular-nums" style={{ color: on ? t.color : '#94a3b8' }}>{t.value}</span>
+        <span className="text-[11px] font-semibold text-slate-700 truncate">{t.short || t.label}</span>
+      </button>
+    );
     return (
-      <button key={t.label} onClick={() => clickTile(t)} data-on={sel ? 'yes' : 'no'}
-        title={t.flag ? (sel ? 'Show the default list again' : 'Show only these projects') : ''}
-        className={`w-full bg-white border rounded-xl flex items-center relative overflow-hidden text-left ${compact ? 'px-2.5 py-1.5 gap-2' : 'px-3 py-2 gap-2.5'} ${t.flag ? 'hover:shadow-sm' : 'cursor-default'} ${sel ? 'ring-2 ring-offset-1' : 'border-slate-200'}`}
+      <button key={t.label} onClick={() => clickTile(t)} data-on={sel ? 'yes' : 'no'} title={tip}
+        className={`w-full bg-white border rounded-xl flex items-center relative overflow-hidden text-left px-3 py-2 gap-2.5 ${t.flag ? 'hover:shadow-sm' : 'cursor-default'} ${sel ? 'ring-2 ring-offset-1' : 'border-slate-200'}`}
         style={{ opacity: on || sel ? 1 : .65, borderColor: sel ? t.color : undefined, '--tw-ring-color': t.color }}>
         <span className="absolute inset-y-0 left-0 w-1" style={{ background: on ? t.color : '#e2e8f0' }} />
-        <span className={`${compact ? 'w-6 h-6' : 'w-8 h-8'} rounded-full flex items-center justify-center flex-shrink-0`} style={{ background: (on ? t.color : '#94a3b8') + '1a', color: on ? t.color : '#94a3b8' }}><Icon name={t.icon} size={compact ? 13 : 16} /></span>
-        <span className={`${compact ? 'text-lg' : 'text-2xl'} font-bold leading-none tabular-nums`} style={{ color: on ? t.color : '#94a3b8' }}>{t.value}</span>
+        <span className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: (on ? t.color : '#94a3b8') + '1a', color: on ? t.color : '#94a3b8' }}><Icon name={t.icon} size={16} /></span>
+        <span className="text-2xl font-bold leading-none tabular-nums" style={{ color: on ? t.color : '#94a3b8' }}>{t.value}</span>
         <span className="min-w-0 leading-tight">
           <span className="block text-xs font-semibold text-slate-700 truncate">{t.label}</span>
-          {!compact && <span className="block text-[11px] text-slate-400 truncate">{t.sub}</span>}
+          <span className="block text-[11px] text-slate-400 truncate">{t.sub}</span>
         </span>
       </button>
     );
@@ -2259,21 +2269,17 @@ function Dashboard({ data, authUser, online, onOpen, onNew }) {
         {narrow ? <>
           {/* Narrow: Needs your attention in full, then one row of small cards —
               stats filter the list (toggling), reports drop a panel open below. */}
-          <div className="mb-3">{attentionPanel}</div>
           <div ref={repRef} className="mb-3">
-            <div className="grid gap-2" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(168px, 1fr))' }} data-testid="tiles">
+            <div className="grid gap-1.5" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(118px, 1fr))' }} data-testid="tiles">
               {tiles.map(t => tileEl(t, true))}
               {reports.map(r => (
-                <button key={r.id} onClick={() => setReport(report === r.id ? null : r.id)} data-testid={'card-' + r.id}
-                  className={`w-full bg-white border rounded-xl px-2.5 py-1.5 flex items-center gap-2 text-left relative overflow-hidden ${report === r.id ? 'ring-2 ring-offset-1' : 'border-slate-200 hover:shadow-sm'}`}
+                <button key={r.id} onClick={() => setReport(report === r.id ? null : r.id)} data-testid={'card-' + r.id} title={r.value + ' ' + r.sub}
+                  className={`w-full h-8 bg-white border rounded-lg px-2 flex items-center gap-1.5 text-left relative overflow-hidden ${report === r.id ? 'ring-2 ring-offset-1' : 'border-slate-200 hover:shadow-sm'}`}
                   style={{ borderColor: report === r.id ? r.accent : undefined, '--tw-ring-color': r.accent }}>
-                  <span className="absolute inset-y-0 left-0 w-1" style={{ background: r.accent }} />
-                  <span className="w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: r.accent + '1a', color: r.accent }}><Icon name={r.icon} size={13} /></span>
-                  <span className="min-w-0 leading-tight flex-1">
-                    <span className="block text-xs font-semibold text-slate-700 truncate">{r.title}</span>
-                    <span className="block text-[11px] text-slate-400 truncate">{r.value} {r.sub}</span>
-                  </span>
-                  <Icon name={report === r.id ? 'chev_u' : 'chev_d'} size={12} className="text-slate-400 flex-shrink-0" />
+                  <span className="absolute inset-y-0 left-0 w-0.5" style={{ background: r.accent }} />
+                  <span style={{ color: r.accent }} className="flex-shrink-0"><Icon name={r.icon} size={13} /></span>
+                  <span className="text-[11px] font-semibold text-slate-700 truncate flex-1">{r.short}</span>
+                  <Icon name={report === r.id ? 'chev_u' : 'chev_d'} size={11} className="text-slate-400 flex-shrink-0" />
                 </button>
               ))}
             </div>
@@ -2281,6 +2287,7 @@ function Dashboard({ data, authUser, online, onOpen, onNew }) {
               <Panel title={openRep.title} icon={openRep.icon} testid={openRep.testid} accent={openRep.accent}>{openRep.body}</Panel>
             </div>}
           </div>
+          <div className="mb-3">{attentionPanel}</div>
           {projectsBox}
         </> : <>
           <div className="grid grid-cols-5 gap-3 mb-4" data-testid="tiles">{tiles.map(t => tileEl(t, false))}</div>
