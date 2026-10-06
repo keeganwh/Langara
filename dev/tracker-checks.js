@@ -272,6 +272,7 @@ const cell = (d, docId, stepId) => {
   await p.evaluate(() => { const b = document.querySelector('button[data-view=overview]'); if (b) b.click(); }); await p.waitForTimeout(200);
   ok('the overview groups the batch by item', await p.evaluate(() => document.querySelectorAll('[data-testid=item-header]').length === 2 && document.querySelectorAll('[data-testid=ov-doc]').length === 3));
   await p.evaluate(() => { const h = document.querySelectorAll('[data-testid=item-header]')[0]; h.nextElementSibling.querySelector('[data-kind=now]').click(); }); await p.waitForTimeout(200);
+  ok('an initiative counts the shared documents in its progress', await p.evaluate(() => /\/(\d+) steps/.exec(document.querySelector('[data-testid=item-header]').textContent)[1] > 3));
   ok('a batch step offers Apply to all initiatives beside Status', await p.evaluate(() => !!document.querySelector('[data-testid=all-items]')));
   // Status first, then tick: the tick still applies it.
   await click(p, '.fixed button', 'In progress'); await p.waitForTimeout(200);
@@ -340,6 +341,17 @@ const cell = (d, docId, stepId) => {
   d = await db(p);
   { const b = d.tracker.projects[mbId]; const counts = b.items.map(it => Object.keys((((b.progress || {})['d1__' + it.id] || {}).s1 || {}).checks || {}).length);
     ok('a task ticked with it on is ticked on every initiative', counts.every(n => n > 0)); }
+  await p.evaluate(() => document.querySelector('.fixed button[aria-label="Close"]').click()); await p.waitForTimeout(100);
+  { const before = await p.evaluate(() => document.querySelectorAll('[data-testid=ov-doc]').length);
+    await p.evaluate(() => document.querySelector('[data-testid=hide-doc]').click()); await p.waitForTimeout(100);
+    ok('hiding a batch document offers Apply to all initiatives', await p.evaluate(() => !!document.querySelector('[data-testid=hide-all]')));
+    await p.evaluate(() => document.querySelector('[data-testid=hide-all] input').click());
+    await click(p, '.fixed button', 'Hide document'); await p.waitForTimeout(300);
+    const after = await p.evaluate(() => document.querySelectorAll('[data-testid=ov-doc]').length);
+    ok('hidden documents leave the project, one per initiative', after === before - 2 && await p.evaluate(() => /2 hidden documents/.test(document.querySelector('[data-testid=hidden-docs]').innerText)));
+    await p.evaluate(() => [...document.querySelectorAll('[data-testid=hidden-docs] button')][0].click()); await p.waitForTimeout(100);
+    await p.evaluate(() => document.querySelector('[data-testid=unhide-doc]').click()); await p.waitForTimeout(300);
+    ok('show again brings one back', await p.evaluate(() => document.querySelectorAll('[data-testid=ov-doc]').length) === before - 1); }
 
   console.log('\nNarrow window');
   await p.setViewportSize({ width: 1100, height: 900 });

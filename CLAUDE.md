@@ -578,6 +578,16 @@ status colour. The Workflow Tool carries the identical `tw-brand` block (read by
   **Shared documents are provisional** — they may be removed after testing. To
   retire them without losing data: copy progress/<docId> into each
   progress/<docId>__<itemId>, then drop the id from `sharedDocIds`.
+- **Hidden documents** (optional ones a project doesn't need):
+  `hiddenDocs { <docId>: true }` on the project (expanded ids in a batch).
+  `normalizeProject` drops them from `documents`, so they vanish from every
+  view, stat and dashboard panel; `allDocs` keeps the full list and
+  `templateOf` uses it, so hiding never reads as workflow drift. Hidden from a
+  "Hide document" link on the Overview row (`HideDocModal`, with Apply to all
+  initiatives in a batch); a "N hidden documents · show" line at the foot of
+  the Overview brings them back. Progress is kept; workflow updates keep them
+  hidden. An initiative's progress (`itemStats`) includes the shared
+  documents, so one whose only document is shared still moves.
 - **Initiatives.** The UI calls a batch's items **initiatives**; the data
   keeps `items` / `itemId` (same rule as workflow vs `projectTypes`).
 - **Apply to all initiatives** is a checkbox beside the step panel's Status
@@ -636,7 +646,7 @@ pending); the steps a send-back reset to pending still show their round badge.
   next for their document, sorted by due date.
 - Routing is the hash (`#/p/<id>`), so projects can be linked directly.
 
-Checks: `cd dev && npm run tracker` (99 checks, own Firebase stub with nested
+Checks: `cd dev && npm run tracker` (103 checks, own Firebase stub with nested
 paths and live listeners — see `dev/tracker-preview.js`).
 
 ## Conventions to follow

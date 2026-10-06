@@ -348,11 +348,13 @@ function expandBatch(template, items, sharedIds) {
     out.push({ ...d, id: d.id + ITEM_SEP + it.id, srcDocId: d.id, itemId: it.id, itemName: it.name, baseName: d.name, name: it.name + ' · ' + d.name })));
   return out;
 }
-const templateOf = (p) => p.batch ? p.template : p.documents;
+const templateOf = (p) => p.batch ? p.template : (p.allDocs || p.documents);
 const itemDocs = (p, itemId) => p.documents.filter(d => d.itemId === itemId);
+// An initiative's progress includes the shared documents it goes through, so
+// an initiative whose only document is shared still shows progress.
 function itemStats(p, itemId) {
   let total = 0, closed = 0;
-  itemDocs(p, itemId).forEach(d => d.steps.forEach(s => { total++; if (isClosed(cellOf(p, d.id, s.id).status)) closed++; }));
+  p.documents.filter(d => d.itemId === itemId || d.shared).forEach(d => d.steps.forEach(s => { total++; if (isClosed(cellOf(p, d.id, s.id).status)) closed++; }));
   return { total, closed, pct: total ? Math.round(closed / total * 100) : 0, done: total > 0 && closed === total };
 }
 
@@ -361,9 +363,13 @@ function normalizeProject(id, p) {
   const template = batch ? normDocs(p.template) : null;
   const items = batch ? Object.values(p.items || {}).filter(Boolean) : [];
   const sharedDocIds = batch ? (p.sharedDocIds || []) : [];
-  const docs = batch ? expandBatch(template, items, sharedDocIds) : normDocs(p.documents);
+  const allDocs = batch ? expandBatch(template, items, sharedDocIds) : normDocs(p.documents);
+  // Hidden (optional) documents drop out of `documents`, so every view, stat
+  // and dashboard panel skips them; their progress stays on record.
+  const hiddenDocs = p.hiddenDocs || {};
+  const docs = allDocs.filter(d => !hiddenDocs[d.id]);
   return {
-    ...p, id, name: p.name || 'Untitled project', documents: docs, batch, template, items, sharedDocIds,
+    ...p, id, name: p.name || 'Untitled project', documents: docs, allDocs, hiddenDocs, batch, template, items, sharedDocIds,
     roleAssignments: p.roleAssignments || {}, progress: p.progress || {}, activity: p.activity || {}, links: p.links || {},
     syncGroupMeta: p.syncGroupMeta || {}, notes: p.notes || '', archived: !!p.archived,
     startDate: p.startDate || '', dueDate: p.dueDate || '',
@@ -817,7 +823,7 @@ function NewProjectModal({ data, authUser, onCreated, onClose }) {
     const id = uid();
     const copy = JSON.parse(JSON.stringify({
       workflowId: src.workflowId, workflowName: src.workflowName, sourceHash: src.sourceHash || null,
-      ...(src.batch ? { batch: true, template: src.template, items: src.items, sharedDocIds: src.sharedDocIds } : { documents: src.documents }),
+      ...(src.batch ? { batch: true, template: src.template, items: src.items, sharedDocIds: src.sharedDocIds } : { documents: src.allDocs }), hiddenDocs: src.hiddenDocs,
       syncGroupMeta: src.syncGroupMeta, roleAssignments: src.roleAssignments,
       progress: src.progress, notes: src.notes || '', syncedAt: src.syncedAt || src.createdAt || Date.now(),
     }));
@@ -1947,8 +1953,33 @@ function DocLinkModal({ project, doc, authUser, onClose }) {
   );
 }
 
+// Hide an optional document from this project (or initiative). Progress stays.
+function setDocHidden(project, docs, hidden, authUser) {
+  const upd = {};
+  docs.forEach(d => { upd['hiddenDocs/' + d.id] = hidden ? true : null; });
+  dbUpdate('projects/' + project.id, upd);
+  logActivity(project.id, authUser, (hidden ? 'Hid ' : 'Showed ') + docs.map(d => d.name).join(', '), { kind: 'project' });
+}
+function HideDocModal({ project, doc, authUser, onClose }) {
+  const [all, setAll] = useState(false);
+  const sibs = doc.itemId ? project.documents.filter(d => d.srcDocId === doc.srcDocId && d.id !== doc.id) : [];
+  return (
+    <Modal title={'Hide ' + doc.name + '?'} onClose={onClose} footer={<>
+      <Btn variant="secondary" onClick={onClose}>Cancel</Btn>
+      <Btn onClick={() => { setDocHidden(project, all ? [doc, ...sibs] : [doc], true, authUser); onClose(); }}>Hide document</Btn>
+    </>}>
+      <p className="text-sm text-slate-700">For optional documents this project doesn't need. It disappears from the project and the dashboard; its progress is kept, and it can be shown again from the foot of the Overview.</p>
+      {sibs.length > 0 && <label className="inline-flex items-center gap-1.5 text-xs text-slate-600 mt-3 cursor-pointer" data-testid="hide-all">
+        <input type="checkbox" checked={all} onChange={e => setAll(e.target.checked)} />Apply to all initiatives ({sibs.length + 1})
+      </label>}
+    </Modal>
+  );
+}
+
 function Overview({ project, data, authUser, onOpen }) {
   const [linkFor, setLinkFor] = useState(null);
+  const [hideFor, setHideFor] = useState(null);
+  const [showHidden, setShowHidden] = useState(false);
   const [expanded, setExpanded] = useState({});      // finished documents opened up
   const [width, setWidth] = useState(0);
   const measureRef = useRef(null);
@@ -2002,6 +2033,7 @@ function Overview({ project, data, authUser, onOpen }) {
                 <span className="text-sm font-bold text-slate-800 truncate">{doc.itemId ? doc.baseName : doc.name}{doc.shared && <span className="ml-1.5 text-[10px] font-semibold text-slate-500 border border-slate-300 rounded px-1 align-middle">Shared</span>}</span>
               </div>
               {!done && <div className="text-[11px] text-slate-500">Step {w.cur + 1} of {w.total} · {w.pct}%</div>}
+              <button onClick={() => setHideFor(doc)} className="self-start text-[11px] text-slate-400 hover:text-slate-700 hover:underline" data-testid="hide-doc">Hide document</button>
               {open && <StepSegments project={project} doc={doc} cur={w.cur} onOpen={onOpen} />}
               {open && fileLink(doc)}
             </div>
@@ -2047,6 +2079,22 @@ function Overview({ project, data, authUser, onOpen }) {
           })}
         </>;
       })()}
+      {(() => {
+        const hidden = project.allDocs.filter(d => project.hiddenDocs[d.id]);
+        if (!hidden.length) return null;
+        return (
+          <div className="px-3 py-1.5 text-[11px] text-slate-500 border-t border-slate-200" data-testid="hidden-docs">
+            {hidden.length} hidden {hidden.length === 1 ? 'document' : 'documents'} · <button className="text-indigo-600 hover:underline" onClick={() => setShowHidden(!showHidden)}>{showHidden ? 'close' : 'show'}</button>
+            {showHidden && <ul className="mt-1 space-y-0.5">
+              {hidden.map(d => <li key={d.id} className="flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full" style={{ background: d.color }} /><span className="text-slate-700">{d.name}</span>
+                <button className="text-indigo-600 hover:underline" onClick={() => setDocHidden(project, [d], false, authUser)} data-testid="unhide-doc">Show again</button>
+              </li>)}
+            </ul>}
+          </div>
+        );
+      })()}
+      {hideFor && <HideDocModal project={project} doc={hideFor} authUser={authUser} onClose={() => setHideFor(null)} />}
       {linkDoc && <DocLinkModal project={project} doc={linkDoc} authUser={authUser} onClose={() => setLinkFor(null)} />}
     </div>
   );
@@ -2659,10 +2707,11 @@ function mergeToBatch(projects, target, name, authUser) {
   // Every selected project becomes one initiative; its progress and file links
   // move from <docId> to <docId>__<initiativeId>. No shared documents.
   const items = projects.map(p => ({ id: uid(), name: p.name }));
-  const prog = {}, links = {};
+  const prog = {}, links = {}, hidden = {};
   projects.forEach((p, i) => {
     Object.entries(p.progress || {}).forEach(([k, v]) => { prog[k + ITEM_SEP + items[i].id] = v; });
     Object.entries(p.links || {}).forEach(([k, v]) => { links[k + ITEM_SEP + items[i].id] = v; });
+    Object.keys(p.hiddenDocs || {}).forEach(k => { hidden[k + ITEM_SEP + items[i].id] = true; });
   });
   const clean = (o) => JSON.parse(JSON.stringify(o));
   const first = projects[0];
@@ -2672,14 +2721,15 @@ function mergeToBatch(projects, target, name, authUser) {
     const upd = { items: [...target.items, ...items], updatedAt: Date.now() };
     Object.entries(prog).forEach(([k, v]) => { upd['progress/' + k] = v; });
     Object.entries(links).forEach(([k, v]) => { upd['links/' + k] = v; });
+    Object.keys(hidden).forEach(k => { upd['hiddenDocs/' + k] = true; });
     write = dbUpdate('projects/' + id, clean(upd));
   } else {
     id = uid(); batchName = name;
-    const template = first.documents.map(({ itemId, itemName, srcDocId, baseName, ...d }) => d);
+    const template = first.allDocs.map(({ itemId, itemName, srcDocId, baseName, ...d }) => d);
     write = dbSet('projects/' + id, clean({
       name, workflowId: first.workflowId, workflowName: first.workflowName, sourceHash: first.sourceHash || null,
       batch: true, template, items, sharedDocIds: [], syncGroupMeta: first.syncGroupMeta, roleAssignments: first.roleAssignments,
-      notes: '', progress: prog, links, startDate: projects.map(p => p.startDate).filter(Boolean).sort()[0] || todayStr(),
+      notes: '', progress: prog, links, hiddenDocs: hidden, startDate: projects.map(p => p.startDate).filter(Boolean).sort()[0] || todayStr(),
       dueDate: projects.map(p => p.dueDate).filter(Boolean).sort().slice(-1)[0] || '', archived: false,
       syncedAt: first.syncedAt || first.createdAt || Date.now(), createdAt: Date.now(), createdBy: (authUser && authUser.email) || '', updatedAt: Date.now(),
     }));
