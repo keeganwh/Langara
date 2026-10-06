@@ -571,7 +571,25 @@ status colour. The Workflow Tool carries the identical `tw-brand` block (read by
   **Shared documents are provisional** — they may be removed after testing. To
   retire them without losing data: copy progress/<docId> into each
   progress/<docId>__<itemId>, then drop the id from `sharedDocIds`.
-- **Deleting a project** asks in a `ConfirmModal`, not a typed prompt.
+- **Initiatives.** The UI calls a batch's items **initiatives**; the data
+  keeps `items` / `itemId` (same rule as workflow vs `projectTypes`).
+- **Apply to all initiatives** is a checkbox beside the step panel's Status
+  label. Ticking it (`tickAll`) copies the current status, held reason and
+  meeting date to the other initiatives at once, so choosing the status first
+  still works; the meeting checkbox behaves the same.
+- **Deleting a project** asks in a `ConfirmModal`, not a typed prompt. Delete
+  and Archive sit together on the left of the settings footer. Both show a
+  5-second **Undo** toast (`UndoToast`, `showUndo`): `deleteProjects` reads
+  the raw project before removing it and Undo writes it back; `setArchived`
+  flips archived back.
+- **Bulk actions** (`BulkBar`, dashboard list): a checkbox per row and
+  "Select all shown" (only the filtered list). Step status (each document's
+  current step; held up / skipped ask a reason), Dates (blank keeps each
+  project's own), Batch, Archive, Restore, Delete (one confirm listing the
+  names). **Batch** (`mergeToBatch`) makes a new batch or adds to one: only
+  non-batch projects on one workflow (a batch holds one workflow copy), every
+  document per initiative, progress and links moved to `<docId>__<itemId>`,
+  originals archived with a note "Added to the batch …".
 - **Duplicate a project** — New project → Duplicate a project: an exact copy
   (workflow copy, people, notes, dates, all progress and step history) except
   file links; its activity log starts with "Duplicated from …".
@@ -607,7 +625,7 @@ pending); the steps a send-back reset to pending still show their round badge.
   next for their document, sorted by due date.
 - Routing is the hash (`#/p/<id>`), so projects can be linked directly.
 
-Checks: `cd dev && npm run tracker` (85 checks, own Firebase stub with nested
+Checks: `cd dev && npm run tracker` (94 checks, own Firebase stub with nested
 paths and live listeners — see `dev/tracker-preview.js`).
 
 ## Conventions to follow

@@ -270,13 +270,14 @@ const cell = (d, docId, stepId) => {
   await p.evaluate(() => { const b = document.querySelector('button[data-view=overview]'); if (b) b.click(); }); await p.waitForTimeout(200);
   ok('the overview groups the batch by item', await p.evaluate(() => document.querySelectorAll('[data-testid=item-header]').length === 2 && document.querySelectorAll('[data-testid=ov-doc]').length === 3));
   await p.evaluate(() => { const h = document.querySelectorAll('[data-testid=item-header]')[0]; h.nextElementSibling.querySelector('[data-kind=now]').click(); }); await p.waitForTimeout(200);
-  ok('a batch step offers to apply to every item', await p.evaluate(() => !!document.querySelector('[data-testid=all-items]')));
-  await p.evaluate(() => document.querySelector('[data-testid=all-items] input').click());
+  ok('a batch step offers Apply to all initiatives beside Status', await p.evaluate(() => !!document.querySelector('[data-testid=all-items]')));
+  // Status first, then tick: the tick still applies it.
   await click(p, '.fixed button', 'In progress'); await p.waitForTimeout(200);
+  await p.evaluate(() => document.querySelector('[data-testid=all-items] input').click()); await p.waitForTimeout(200);
   d = await db(p);
   const prog = d.tracker.projects[bp[0]].progress || {};
   const items = d.tracker.projects[bp[0]].items;
-  ok('applying to every item updates each item\'s copy', items.every(it => ((prog['d2__' + it.id] || {}).t1 || {}).status === 'in_progress'));
+  ok('ticking Apply to all after choosing a status still updates every initiative', items.every(it => ((prog['d2__' + it.id] || {}).t1 || {}).status === 'in_progress'));
   await p.evaluate(() => document.querySelector('.fixed button[aria-label="Close"]').click()); await p.waitForTimeout(100);
   await click(p, 'button', 'Project settings'); await p.waitForTimeout(150);
   await p.evaluate(() => [...document.querySelectorAll('[data-testid=batch-items-edit] button')].find(b => b.innerText.includes('Split off')).click()); await p.waitForTimeout(100);
@@ -287,9 +288,41 @@ const cell = (d, docId, stepId) => {
   ok('the item leaves the batch', d.tracker.projects[bp[0]].items.length === 1);
   await click(p, 'button', 'Project settings'); await p.waitForTimeout(150);
   await click(p, '.fixed button', 'Delete'); await p.waitForTimeout(150);
-  ok('delete asks in a confirm box, not a typed prompt', await p.evaluate(() => /cannot be undone/.test((document.querySelector('[data-testid=confirm-message]') || {}).innerText || '')));
-  await p.evaluate(() => [...document.querySelectorAll('.fixed button')].find(b => b.innerText.trim() === 'Cancel').click()); await p.waitForTimeout(100);
-  await p.evaluate(() => document.querySelector('.fixed button[aria-label="Close"]') && document.querySelector('.fixed button[aria-label="Close"]').click()); await p.waitForTimeout(100);
+  ok('delete asks in a confirm box, not a typed prompt', await p.evaluate(() => /5 seconds to undo/.test((document.querySelector('[data-testid=confirm-message]') || {}).innerText || '')));
+  await p.evaluate(() => [...document.querySelectorAll('.fixed button')].filter(b => b.innerText.trim() === 'Delete project').pop().click()); await p.waitForTimeout(400);
+  d = await db(p);
+  const gone = !Object.values(d.tracker.projects).some(x => /— CPSC 1010$/.test(x.name));
+  ok('delete removes the project and shows an undo toast', gone && await p.evaluate(() => !!document.querySelector('[data-testid=undo-toast]')));
+  await p.evaluate(() => document.querySelector('[data-testid=undo-btn]').click()); await p.waitForTimeout(300);
+  d = await db(p);
+  ok('undo brings the deleted project back whole', Object.values(d.tracker.projects).some(x => /— CPSC 1010$/.test(x.name) && !!x.progress));
+
+  console.log('\nBulk actions');
+  await p.evaluate(() => { location.hash = '#/'; }); await p.waitForTimeout(300);
+  await p.evaluate(() => document.querySelector('[data-testid=select-all]').click()); await p.waitForTimeout(100);
+  ok('select all shown ticks every listed row', await p.evaluate(() => [...document.querySelectorAll('[data-testid=row-select]')].every(c => c.checked)));
+  await click(p, '[data-testid=bulk-batch]'); await p.waitForTimeout(150);
+  ok('a batch in the selection blocks merging, with the reason', await p.evaluate(() => /cannot be merged/.test((document.querySelector('[data-testid=batch-block]') || {}).innerText || '')));
+  await p.evaluate(() => document.querySelector('.fixed button[aria-label="Close"]').click()); await p.waitForTimeout(100);
+  await click(p, '[data-testid=bulk-archive]'); await p.waitForTimeout(300);
+  d = await db(p);
+  ok('bulk archive archives every selected project', Object.values(d.tracker.projects).every(x => x.archived));
+  await p.evaluate(() => document.querySelector('[data-testid=undo-btn]').click()); await p.waitForTimeout(300);
+  d = await db(p);
+  ok('undo restores them', Object.values(d.tracker.projects).every(x => !x.archived));
+  // Merge the two single projects into a new batch.
+  const singles = Object.entries(d.tracker.projects).filter(([, x]) => !x.batch);
+  await p.evaluate(() => { const a = document.querySelector('[data-testid=select-all]'); if (a.checked) a.click(); }); await p.waitForTimeout(100);
+  await p.evaluate((names) => [...document.querySelectorAll('[data-testid=project-row]')].forEach(r => { if (names.includes(r.querySelector('span').innerText.trim())) r.parentElement.querySelector('[data-testid=row-select]').click(); }), singles.map(([, x]) => x.name)); await p.waitForTimeout(100);
+  await click(p, '[data-testid=bulk-batch]'); await p.waitForTimeout(150);
+  await p.locator('[data-testid=bulk-batch-name]').fill('Merged Batch');
+  await click(p, '.fixed button', 'Create batch'); await p.waitForTimeout(400);
+  d = await db(p);
+  const mb = Object.values(d.tracker.projects).find(x => x.name === 'Merged Batch');
+  const srcWithProg = singles.find(([, x]) => x.progress && x.progress.d1);
+  ok('merging makes a batch with one initiative per project, no shared documents', !!mb && mb.items.length === singles.length && !(mb.sharedDocIds || []).length);
+  ok('merged progress moves to docId__initiativeId', !!mb && (!srcWithProg || Object.keys(mb.progress || {}).some(k => /^d1__/.test(k))));
+  ok('the originals are archived with a note', singles.every(([id]) => d.tracker.projects[id].archived && /Added to the batch "Merged Batch"/.test(d.tracker.projects[id].notes)));
 
   console.log('\nNarrow window');
   await p.setViewportSize({ width: 1100, height: 900 });
