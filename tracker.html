@@ -2915,9 +2915,9 @@ function Dashboard({ data, authUser, online, onOpen, onNew }) {
   const stale = stats.filter(x => !x.st.done && (Date.now() - x.st.lastAt) > STALE_DAYS * 86400000);
   const tiles = [
     { label: 'Active projects', short: 'Active', value: active.filter(p => !projectStats(p).done).length, icon: 'dashboard', color: '#F15A22', sub: stats.filter(x => x.st.done).length + ' complete', always: true },
-    { label: 'Held up', value: held, icon: 'held', color: '#d97706', sub: 'steps waiting', flag: 'held' },
+    { label: 'Held up', value: stats.filter(x => x.st.held > 0).length, icon: 'held', color: '#d97706', sub: 'projects waiting', flag: 'held' },
     { label: 'Sent back', value: sentBack, icon: 'ret', color: '#7c3aed', sub: 'being reworked', flag: 'sentback' },
-    { label: 'Overdue', value: stats.reduce((n, x) => n + x.st.overdue, 0), icon: 'warn', color: '#dc2626', sub: dates.filter(d => d.days >= 0 && d.days <= 7).length + ' due this week', flag: 'overdue' },
+    { label: 'Overdue', value: stats.filter(x => x.st.overdue > 0).length, icon: 'warn', color: '#dc2626', sub: dates.filter(d => d.days >= 0 && d.days <= 7).length + ' due this week', flag: 'overdue' },
     { label: 'Stale', value: stale.length, icon: 'clock', color: '#64748b', sub: 'quiet ' + STALE_DAYS + '+ days', flag: 'stale' },
   ];
 
@@ -2935,15 +2935,16 @@ function Dashboard({ data, authUser, online, onOpen, onNew }) {
           const due = dueLabel(it.cell.dueDate);
           return (
             <button key={i} onClick={() => onOpen(it.project.id)} className={`w-full text-left px-1 flex items-center gap-2 hover:bg-slate-50 rounded ${narrow ? 'py-1' : 'py-1.5'}`}>
-              <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: it.batchLine ? '#94a3b8' : it.doc.color }} />
-              {it.batchLine
-                ? <span className="min-w-0 flex-1 truncate text-sm" data-testid="attention-batch"><span className="font-medium text-slate-800">{it.project.name}</span><span className="text-[11px] text-slate-500"> · {it.count} {it.count === 1 ? 'step needs' : 'steps need'} you</span></span>
-                : narrow
-                ? <span className="min-w-0 flex-1 truncate text-[13px]"><span className="font-medium text-slate-800">{it.step.stageName}</span><span className="text-[11px] text-slate-500"> · {it.doc.name} · {it.project.name}</span></span>
-                : <span className="min-w-0 flex-1">
-                    <span className="block text-sm font-medium text-slate-800 truncate">{it.step.stageName}</span>
-                    <span className="block text-[11px] text-slate-500 truncate">{it.doc.name} · {it.project.name}</span>
-                  </span>}
+              {/* Always the project first, the step under it (beside it when narrow). */}
+              {(() => {
+                const sub = it.batchLine ? it.count + (it.count === 1 ? ' step needs' : ' steps need') + ' you' : it.step.stageName;
+                return narrow
+                  ? <span className="min-w-0 flex-1 truncate text-[13px]" data-testid={it.batchLine ? 'attention-batch' : 'attention-item'}><span className="font-medium text-slate-800">{it.project.name}</span><span className="text-[11px] text-slate-500"> · {sub}</span></span>
+                  : <span className="min-w-0 flex-1" data-testid={it.batchLine ? 'attention-batch' : 'attention-item'}>
+                      <span className="block text-sm font-medium text-slate-800 truncate">{it.project.name}</span>
+                      <span className="block text-[11px] text-slate-500 truncate">{sub}</span>
+                    </span>;
+              })()}
               <span className={`flex items-end gap-0.5 flex-shrink-0 ${narrow ? 'flex-row items-center gap-1' : 'flex-col'}`}>
                 {!it.batchLine && <StatusChip status={it.cell.status} sm />}
                 {due && <span className={`text-[10px] border rounded-full px-1.5 ${TONE[due.tone]}`}>{due.text}</span>}

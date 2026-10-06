@@ -502,7 +502,9 @@ status colour. The Workflow Tool carries the identical `tw-brand` block (read by
   filter. Right column: Needs your attention, a **project status donut**
   (`StatusDonut`, each project counted once by `donutCategory()`, range all /
   12 / 6 months, legend with counts), meetings in the next 14 days, recent
-  updates. **Needs your attention** folds a batch into one line ("N steps
+  updates. **Held up** and **Overdue** tiles count projects, not steps or
+  initiatives. **Needs your attention** always leads with the project name,
+  the step underneath (no document); a batch folds into one line ("N steps
   need you"); single projects stay one line per step. **Meetings**
   (`meetingEvents` / `MeetingList`) shows meeting dates only — no due dates —
   one line per event (date + step name) with its project count, expanding to
@@ -646,7 +648,7 @@ pending); the steps a send-back reset to pending still show their round badge.
   next for their document, sorted by due date.
 - Routing is the hash (`#/p/<id>`), so projects can be linked directly.
 
-Checks: `cd dev && npm run tracker` (103 checks, own Firebase stub with nested
+Checks: `cd dev && npm run tracker` (104 checks, own Firebase stub with nested
 paths and live listeners — see `dev/tracker-preview.js`).
 
 ## Conventions to follow

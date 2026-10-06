@@ -164,7 +164,8 @@ const cell = (d, docId, stepId) => {
   await click(p, '[data-testid=nav-dashboard]'); await p.waitForTimeout(200);
   t = await text(p);
   ok('dashboard lists the step assigned through a role', await p.evaluate(() => { const a = document.querySelector('[data-testid=attention]'); return !!a && a.innerText.includes('JCCS'); }));
-  ok('summary tiles count held up steps', await p.evaluate(() => /2\s*Held up/.test(document.querySelector('[data-testid=tiles]').innerText)));
+  ok('summary tiles count projects held up, not steps', await p.evaluate(() => /1\s*Held up/.test(document.querySelector('[data-testid=tiles]').innerText)));
+  ok('needs your attention leads with the project, step underneath, no document', await p.evaluate(() => { const r = document.querySelector('[data-testid=attention-item]'); return !!r && r.innerText.split('\n')[0].trim() === 'Certificate in Testing' && !/Concept Paper|Program Proposal/.test(r.innerText); }));
   ok('project row shows workflow, due and updated under the title', await p.evaluate(() => !!document.querySelector('[data-testid=flag-held]')) && /New Program · (No due date|Due:)[^\n]*· Updated:/.test(t));
   ok('project row shows who is on it', await p.evaluate(() => document.querySelector('[data-testid=project-people]').innerText.includes('YP')));
   ok('overall bar carries its % inside', await p.evaluate(() => /\d+%/.test(document.querySelector('[data-testid=overall-bar]').innerText)));
