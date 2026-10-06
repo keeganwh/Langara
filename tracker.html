@@ -189,6 +189,8 @@ Object.assign(ICON_PATHS, {
   done:       "<circle cx=\"12\" cy=\"12\" r=\"10\" /> <path d=\"m9 12 2 2 4-4\" />",
   pending:    "<circle cx=\"12\" cy=\"12\" r=\"10\" />",
   archive:    "<rect width=\"20\" height=\"5\" x=\"2\" y=\"3\" rx=\"1\" /> <path d=\"M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8\" /> <path d=\"M10 12h4\" />",
+  filter:     "<path d=\"M10 20a1 1 0 0 0 .553.895l2 1A1 1 0 0 0 14 21v-7a2 2 0 0 1 .517-1.341L21.74 4.67A1 1 0 0 0 21 3H3a1 1 0 0 0-.742 1.67l7.225 7.989A2 2 0 0 1 10 14z\" />",
+  sort:       "<path d=\"m21 16-4 4-4-4\" /> <path d=\"M17 20V4\" /> <path d=\"m3 8 4-4 4 4\" /> <path d=\"M7 4v16\" />",
   dashboard:  "<rect width=\"7\" height=\"9\" x=\"3\" y=\"3\" rx=\"1\" /> <rect width=\"7\" height=\"5\" x=\"14\" y=\"3\" rx=\"1\" /> <rect width=\"7\" height=\"9\" x=\"14\" y=\"12\" rx=\"1\" /> <rect width=\"7\" height=\"5\" x=\"3\" y=\"16\" rx=\"1\" />",
   user:       "<circle cx=\"12\" cy=\"8\" r=\"5\" /> <path d=\"M20 21a8 8 0 0 0-16 0\" />",
   history:    "<path d=\"M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8\" /> <path d=\"M3 3v5h5\" /> <path d=\"M12 7v5l4 2\" />",
@@ -2631,6 +2633,7 @@ function ProjectRow({ project, people, onOpen, selected, onSelect, showDocs, det
         <div className="flex items-center gap-1.5 min-w-0">
           <span className="text-[15px] font-bold text-slate-800 truncate">{project.name}</span>
           {st.held > 0 && <span className="text-amber-600 flex-shrink-0" title={st.held + (st.held === 1 ? ' step' : ' steps') + ' held up'} data-testid="flag-held"><Icon name="held" size={15} /></span>}
+          {projectFlags(project).includes('overdue') && <span className="text-red-600 flex-shrink-0" title="Overdue" data-testid="flag-overdue"><Icon name="warn" size={15} /></span>}
           {st.sentBack > 0 && <span className="text-violet-600 flex-shrink-0" title={st.sentBack + (st.sentBack === 1 ? ' step' : ' steps') + ' sent back for another round'}><Icon name="ret" size={15} /></span>}
           {stale && <span className="text-slate-400 flex-shrink-0" title={'No activity in ' + STALE_DAYS + '+ days'}><Icon name="clock" size={15} /></span>}
         </div>
@@ -2838,7 +2841,10 @@ function RecentUpdates({ projects, onOpen }) {
 }
 
 // A dropdown of checkable options. Selection is a Set of ids.
-function MultiSelect({ label, options, value, onChange, actions, testid, defaultSize }) {
+// The look the Filter and Sort buttons share, and their dropdown panel.
+const MENU_BTN = (on) => `inline-flex items-center gap-1.5 text-xs font-medium rounded-lg px-2.5 h-9 border transition-colors whitespace-nowrap ${on ? 'bg-indigo-50 border-indigo-300 text-indigo-700' : 'bg-white border-slate-300 text-slate-700 hover:bg-slate-50'}`;
+const MENU_PANEL = 'absolute top-full mt-1 z-30 bg-white border border-slate-200 rounded-lg shadow-lg py-1 fade-in';
+function useMenu() {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
   useEffect(() => {
@@ -2847,34 +2853,51 @@ function MultiSelect({ label, options, value, onChange, actions, testid, default
     document.addEventListener('mousedown', off);
     return () => document.removeEventListener('mousedown', off);
   }, [open]);
-  const n = options.filter(o => value.has(o.id)).length;
-  const narrowed = n !== (defaultSize == null ? options.length : defaultSize) || (defaultSize != null && n === options.length);
-  const toggle = (id) => { const v = new Set(value); v.has(id) ? v.delete(id) : v.add(id); onChange(v); };
+  return [open, setOpen, ref];
+}
+// One Filter button; the panel holds a section per filter (Status, People,
+// Type), each with its quick picks and checkable options.
+function FilterMenu({ sections }) {
+  const [open, setOpen, ref] = useMenu();
+  const narrowed = sections.filter(sec => sec.narrowed);
   return (
-    <div className="relative" ref={ref} data-testid={testid}>
-      <button onClick={() => setOpen(!open)}
-        className={`inline-flex items-center gap-1.5 text-xs font-medium rounded-lg px-2.5 py-1.5 border transition-colors ${narrowed ? 'bg-indigo-50 border-indigo-300 text-indigo-700' : 'bg-white border-slate-300 text-slate-700 hover:bg-slate-50'}`}>
-        {label}<span className={`text-[10px] rounded-full px-1.5 ${narrowed ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-500'}`}>{n === options.length ? 'All' : n}</span>
-        <Icon name="chev_d" size={12} />
+    <div className="relative" ref={ref} data-testid="filter" data-narrowed={narrowed.map(x => x.id).join(',')}>
+      <button onClick={() => setOpen(!open)} className={MENU_BTN(narrowed.length > 0)} data-testid="filter-btn"
+        title={narrowed.length ? 'Filtered by ' + narrowed.map(x => x.label).join(', ') : 'Filter the list'}>
+        <Icon name="filter" size={13} />Filter
+        {narrowed.length > 0 && <span className="text-[10px] rounded-full px-1.5 bg-indigo-600 text-white">{narrowed.length}</span>}
+        <Icon name={open ? 'chev_u' : 'chev_d'} size={12} />
       </button>
       {open && (
-        <div className="absolute left-0 top-full mt-1 z-30 bg-white border border-slate-200 rounded-lg shadow-lg py-1 min-w-[220px] fade-in">
-          {actions && <div className="flex gap-1 px-2 pb-1 mb-1 border-b border-slate-100">{actions.map(a => (
-            <button key={a.label} onClick={() => onChange(a.value())} className="text-[11px] text-indigo-600 hover:bg-indigo-50 rounded px-2 py-0.5">{a.label}</button>
-          ))}</div>}
-          {options.map(o => (
-            <button key={o.id} onClick={() => toggle(o.id)} className="w-full text-left flex items-center gap-2 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50">
-              <span className={`w-4 h-4 rounded border flex items-center justify-center flex-shrink-0 ${value.has(o.id) ? 'bg-indigo-600 border-indigo-600 text-white' : 'border-slate-300'}`}>{value.has(o.id) && <Icon name="check" size={11} />}</span>
-              {o.dot && <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: o.dot }} />}
-              <span className="truncate">{o.label}</span>
-              {o.sub && <span className="ml-auto text-[11px] text-slate-400">{o.sub}</span>}
-            </button>
-          ))}
+        <div className={MENU_PANEL + ' left-0 w-72 max-w-[calc(100vw-24px)] max-h-[70vh] overflow-y-auto'} data-testid="filter-menu">
+          {sections.map((sec, si) => {
+            const toggle = (id) => { const v = new Set(sec.value); v.has(id) ? v.delete(id) : v.add(id); sec.onChange(v); };
+            const n = sec.options.filter(o => sec.value.has(o.id)).length;
+            return (
+              <div key={sec.id} className={si ? 'border-t border-slate-100 mt-1 pt-1' : ''} data-testid={'f-' + sec.id}>
+                <div className="flex items-center gap-2 px-3 py-1">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">{sec.label}</span>
+                  <span className={`text-[10px] rounded-full px-1.5 ${sec.narrowed ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-500'}`}>{n === sec.options.length ? 'All' : n}</span>
+                  <span className="ml-auto flex gap-0.5">{sec.actions.map(a => (
+                    <button key={a.label} onClick={() => sec.onChange(a.value())} className="text-[11px] text-indigo-600 hover:bg-indigo-50 rounded px-1.5 py-0.5">{a.label}</button>
+                  ))}</span>
+                </div>
+                {sec.options.map(o => (
+                  <button key={o.id} onClick={() => toggle(o.id)} className="w-full text-left flex items-center gap-2 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50">
+                    <span className={`w-4 h-4 rounded border flex items-center justify-center flex-shrink-0 ${sec.value.has(o.id) ? 'bg-indigo-600 border-indigo-600 text-white' : 'border-slate-300'}`}>{sec.value.has(o.id) && <Icon name="check" size={11} />}</span>
+                    {o.dot && <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: o.dot }} />}
+                    <span className="truncate">{o.label}</span>
+                  </button>
+                ))}
+              </div>
+            );
+          })}
         </div>
       )}
     </div>
   );
 }
+
 
 // A project's flags, for the Status filter. A project shows if any flag is
 // selected, so "Held up" alone narrows to projects with a held-up step.
@@ -3157,10 +3180,10 @@ const SORTS = [
   { id: 'updated', short: 'Updated', label: 'Updated date', asc: 'newest first', desc: 'oldest first' },
   { id: 'name', short: 'A–Z', label: 'Alphabetical', asc: 'A–Z', desc: 'Z–A' },
 ];
-// Held up, then overdue, then sent back, then stale, then the rest.
+// Overdue, then held up, then sent back, then stale, then the rest.
 function attentionRank(p) {
   const f = projectFlags(p);
-  return f.includes('held') ? 0 : f.includes('overdue') ? 1 : f.includes('sentback') ? 2 : f.includes('stale') ? 3 : f.includes('active') ? 4 : 5;
+  return f.includes('overdue') ? 0 : f.includes('held') ? 1 : f.includes('sentback') ? 2 : f.includes('stale') ? 3 : f.includes('active') ? 4 : 5;
 }
 function sortProjects(list, id, rev) {
   const due = (p) => p.dueDate || '9999-12-31';
@@ -3175,38 +3198,35 @@ function sortProjects(list, id, rev) {
   return list.sort((a, b) => (rev ? -1 : 1) * cmp(a, b) || a.name.localeCompare(b.name));
 }
 function SortMenu({ value, rev, onChange }) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef(null);
-  useEffect(() => {
-    if (!open) return;
-    const off = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
-    document.addEventListener('mousedown', off);
-    return () => document.removeEventListener('mousedown', off);
-  }, [open]);
+  const [open, setOpen, ref] = useMenu();
   const cur = SORTS.find(x => x.id === value) || SORTS[0];
+  const dirText = rev ? cur.desc : cur.asc;
   return (
     <div ref={ref} className="relative" data-testid="sort">
-      <button onClick={() => setOpen(!open)} title={'Sorted by ' + cur.label + ', ' + (rev ? cur.desc : cur.asc)}
-        className="inline-flex items-center gap-1.5 text-sm border border-slate-300 rounded-lg px-2.5 py-1.5 bg-white text-slate-700 hover:bg-slate-50 whitespace-nowrap" data-testid="sort-btn">
-        Sort <span className="text-[11px] text-slate-500">{cur.id === 'name' && rev ? 'Z–A' : cur.short}</span><Icon name={rev ? 'chev_u' : 'chev_d'} size={12} className="text-slate-400" />
+      <button onClick={() => setOpen(!open)} title={'Sorted by ' + cur.label + ', ' + dirText} className={MENU_BTN(false)} data-testid="sort-btn">
+        <Icon name="sort" size={13} />Sort
+        <span className="text-[10px] rounded-full px-1.5 bg-slate-100 text-slate-600">{cur.id === 'name' ? (rev ? 'Z–A' : 'A–Z') : cur.short + (rev ? ', reversed' : '')}</span>
+        <Icon name={open ? 'chev_u' : 'chev_d'} size={12} />
       </button>
-      {open && <div className="absolute right-0 top-full mt-1 z-30 bg-white border border-slate-200 rounded-lg shadow-lg py-1 min-w-[230px] fade-in" data-testid="sort-menu">
+      {open && <div className={MENU_PANEL + ' left-0 w-72 max-w-[calc(100vw-24px)]'} data-testid="sort-menu">
+        <div className="px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-400">Sort by</div>
         {SORTS.map(o => {
           const on = o.id === cur.id;
           return (
             <button key={o.id} onClick={() => { onChange(o.id, on ? !rev : false); setOpen(false); }}
-              className={`w-full text-left flex items-center gap-2 px-3 py-1.5 text-sm hover:bg-slate-50 ${on ? 'font-semibold text-slate-800' : 'text-slate-600'}`}>
+              className={`w-full text-left flex items-center gap-2 px-3 py-1.5 text-sm whitespace-nowrap hover:bg-slate-50 ${on ? 'text-indigo-700 font-semibold' : 'text-slate-700'}`}>
+              <span className={`w-4 h-4 rounded-full border flex items-center justify-center flex-shrink-0 ${on ? 'border-indigo-600' : 'border-slate-300'}`}>{on && <span className="w-2 h-2 rounded-full bg-indigo-600" />}</span>
               <span className="flex-1">{o.label}</span>
-              <span className="text-[11px] text-slate-400">{on ? (rev ? o.desc : o.asc) : ''}</span>
-              {on && <Icon name={rev ? 'chev_u' : 'chev_d'} size={12} className="text-indigo-600" />}
+              <span className="text-[11px] font-normal text-slate-400">{on ? (rev ? o.desc : o.asc) : o.asc}</span>
             </button>
           );
         })}
-        <div className="px-3 pt-1 text-[10px] text-slate-400 border-t mt-1">Choose the current sort again to reverse it.</div>
+        <div className="px-3 pt-1.5 mt-1 text-[10px] text-slate-400 border-t border-slate-100">Choose the current sort again to reverse it.</div>
       </div>}
     </div>
   );
 }
+
 function Dashboard({ data, authUser, online, onOpen, onNew }) {
   const [sel, setSel] = useState(() => new Set());
   const me = meOf(data.people, authUser);
@@ -3332,21 +3352,24 @@ function Dashboard({ data, authUser, online, onOpen, onNew }) {
     <section className={`bg-white border border-slate-200 rounded-xl min-w-0 flex flex-col ${narrow ? '' : 'overflow-hidden min-h-0 h-full self-stretch'}`} data-testid="projects">
       {/* Narrow: search + New project on line 1, the filters on line 2. */}
       <div className={`flex items-center gap-2 px-3 py-2.5 border-b border-slate-200 ${narrow ? 'flex-wrap' : ''}`}>
-        <div className={`relative ${narrow ? 'flex-1 min-w-0 order-1' : 'flex-1 min-w-[110px]'}`}>
+        <div className={`relative ${narrow ? 'flex-1 min-w-0 order-1' : 'flex-1 min-w-[160px]'}`}>
           <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400"><Icon name="review" size={14} /></span>
-          <input className="w-full border border-slate-300 rounded-lg pl-8 pr-2.5 py-1.5 text-sm bg-white" placeholder="Search projects" value={q} onChange={e => setQ(e.target.value)} />
+          <input className="w-full h-9 border border-slate-300 rounded-lg pl-8 pr-2.5 text-sm bg-white" placeholder="Search projects" value={q} onChange={e => setQ(e.target.value)} />
         </div>
         <div className={`flex items-center gap-2 ${narrow ? 'order-3 w-full' : ''}`} data-testid="filters">
-          <MultiSelect label="Status" testid="f-status" options={PROJECT_FLAGS} value={flags} onChange={setFlags} defaultSize={DEFAULT_FLAGS.length}
-            actions={[{ label: 'Default', value: () => new Set(DEFAULT_FLAGS) }, { label: 'All', value: () => new Set(PROJECT_FLAGS.map(f => f.id)) }]} />
-          <MultiSelect label="People" testid="f-people" options={peopleOpts} value={whoSet} onChange={v => setWho(v.size === allPeople.size ? null : v)}
-            actions={[...(me ? [{ label: 'Only me', value: () => new Set([me.id]) }] : []), { label: 'Everyone', value: () => new Set(allPeople) }]} />
-          <MultiSelect label="Type" testid="f-type" options={typeOpts} value={typeSet} onChange={v => setTypes(v.size === allTypes.size ? null : v)}
-            actions={[{ label: 'All', value: () => new Set(allTypes) }]} />
+          <FilterMenu sections={[
+            { id: 'status', label: 'Status', options: PROJECT_FLAGS, value: flags, onChange: setFlags,
+              narrowed: !(flags.size === DEFAULT_FLAGS.length && DEFAULT_FLAGS.every(f => flags.has(f))),
+              actions: [{ label: 'Default', value: () => new Set(DEFAULT_FLAGS) }, { label: 'All', value: () => new Set(PROJECT_FLAGS.map(f => f.id)) }] },
+            { id: 'people', label: 'People', options: peopleOpts, value: whoSet, onChange: v => setWho(v.size === allPeople.size ? null : v), narrowed: !!who,
+              actions: [...(me ? [{ label: 'Only me', value: () => new Set([me.id]) }] : []), { label: 'Everyone', value: () => new Set(allPeople) }] },
+            { id: 'type', label: 'Type', options: typeOpts, value: typeSet, onChange: v => setTypes(v.size === allTypes.size ? null : v), narrowed: !!types,
+              actions: [{ label: 'All', value: () => new Set(allTypes) }] },
+          ]} />
           <SortMenu value={sortId} rev={sortRev} onChange={(id, r) => setListPrefsState(prev => { const n = { ...prev, sort: id, rev: r }; try { localStorage.setItem(LIST_PREFS_KEY, JSON.stringify(n)); } catch (e) {} return n; })} />
         </div>
         <button onClick={onNew} data-testid="new-project"
-          className={`ml-auto inline-flex items-center gap-1.5 text-sm font-semibold text-white rounded-lg pl-1.5 pr-3 py-1.5 whitespace-nowrap shadow-md hover:shadow-lg transition-shadow flex-shrink-0 ${narrow ? 'order-2' : ''}`}
+          className={`ml-auto inline-flex items-center gap-2 text-sm font-semibold text-white rounded-lg pl-1.5 pr-4 h-9 whitespace-nowrap shadow-md hover:shadow-lg transition-shadow flex-shrink-0 ${narrow ? 'order-2' : ''}`}
           style={{ background: 'linear-gradient(135deg, #F47A48, #DD4513)' }}>
           <span className="w-6 h-6 rounded-md bg-white/20 flex items-center justify-center"><Icon name="plus" size={15} /></span>New project
         </button>
@@ -3522,10 +3545,24 @@ function RailItem({ icon, badge, label, sub, onClick, href, active, testid, lead
   const ref = useRef(null);
   const show = () => { const r = ref.current && ref.current.getBoundingClientRect(); if (r) setRect({ top: r.top, left: r.left, height: r.height }); };
   const hide = () => setRect(null);
+  const flyRef = useRef(null);
+  // mouseleave alone misses a quick exit (the float appears under the
+  // pointer after it has already moved on), so watch the pointer while open.
+  useEffect(() => {
+    if (!rect) return;
+    const away = (e) => {
+      const inside = (el) => el && el.contains(e.target);
+      if (!inside(flyRef.current) && !inside(ref.current)) hide();
+    };
+    document.addEventListener('mousemove', away);
+    window.addEventListener('scroll', hide, true);
+    window.addEventListener('blur', hide);
+    return () => { document.removeEventListener('mousemove', away); window.removeEventListener('scroll', hide, true); window.removeEventListener('blur', hide); };
+  }, [!!rect]);
   const glyph = badge || <span className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${active ? 'bg-indigo-600 text-white' : 'text-slate-500'}`}><Icon name={icon} size={17} /></span>;
   const act = () => { hide(); if (onClick) onClick(); };
   const fly = rect && ReactDOM.createPortal(
-    <div className="rail-fly" style={{ top: rect.top, left: rect.left, height: rect.height }} onMouseLeave={hide} data-testid="rail-fly">
+    <div ref={flyRef} className="rail-fly" style={{ top: rect.top, left: rect.left, height: rect.height }} onMouseLeave={hide} data-testid="rail-fly">
       {href ? <a href={href} className="rail-fly-btn">{glyph}<span className="rail-fly-label"><span className="block text-sm font-medium text-slate-800">{label}</span>{sub && <span className="block text-[11px] text-slate-500">{sub}</span>}</span></a>
             : <button onClick={act} className="rail-fly-btn">{glyph}<span className="rail-fly-label"><span className="block text-sm font-medium text-slate-800">{label}</span>{sub && <span className="block text-[11px] text-slate-500">{sub}</span>}</span></button>}
     </div>, document.body);

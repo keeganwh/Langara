@@ -184,12 +184,21 @@ const cell = (d, docId, stepId) => {
   ok('brand block and top bar borders meet in one line', await p.evaluate(() => Math.abs(document.querySelector('aside > button').getBoundingClientRect().bottom - document.querySelector('header').getBoundingClientRect().bottom) < 0.5));
   ok('donut counts the project once', await p.evaluate(() => /1\s*projects/.test(document.querySelector('[data-testid=donut]').innerText)));
   ok('a held-up project is not listed under In progress alone', await p.evaluate(async () => {
-    const f = document.querySelector('[data-testid=f-status] button'); f.click(); await new Promise(r => setTimeout(r, 100));
-    const box = f.parentElement; const only = [...box.querySelectorAll('label, button')].find(x => x.innerText.trim() === 'In progress');
-    return !!only;
+    document.querySelector('[data-testid=filter-btn]').click(); await new Promise(r => setTimeout(r, 100));
+    const sec = document.querySelector('[data-testid=f-status]');
+    [...sec.querySelectorAll('button')].find(b => b.innerText.trim() === 'All').click(); await new Promise(r => setTimeout(r, 50));
+    for (const label of ['Held up', 'Sent back', 'Overdue', 'Stale', 'Complete', 'Archived']) {
+      [...document.querySelectorAll('[data-testid=f-status] button')].find(b => b.innerText.trim() === label).click();
+      await new Promise(r => setTimeout(r, 30));
+    }
+    await new Promise(r => setTimeout(r, 100));
+    const n = document.querySelectorAll('[data-testid=project-row]').length;
+    [...document.querySelector('[data-testid=f-status]').querySelectorAll('button')].find(b => b.innerText.trim() === 'Default').click();
+    return n === 0;
   }));
+  ok('Filter and Sort share one look and height', await p.evaluate(() => { const a = document.querySelector('[data-testid=filter-btn]').getBoundingClientRect(), b = document.querySelector('[data-testid=sort-btn]').getBoundingClientRect(), n = document.querySelector('[data-testid=new-project]').getBoundingClientRect(), q = document.querySelector('input[placeholder="Search projects"]').getBoundingClientRect(); return a.height === b.height && Math.abs(n.height - q.height) < 1; }));
   await p.keyboard.press('Escape'); await p.mouse.click(5, 5); await p.waitForTimeout(100);
-  ok('completed projects are hidden by default', await p.evaluate(() => /Status\s*5/.test(document.querySelector('[data-testid=f-status]').innerText)));
+  ok('completed projects are hidden by default', await p.evaluate(() => document.querySelector('[data-testid=filter]').dataset.narrowed === ''));
   await p.evaluate(() => [...document.querySelectorAll('[data-testid=tiles] button')].find(b => b.innerText.includes('Sent back')).click()); await p.waitForTimeout(100);
   ok('clicking a tile filters to those projects', await p.evaluate(() => document.querySelectorAll('[data-testid=project-row]').length === 0 && document.body.innerText.includes('No projects match')));
   await p.evaluate(() => [...document.querySelectorAll('button')].find(b => b.innerText.trim() === 'Show all').click()); await p.waitForTimeout(100);
@@ -202,13 +211,13 @@ const cell = (d, docId, stepId) => {
   ok('a change applied at a meeting collapses to one line', await p.evaluate(() => (document.querySelector('[data-testid=recent]').innerText.match(/JCCS: Held up/g) || []).length === 1));
   await p.evaluate(() => document.querySelector('[data-testid=recent-drawer] button[aria-label=Close]').click()); await p.waitForTimeout(100);
   ok('the dashboard header has no repeated tool name', await p.evaluate(() => !/DEVELOPMENT TRACKER/i.test(document.querySelector('header').innerText)));
-  await p.evaluate(() => document.querySelector('[data-testid=sort] button').click()); await p.waitForTimeout(100);
+  await p.evaluate(() => document.querySelector('[data-testid=sort-btn]').click()); await p.waitForTimeout(100);
   ok('sort offers the six orders, Needs attention first by default', await p.evaluate(() => { const m = document.querySelector('[data-testid=sort-menu]'); return m.querySelectorAll('button').length === 6 && /Needs attention first\s*most urgent first/.test(m.innerText); }));
   await p.evaluate(() => [...document.querySelectorAll('[data-testid=sort-menu] button')].find(b => b.innerText.includes('Alphabetical')).click()); await p.waitForTimeout(100);
-  await p.evaluate(() => document.querySelector('[data-testid=sort] button').click()); await p.waitForTimeout(100);
+  await p.evaluate(() => document.querySelector('[data-testid=sort-btn]').click()); await p.waitForTimeout(100);
   await p.evaluate(() => [...document.querySelectorAll('[data-testid=sort-menu] button')].find(b => b.innerText.includes('Alphabetical')).click()); await p.waitForTimeout(100);
   ok('choosing a sort again reverses it', await p.evaluate(() => /Z–A/.test(document.querySelector('[data-testid=sort]').innerText) && JSON.parse(localStorage.getItem('cs_tracker_list_prefs_v1')).rev === true));
-  await p.evaluate(() => document.querySelector('[data-testid=sort] button').click()); await p.waitForTimeout(100);
+  await p.evaluate(() => document.querySelector('[data-testid=sort-btn]').click()); await p.waitForTimeout(100);
   await p.evaluate(() => [...document.querySelectorAll('[data-testid=sort-menu] button')].find(b => b.innerText.includes('Needs attention')).click()); await p.waitForTimeout(100);
   console.log('\nMeeting schedule');
   const mDate = await p.evaluate(() => { const d = new Date(); d.setDate(d.getDate() + 5); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); });
@@ -415,9 +424,9 @@ const cell = (d, docId, stepId) => {
   ok('clicking it again closes it', await p.evaluate(() => !document.querySelector('[data-testid=report-drop]')));
   const held = () => p.evaluate(() => [...document.querySelectorAll('[data-testid=tiles] button')].find(b => b.innerText.includes('Held up')).click());
   await held(); await p.waitForTimeout(100);
-  ok('a stat tile switches its filter on', await p.evaluate(() => /Status\s*1/.test(document.querySelector('[data-testid=f-status]').innerText)));
+  ok('a stat tile switches its filter on', await p.evaluate(() => document.querySelector('[data-testid=filter]').dataset.narrowed === 'status'));
   await held(); await p.waitForTimeout(100);
-  ok('clicking the tile again switches it off', await p.evaluate(() => /Status\s*5/.test(document.querySelector('[data-testid=f-status]').innerText)));
+  ok('clicking the tile again switches it off', await p.evaluate(() => document.querySelector('[data-testid=filter]').dataset.narrowed === ''));
   await p.evaluate(() => document.querySelector('[data-testid=rail-expand] button').click()); await p.waitForTimeout(200);
   ok('opening the sidebar on a narrow window overlays the page', await p.evaluate(() => !!document.querySelector('[data-testid=sidebar-backdrop]') && !!document.querySelector('[data-testid=nav-dashboard]')));
   await p.evaluate(() => document.querySelector('[data-testid=sidebar-backdrop]').click()); await p.waitForTimeout(150);

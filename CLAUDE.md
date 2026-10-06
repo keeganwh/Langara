@@ -316,6 +316,9 @@ grip, and the tracker's circle outline is the project's state
 (`projectRing()`). Hovering a rail icon floats the full button over it with
 the label sliding out — **drawn fixed-position through a portal**, because the
 rail scrolls and a scrolling box clips anything that overflows sideways.
+The float closes when the pointer is over neither it nor its button
+(a `mousemove` watch while open) — `mouseleave` alone missed quick exits and
+left it stuck open.
 Dashboard, the other app and Settings sit at the **top** of both sidebars
 (and rails), under the brand block; the foot is empty. In the open sidebar a
 cut-off workflow or project name floats in full on hover (`HoverTitle`, the
@@ -569,10 +572,14 @@ status colour. The Workflow Tool carries the identical `tw-brand` block (read by
 - **Wide dashboard fills the window**: the project list scrolls inside its
   box and the right column scrolls on its own when it overflows. Rows are
   top-aligned so opening the chips grows a row downward.
-- **Sort** (`SortMenu` / `sortProjects`, beside the filters, kept in
+- **Filter and Sort** are two buttons of one look (`MENU_BTN`, `MENU_PANEL`,
+  `useMenu`; `filter` and `sort` glyphs), the same height as search and New
+  project (`h-9`). `FilterMenu` holds Status / People / Type as sections of
+  one panel (its `data-narrowed` lists the narrowed ones).
+- **Sort** (`SortMenu` / `sortProjects`, kept in
   `cs_tracker_list_prefs_v1` as `sort` + `rev`): Needs attention first
-  (default — held up, overdue, sent back, stale, then the rest, each by due
-  date), Due date, Progress %, Creation date, Updated date, Alphabetical.
+  (default — overdue, held up, sent back, stale, then the rest, each by due
+  date; an overdue project also shows a red warning flag on its row), Due date, Progress %, Creation date, Updated date, Alphabetical.
   Choosing the current sort again reverses it.
 - Dashboard headers in both apps show just "Dashboard" — no tool-name
   eyebrow (`TopBar` omits the eyebrow when none is given).
@@ -706,7 +713,7 @@ pending); the steps a send-back reset to pending still show their round badge.
   next for their document, sorted by due date.
 - Routing is the hash (`#/p/<id>`), so projects can be linked directly.
 
-Checks: `cd dev && npm run tracker` (120 checks, own Firebase stub with nested
+Checks: `cd dev && npm run tracker` (121 checks, own Firebase stub with nested
 paths and live listeners — see `dev/tracker-preview.js`).
 
 ## Conventions to follow
