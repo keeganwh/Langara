@@ -2423,6 +2423,48 @@ function DateList({ items, onOpen, showProject = true, empty, limit = 12 }) {
 // line), then a white toolbar row of bordered buttons.
 const CHROME_BAR_H = 68;
 
+// Who else is signed in — the same presence tree and avatars as the Workflow
+// Tool, so both apps show everyone currently in either.
+function usePresence(authUser) {
+  const [activeUsers, setActiveUsers] = useState([]);
+  useEffect(() => {
+    if (!authUser) return;
+    const db = getFbDb();
+    const presenceRef = db.ref('presence/' + authUser.uid);
+    presenceRef.set({ email: authUser.email, displayName: authUser.displayName || authUser.email, online: true, lastSeen: firebase.database.ServerValue.TIMESTAMP });
+    if (presenceRef.onDisconnect) presenceRef.onDisconnect().remove();
+    const all = db.ref('presence');
+    const cb = all.on('value', snap => setActiveUsers(Object.entries(snap.val() || {}).map(([uid, d]) => ({ uid, ...d }))));
+    return () => { all.off('value', cb); presenceRef.remove(); };
+  }, [authUser && authUser.uid]);
+  return activeUsers;
+}
+const PresenceCtx = React.createContext([]);
+function PresenceAvatars() {
+  const users = React.useContext(PresenceCtx);
+  if (!users.length) return null;
+  const colors = ['#6366f1', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#0ea5e9'];
+  return (
+    <div className="flex items-center shrink-0 pl-1" data-testid="presence">
+      {users.slice(0, 5).map(u => {
+        const hash = [...(u.uid || '')].reduce((a, c) => a + c.charCodeAt(0), 0);
+        return <div key={u.uid} title={u.email || u.displayName}
+          style={{ width: 24, height: 24, borderRadius: '50%', background: colors[hash % colors.length], color: 'white', fontSize: 9, fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '2px solid white', marginLeft: -4 }}>
+          {(u.displayName || u.email || '?').slice(0, 2).toUpperCase()}</div>;
+      })}
+    </div>
+  );
+}
+// The top-right button style the Workflow Tool's History button uses.
+function TopBtn({ icon, children, onClick, title, testid }) {
+  return (
+    <button onClick={onClick} title={title} data-testid={testid}
+      className="shrink-0 inline-flex items-center gap-1.5 text-xs font-semibold rounded-lg px-3 py-2 border bg-white text-slate-600 border-slate-300 hover:bg-slate-50 transition-colors">
+      <Icon name={icon} size={14} /> {children}
+    </button>
+  );
+}
+
 function TopBar({ eyebrow, title, sub, children }) {
   return (
     <header className="bg-white border-b border-slate-200 px-4 flex items-center gap-3 shrink-0" style={{ height: CHROME_BAR_H }}>
@@ -2431,6 +2473,7 @@ function TopBar({ eyebrow, title, sub, children }) {
         <h1 className="font-bold text-slate-900 text-[17px] truncate leading-tight tracking-tight">{title}</h1>
         {sub && <div className="flex items-center gap-1.5 mt-0.5 text-[11px] text-slate-400 truncate">{sub}</div>}
       </div>
+      <PresenceAvatars />
       {children}
     </header>
   );
@@ -2583,7 +2626,7 @@ function ProjectRow({ project, people, onOpen, selected, onSelect, showDocs, det
     <div className={`border-b last:border-b-0 ${selected ? 'bg-indigo-50/60' : ''}`}>
     <div className="flex items-stretch">
     {onSelect && <label className="flex items-start pl-3 pt-4 cursor-pointer" title="Select"><input type="checkbox" checked={!!selected} onChange={e => onSelect(e.target.checked)} data-testid="row-select" /></label>}
-    <button onClick={() => onOpen(project.id)} className="flex-1 min-w-0 text-left grid grid-cols-1 md:grid-cols-[minmax(240px,1fr)_minmax(0,1.3fr)] gap-x-6 gap-y-2 px-4 py-3 hover:bg-slate-50 items-center" data-testid="project-row">
+    <button onClick={() => onOpen(project.id)} className="flex-1 min-w-0 text-left grid grid-cols-1 md:grid-cols-[minmax(240px,1fr)_minmax(0,1.3fr)] gap-x-6 gap-y-2 px-4 py-3 hover:bg-slate-50 items-start" data-testid="project-row">
       <div className="min-w-0">
         <div className="flex items-center gap-1.5 min-w-0">
           <span className="text-[15px] font-bold text-slate-800 truncate">{project.name}</span>
@@ -2836,7 +2879,7 @@ function MultiSelect({ label, options, value, onChange, actions, testid, default
 // A project's flags, for the Status filter. A project shows if any flag is
 // selected, so "Held up" alone narrows to projects with a held-up step.
 const PROJECT_FLAGS = [
-  { id: 'active', label: 'In progress' }, { id: 'held', label: 'Held up', dot: '#d97706' },
+  { id: 'active', label: 'In progress', dot: '#2563eb' }, { id: 'held', label: 'Held up', dot: '#d97706' },
   { id: 'sentback', label: 'Sent back', dot: '#7c3aed' }, { id: 'overdue', label: 'Overdue', dot: '#dc2626' },
   { id: 'stale', label: 'Stale', dot: '#94a3b8' }, { id: 'complete', label: 'Complete', dot: '#059669' },
   { id: 'archived', label: 'Archived', dot: '#cbd5e1' },
@@ -2846,12 +2889,14 @@ function projectFlags(p) {
   if (p.archived) return ['archived'];
   const st = projectStats(p);
   if (st.done) return ['complete'];
-  const f = ['active'];
+  // "In progress" means moving with nothing wrong, so filtering to it alone
+  // leaves out projects that are held up, sent back, overdue or stale.
+  const f = [];
   if (st.held) f.push('held');
   if (st.sentBack) f.push('sentback');
   if (st.overdue || (p.dueDate && daysUntil(p.dueDate) < 0)) f.push('overdue');
   if ((Date.now() - st.lastAt) > STALE_DAYS * 86400000) f.push('stale');
-  return f;
+  return f.length ? f : ['active'];
 }
 function projectPeopleIds(project, people) {
   const ids = new Set();
@@ -3222,7 +3267,7 @@ function Dashboard({ data, authUser, online, onOpen, onNew }) {
   const openRep = reports.find(r => r.id === report);
 
   const projectsBox = (
-    <section className={`bg-white border border-slate-200 rounded-xl min-w-0 flex flex-col ${narrow ? '' : 'overflow-hidden'}`} style={narrow ? undefined : { maxHeight: 'calc(100vh - 205px)' }} data-testid="projects">
+    <section className={`bg-white border border-slate-200 rounded-xl min-w-0 flex flex-col ${narrow ? '' : 'overflow-hidden min-h-0 h-full self-stretch'}`} data-testid="projects">
       {/* Narrow: search + New project on line 1, the filters on line 2. */}
       <div className={`flex items-center gap-2 px-3 py-2.5 border-b border-slate-200 ${narrow ? 'flex-wrap' : ''}`}>
         <div className={`relative ${narrow ? 'flex-1 min-w-0 order-1' : 'w-1/3'}`}>
@@ -3293,9 +3338,11 @@ function Dashboard({ data, authUser, online, onOpen, onNew }) {
   return (
     <>
       {schedOpen && <MeetingScheduleModal data={data} onClose={() => setSchedOpen(false)} />}
-      <TopBar eyebrow="Development Tracker" title="Dashboard" sub={<SyncLine online={online}>{' · ' + active.length + ' active ' + (active.length === 1 ? 'project' : 'projects')}</SyncLine>} />
+      <TopBar eyebrow="Development Tracker" title="Dashboard" sub={<SyncLine online={online}>{' · ' + active.length + ' active ' + (active.length === 1 ? 'project' : 'projects')}</SyncLine>}>
+        <TopBtn icon="history" onClick={() => setRecentOpen(true)} testid="recent-btn" title="Projects updated in the last 14 days">Recent updates</TopBtn>
+      </TopBar>
       <div className="flex-1 min-h-0 flex">
-      <div className="flex-1 min-w-0 overflow-auto p-4">
+      <div className={`flex-1 min-w-0 p-4 ${narrow ? 'overflow-auto' : 'flex flex-col overflow-hidden'}`}>
         {narrow ? <>
           {/* Narrow: Needs your attention in full, then one row of small cards —
               stats filter the list (toggling), reports drop a panel open below. */}
@@ -3320,22 +3367,18 @@ function Dashboard({ data, authUser, online, onOpen, onNew }) {
           </div>
           {projectsBox}
         </> : <>
-          <div className="grid grid-cols-5 gap-3 mb-4" data-testid="tiles">{tiles.map(t => tileEl(t, false))}</div>
-          <div className="grid grid-cols-[minmax(0,1fr)_360px] gap-4 items-start">
+          <div className="grid grid-cols-5 gap-3 mb-4 shrink-0" data-testid="tiles">{tiles.map(t => tileEl(t, false))}</div>
+          {/* Fills the rest of the window: the project list scrolls inside its
+              box, and the right column scrolls on its own if it overflows. */}
+          <div className="grid grid-cols-[minmax(0,1fr)_360px] gap-4 flex-1 min-h-0">
             {projectsBox}
-            <div className="space-y-4 min-w-0">
+            <div className="space-y-4 min-w-0 min-h-0 overflow-y-auto pr-0.5" data-testid="right-col">
               {attentionPanel}
               {reports.map(r => <Panel key={r.id} title={r.title} icon={r.icon} testid={r.testid} accent={r.accent} right={r.right}>{r.body}</Panel>)}
             </div>
           </div>
         </>}
       </div>
-      {/* Recent updates: collapsed to a slim rail; opens as a drawer. */}
-      <button onClick={() => setRecentOpen(true)} data-testid="recent-rail" title="Recent updates"
-        className="w-10 shrink-0 bg-white border-l border-slate-200 flex flex-col items-center gap-2 py-3 text-slate-500 hover:bg-slate-50 hover:text-slate-800">
-        <Icon name="history" size={17} />
-        <span className="text-[11px] font-semibold tracking-wide" style={{ writingMode: 'vertical-rl' }}>Recent updates{recentLast ? ' · ' + timeAgo(recentLast) : ''}</span>
-      </button>
       </div>
       {recentOpen && <RecentDrawer projects={active} onOpen={onOpen} onClose={() => setRecentOpen(false)} />}
     </>
@@ -3547,6 +3590,7 @@ function Sidebar({ data, route, go, authUser, onModal, sb }) {
 
 function App({ authUser }) {
   const [data, online] = useTrackerData(authUser);
+  const presence = usePresence(authUser);
   const [route, setRoute] = useState(readRoute());
   const [modal, setModal] = useState(null);   // 'people' | 'new'
   const sb = useSidebar();
@@ -3561,6 +3605,7 @@ function App({ authUser }) {
 
   if (!data) return <div className="flex items-center justify-center h-screen text-slate-400 text-sm">Loading…</div>;
   return (
+    <PresenceCtx.Provider value={presence}>
     <div className="flex h-screen overflow-hidden bg-slate-100">
       {/* Narrow: the rail holds its place and the opened sidebar slides over the page. */}
       <div className="relative shrink-0 h-full z-40" style={{ width: sb.narrow ? RAIL_W : (sb.expanded ? SIDEBAR_W : RAIL_W) }}>
@@ -3581,6 +3626,7 @@ function App({ authUser }) {
       <UndoToast />
       {modal === 'new' && <NewProjectModal data={data} authUser={authUser} onClose={() => setModal(null)} onCreated={id => { setModal(null); go(id); }} />}
     </div>
+    </PresenceCtx.Provider>
   );
 }
 

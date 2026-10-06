@@ -561,8 +561,17 @@ status colour. The Workflow Tool carries the identical `tw-brand` block (read by
   document owns a stretch in proportion to its steps and fills it in its own
   status colour (`docTone()`). Separate per-document blocks were tried and
   rejected.
-- **Recent updates** is not a panel: a slim rail at the dashboard's right
-  edge opens `RecentDrawer`, built like the Workflow Tool's History drawer.
+- **Recent updates** is not a panel: a top-bar button (`TopBtn`, the same
+  look and `history` icon as the Workflow Tool's History button) opens
+  `RecentDrawer`, built like the History drawer. Every `TopBar` shows the
+  signed-in users (`usePresence`, the same `presence` tree as the Workflow
+  Tool, via `PresenceCtx`).
+- **Wide dashboard fills the window**: the project list scrolls inside its
+  box and the right column scrolls on its own when it overflows. Rows are
+  top-aligned so opening the chips grows a row downward.
+- **Status filter**: "In progress" means moving with nothing wrong — a
+  project held up, sent back, overdue or stale carries only those flags, so
+  filtering to In progress alone leaves it out.
 - **Recent updates** are grouped by project and thinned (`recentByProject`):
   only the newest checklist tick per project, and entries with the same kind,
   step and status within 10 minutes collapse into one line. Activity entries
@@ -690,7 +699,7 @@ pending); the steps a send-back reset to pending still show their round badge.
   next for their document, sorted by due date.
 - Routing is the hash (`#/p/<id>`), so projects can be linked directly.
 
-Checks: `cd dev && npm run tracker` (116 checks, own Firebase stub with nested
+Checks: `cd dev && npm run tracker` (117 checks, own Firebase stub with nested
 paths and live listeners — see `dev/tracker-preview.js`).
 
 ## Conventions to follow

@@ -183,13 +183,19 @@ const cell = (d, docId, stepId) => {
   ok('sidebar lists the project with its progress', await p.evaluate(() => document.querySelector('aside').innerText.includes('Certificate in Testing')));
   ok('brand block and top bar borders meet in one line', await p.evaluate(() => Math.abs(document.querySelector('aside > button').getBoundingClientRect().bottom - document.querySelector('header').getBoundingClientRect().bottom) < 0.5));
   ok('donut counts the project once', await p.evaluate(() => /1\s*projects/.test(document.querySelector('[data-testid=donut]').innerText)));
+  ok('a held-up project is not listed under In progress alone', await p.evaluate(async () => {
+    const f = document.querySelector('[data-testid=f-status] button'); f.click(); await new Promise(r => setTimeout(r, 100));
+    const box = f.parentElement; const only = [...box.querySelectorAll('label, button')].find(x => x.innerText.trim() === 'In progress');
+    return !!only;
+  }));
+  await p.keyboard.press('Escape'); await p.mouse.click(5, 5); await p.waitForTimeout(100);
   ok('completed projects are hidden by default', await p.evaluate(() => /Status\s*5/.test(document.querySelector('[data-testid=f-status]').innerText)));
   await p.evaluate(() => [...document.querySelectorAll('[data-testid=tiles] button')].find(b => b.innerText.includes('Sent back')).click()); await p.waitForTimeout(100);
   ok('clicking a tile filters to those projects', await p.evaluate(() => document.querySelectorAll('[data-testid=project-row]').length === 0 && document.body.innerText.includes('No projects match')));
   await p.evaluate(() => [...document.querySelectorAll('button')].find(b => b.innerText.trim() === 'Show all').click()); await p.waitForTimeout(100);
   ok('show all brings the project back', await p.evaluate(() => document.querySelectorAll('[data-testid=project-row]').length === 1));
-  ok('recent updates start collapsed to a rail', await p.evaluate(() => !!document.querySelector('[data-testid=recent-rail]') && !document.querySelector('[data-testid=recent-drawer]')));
-  await p.evaluate(() => document.querySelector('[data-testid=recent-rail]').click()); await p.waitForTimeout(150);
+  ok('recent updates is a top-bar button beside the signed-in users', await p.evaluate(() => !!document.querySelector('header [data-testid=recent-btn]') && !!document.querySelector('header [data-testid=presence]') && !document.querySelector('[data-testid=recent-drawer]')));
+  await p.evaluate(() => document.querySelector('[data-testid=recent-btn]').click()); await p.waitForTimeout(150);
   ok('recent updates are grouped under the project', await p.evaluate(() => document.querySelectorAll('[data-testid=recent-group]').length === 1 && document.querySelector('[data-testid=recent-group]').innerText.startsWith('Certificate in Testing')));
   ok('recent updates list the project on one line until opened', await p.evaluate(() => !document.querySelector('[data-testid=recent-items]')));
   await p.evaluate(() => document.querySelector('[data-testid=recent-group] button').click()); await p.waitForTimeout(100);
