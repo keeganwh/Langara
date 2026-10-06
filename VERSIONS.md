@@ -42,6 +42,15 @@ about to do something risky, take both.
 
 ## Released versions
 
+### v2.6 — tracker batches, task statuses
+Archive branch: `archive/v2.6-pre-batch`
+
+Batch projects (several items through one workflow), task-level statuses,
+people tagged from tasks, project duplication, delete confirm box. Batch
+projects use a new stored shape (`batch`, `template`, `items`,
+`sharedDocIds`); existing projects are untouched. Rolling the code back would
+leave any batch projects unreadable by the older page — export them first.
+
 ### v2.5 — collapsible sidebars, narrow-window dashboard
 Commit `4f6078d`
 

@@ -326,12 +326,44 @@ function contentHash(obj) {
 const docsHash = (docs) => contentHash(docs);
 
 // Firebase drops empty arrays and objects, so fill them back in on read.
+// ── Batches ───────────────────────────────────────────────────────────────────
+// A batch is one project tracking several items (e.g. new courses) through the
+// same workflow together. It stores the workflow copy once (`template`), the
+// `items`, and which documents are `sharedDocIds` (one copy for the whole
+// batch). Every other document is repeated per item with a predictable id —
+// `<docId>__<itemId>` — so progress lives at progress/<docId>__<itemId>/… and
+// every view that works on `documents` works on a batch unchanged.
+//
+// Shared documents are provisional (they may be removed after testing). To
+// retire one without losing data, copy progress/<docId> into each
+// progress/<docId>__<itemId> and drop the id from sharedDocIds.
+const ITEM_SEP = '__';
+const normDocs = (docs) => (docs || []).map(d => ({ ...d, steps: (d.steps || []).map(s => ({
+  ...s, roleIds: s.roleIds || [], actions: s.actions || [], syncGroupId: s.syncGroupId || null,
+})) }));
+function expandBatch(template, items, sharedIds) {
+  const out = [];
+  template.filter(d => sharedIds.includes(d.id)).forEach(d => out.push({ ...d, shared: true, baseName: d.name }));
+  items.forEach(it => template.filter(d => !sharedIds.includes(d.id)).forEach(d =>
+    out.push({ ...d, id: d.id + ITEM_SEP + it.id, srcDocId: d.id, itemId: it.id, itemName: it.name, baseName: d.name, name: it.name + ' · ' + d.name })));
+  return out;
+}
+const templateOf = (p) => p.batch ? p.template : p.documents;
+const itemDocs = (p, itemId) => p.documents.filter(d => d.itemId === itemId);
+function itemStats(p, itemId) {
+  let total = 0, closed = 0;
+  itemDocs(p, itemId).forEach(d => d.steps.forEach(s => { total++; if (isClosed(cellOf(p, d.id, s.id).status)) closed++; }));
+  return { total, closed, pct: total ? Math.round(closed / total * 100) : 0, done: total > 0 && closed === total };
+}
+
 function normalizeProject(id, p) {
-  const docs = (p.documents || []).map(d => ({ ...d, steps: (d.steps || []).map(s => ({
-    ...s, roleIds: s.roleIds || [], actions: s.actions || [], syncGroupId: s.syncGroupId || null,
-  })) }));
+  const batch = !!p.batch;
+  const template = batch ? normDocs(p.template) : null;
+  const items = batch ? Object.values(p.items || {}).filter(Boolean) : [];
+  const sharedDocIds = batch ? (p.sharedDocIds || []) : [];
+  const docs = batch ? expandBatch(template, items, sharedDocIds) : normDocs(p.documents);
   return {
-    ...p, id, name: p.name || 'Untitled project', documents: docs,
+    ...p, id, name: p.name || 'Untitled project', documents: docs, batch, template, items, sharedDocIds,
     roleAssignments: p.roleAssignments || {}, progress: p.progress || {}, activity: p.activity || {}, links: p.links || {},
     syncGroupMeta: p.syncGroupMeta || {}, notes: p.notes || '', archived: !!p.archived,
     startDate: p.startDate || '', dueDate: p.dueDate || '',
@@ -718,12 +750,17 @@ function PeopleModal({ data, onClose }) {
 // ── New project ────────────────────────────────────────────────────────────────
 function NewProjectModal({ data, authUser, onCreated, onClose }) {
   const [mode, setMode] = useState('workflow');      // 'workflow' | 'duplicate'
+  const [batch, setBatch] = useState(false);
+  const [itemsText, setItemsText] = useState('');
+  const [shared, setShared] = useState([]);          // document ids with one copy for the whole batch
   const [name, setName] = useState('');
   const [wfId, setWfId] = useState(data.workflows[0] ? data.workflows[0].id : '');
   const [srcId, setSrcId] = useState(data.projects[0] ? data.projects[0].id : '');
   const [startDate, setStartDate] = useState(todayStr());
   const [dueDate, setDueDate] = useState('');
   const wf = data.workflows.find(w => w.id === wfId);
+  const itemNames = itemsText.split('\n').map(s => s.trim()).filter(Boolean);
+  const perItemCount = wf ? wf.documents.filter(d => !shared.includes(d.id)).length : 0;
   const src = data.projects.find(p => p.id === srcId);
   // Duplicate: an exact copy of the project — its copy of the workflow, people,
   // notes, dates and all progress (statuses, rounds, tasks, step history) —
@@ -733,7 +770,8 @@ function NewProjectModal({ data, authUser, onCreated, onClose }) {
     const id = uid();
     const copy = JSON.parse(JSON.stringify({
       workflowId: src.workflowId, workflowName: src.workflowName, sourceHash: src.sourceHash || null,
-      documents: src.documents, syncGroupMeta: src.syncGroupMeta, roleAssignments: src.roleAssignments,
+      ...(src.batch ? { batch: true, template: src.template, items: src.items, sharedDocIds: src.sharedDocIds } : { documents: src.documents }),
+      syncGroupMeta: src.syncGroupMeta, roleAssignments: src.roleAssignments,
       progress: src.progress, notes: src.notes || '', syncedAt: src.syncedAt || src.createdAt || Date.now(),
     }));
     dbSet('projects/' + id, {
@@ -755,16 +793,19 @@ function NewProjectModal({ data, authUser, onCreated, onClose }) {
     docs.forEach(d => d.steps.forEach(s => s.syncGroupId && usedGroups.add(s.syncGroupId)));
     const syncGroupMeta = {};
     usedGroups.forEach(g => { if (data.syncGroupMeta[g]) syncGroupMeta[g] = data.syncGroupMeta[g]; });
+    const shape = batch
+      ? { batch: true, template: docs, items: itemNames.map(n => ({ id: uid(), name: n })), sharedDocIds: shared.filter(sid => docs.some(d => d.id === sid)) }
+      : { documents: docs };
     dbSet('projects/' + id, {
       name: name.trim(), workflowId: wf.id, workflowName: wf.name || '', sourceHash: docsHash(docs),
-      documents: docs, syncGroupMeta, startDate, dueDate, notes: '', archived: false,
+      ...shape, syncGroupMeta, startDate, dueDate, notes: '', archived: false,
       createdAt: Date.now(), createdBy: authUser.email || '', updatedAt: Date.now(), syncedAt: Date.now(),
     }).then(() => { logActivity(id, authUser, 'Created from the "' + (wf.name || '') + '" workflow', { kind: 'created' }); onCreated(id); });
   };
   return (
     <Modal title="New project" onClose={onClose} footer={<>
       <Btn variant="secondary" onClick={onClose}>Cancel</Btn>
-      <Btn disabled={!name.trim() || (mode === 'duplicate' ? !src : !wf)} onClick={create} >{mode === 'duplicate' ? 'Duplicate project' : 'Create project'}</Btn>
+      <Btn disabled={!name.trim() || (mode === 'duplicate' ? !src : (!wf || (batch && !itemNames.length)))} onClick={create} >{mode === 'duplicate' ? 'Duplicate project' : 'Create project'}</Btn>
     </>}>
       <div className="flex items-center bg-slate-100 rounded-lg p-0.5 mb-4 w-max" data-testid="new-mode">
         {[['workflow', 'From a workflow'], ['duplicate', 'Duplicate a project']].map(([id, label]) => (
@@ -791,6 +832,37 @@ function NewProjectModal({ data, authUser, onCreated, onClose }) {
       {wf && <div className="text-xs text-slate-500 -mt-2 mb-4">
         {wf.documents.map(d => (d.name || 'Document') + ' (' + (d.steps || []).length + ' steps)').join(' · ') || 'This workflow has no documents yet.'}
       </div>}
+      <label className="flex items-start gap-2 text-sm text-slate-700 mb-3" data-testid="batch-toggle">
+        <input type="checkbox" className="mt-1" checked={batch} onChange={e => setBatch(e.target.checked)} />
+        <span><span className="font-semibold">Batch of several items</span><span className="block text-xs text-slate-500">Track several items — e.g. new courses — through this workflow together, in one project.</span></span>
+      </label>
+      {batch && wf && <div className="border rounded-lg p-3 mb-4 bg-slate-50" data-testid="batch-setup">
+        <Field label="Items" hint="One per line, e.g. course codes.">
+          <textarea rows={4} className={textareaCls} value={itemsText} onChange={e => setItemsText(e.target.value)} placeholder={'CPSC 1010\nCPSC 1020'} data-testid="batch-items" />
+        </Field>
+        <div className="text-sm font-semibold text-slate-700 mb-1">Documents</div>
+        <p className="text-xs text-slate-500 mb-2">Each document is repeated for every item, unless it is shared — one copy covering the whole batch.</p>
+        <div className="space-y-1">
+          {wf.documents.map(d => {
+            const on = shared.includes(d.id);
+            return (
+              <div key={d.id} className="flex items-center gap-2 text-sm">
+                <span className="w-2.5 h-2.5 rounded-full" style={{ background: d.color }} />
+                <span className="flex-1 truncate">{d.name}</span>
+                <div className="flex items-center bg-white border border-slate-200 rounded-md p-0.5 text-[11px]">
+                  {[[false, 'Per item'], [true, 'Shared']].map(([v, label]) => (
+                    <button key={label} onClick={() => setShared(v ? [...shared, d.id] : shared.filter(x => x !== d.id))}
+                      className={`px-2 py-0.5 rounded ${on === v ? 'bg-indigo-600 text-white' : 'text-slate-500'}`}>{label}</button>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+        {perItemCount > 3 && <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mt-2" data-testid="batch-warn">
+          {perItemCount} documents per item — with {itemNames.length || 'several'} items that is {perItemCount * Math.max(1, itemNames.length)} rows to track. Batches work best with 3 or fewer per item; consider marking some as shared or making separate projects.
+        </p>}
+      </div>}
       </>}
       <div className="grid grid-cols-2 gap-3">
         <Field label="Start date"><input type="date" className={inputCls} value={startDate} onChange={e => setStartDate(e.target.value)} /></Field>
@@ -801,7 +873,70 @@ function NewProjectModal({ data, authUser, onCreated, onClose }) {
 }
 
 // ── Project settings (details, roles, workflow version, archive) ───────────────
-function ProjectSettingsModal({ project, data, authUser, onDeleted, onClose }) {
+// A confirmation box with a button, in place of the browser's confirm/prompt.
+function ConfirmModal({ title, message, confirmLabel, danger, onConfirm, onClose }) {
+  return (
+    <Modal title={title} onClose={onClose} footer={<>
+      <Btn variant="secondary" onClick={onClose}>Cancel</Btn>
+      <Btn variant={danger ? 'danger' : 'primary'} onClick={() => { onConfirm(); onClose(); }}>{confirmLabel}</Btn>
+    </>}>
+      <div className="text-sm text-slate-700 whitespace-pre-line" data-testid="confirm-message">{message}</div>
+    </Modal>
+  );
+}
+
+// Items in a batch: rename, add, remove, or split one off into its own
+// project. Writes immediately. Removing an item hides it; its progress stays
+// in the database under its document ids.
+function BatchItems({ project, authUser, onSplit }) {
+  const [newName, setNewName] = useState('');
+  const [ask, setAsk] = useState(null);
+  const base = 'projects/' + project.id;
+  const write = (items, text) => { dbUpdate(base, { items, updatedAt: Date.now() }); logActivity(project.id, authUser, text, { kind: 'project' }); };
+  const rename = (it, name) => { if (name.trim() && name.trim() !== it.name) write(project.items.map(x => x.id === it.id ? { ...x, name: name.trim() } : x), 'Renamed item "' + it.name + '" to "' + name.trim() + '"'); };
+  const add = () => { if (!newName.trim()) return; write([...project.items, { id: uid(), name: newName.trim() }], 'Added item "' + newName.trim() + '"'); setNewName(''); };
+  const remove = (it) => setAsk({ title: 'Remove ' + it.name + '?', message: '"' + it.name + '" will no longer show in this batch. Its progress is kept on record, but there is no button to bring it back.', confirmLabel: 'Remove item', danger: true,
+    onConfirm: () => write(project.items.filter(x => x.id !== it.id), 'Removed item "' + it.name + '"') });
+  // Split off: a new batch project holding just this item (and copies of the
+  // shared documents), with its progress, people, notes and dates.
+  const split = (it) => setAsk({ title: 'Split off ' + it.name + '?', message: '"' + it.name + '" becomes its own project, keeping its progress. Shared documents are copied with their progress. It leaves this batch.', confirmLabel: 'Split off',
+    onConfirm: () => {
+      const id = uid();
+      const prog = {};
+      Object.entries(project.progress).forEach(([k, v]) => { if (k.endsWith(ITEM_SEP + it.id) || project.sharedDocIds.includes(k)) prog[k] = v; });
+      dbSet('projects/' + id, JSON.parse(JSON.stringify({
+        name: project.name + ' — ' + it.name, workflowId: project.workflowId, workflowName: project.workflowName, sourceHash: project.sourceHash || null,
+        batch: true, template: project.template, items: [it], sharedDocIds: project.sharedDocIds, syncGroupMeta: project.syncGroupMeta,
+        roleAssignments: project.roleAssignments, notes: project.notes || '', progress: prog, startDate: project.startDate, dueDate: project.dueDate,
+        archived: false, syncedAt: project.syncedAt || project.createdAt || Date.now(), createdAt: Date.now(), createdBy: (authUser && authUser.email) || '', updatedAt: Date.now(),
+      }))).then(() => {
+        logActivity(id, authUser, 'Split off from "' + project.name + '"', { kind: 'created' });
+        write(project.items.filter(x => x.id !== it.id), 'Split "' + it.name + '" off into its own project');
+        onSplit(id);
+      });
+    } });
+  return (
+    <Field label="Items in this batch" hint="Changes save immediately.">
+      <div className="border rounded-lg divide-y" data-testid="batch-items-edit">
+        {project.items.map(it => (
+          <div key={it.id} className="flex items-center gap-2 px-2.5 py-1.5">
+            <input className="flex-1 border border-transparent hover:border-slate-200 focus:border-slate-300 rounded px-1.5 py-0.5 text-sm" defaultValue={it.name} onBlur={e => rename(it, e.target.value)} />
+            <Btn sm variant="ghost" onClick={() => split(it)} title="Make this item its own project"><Icon name="copy" size={12} />Split off</Btn>
+            <Btn sm variant="ghost" onClick={() => remove(it)} title="Remove from the batch"><Icon name="trash" size={12} /></Btn>
+          </div>
+        ))}
+        <div className="flex items-center gap-2 px-2.5 py-1.5 bg-slate-50">
+          <input className="flex-1 border border-slate-300 rounded px-2 py-1 text-sm bg-white" placeholder="Add an item…" value={newName} onChange={e => setNewName(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') add(); }} data-testid="batch-add" />
+          <Btn sm onClick={add} disabled={!newName.trim()}><Icon name="plus" size={12} />Add</Btn>
+        </div>
+      </div>
+      {ask && <ConfirmModal {...ask} onClose={() => setAsk(null)} />}
+    </Field>
+  );
+}
+
+function ProjectSettingsModal({ project, data, authUser, onDeleted, onClose, onOpenProject }) {
+  const [confirmDel, setConfirmDel] = useState(false);
   const [form, setForm] = useState({ name: project.name, startDate: project.startDate, dueDate: project.dueDate, notes: project.notes });
   const [roles, setRoles] = useState(() => {
     const r = {};
@@ -823,11 +958,7 @@ function ProjectSettingsModal({ project, data, authUser, onDeleted, onClose }) {
     logActivity(project.id, authUser, project.archived ? 'Restored from archive' : 'Archived the project', { kind: 'project' });
     onClose();
   };
-  const del = () => {
-    const typed = prompt('This permanently deletes "' + project.name + '" and all its progress. Type DELETE to confirm.');
-    if (typed !== 'DELETE') return;
-    dbRemove(base).then(onDeleted);
-  };
+  const del = () => setConfirmDel(true);
   return (
     <Modal title="Project settings" wide onClose={onClose} footer={<>
       <Btn variant="danger" onClick={del} className="mr-auto"><Icon name="trash" size={13} />Delete</Btn>
@@ -841,6 +972,10 @@ function ProjectSettingsModal({ project, data, authUser, onDeleted, onClose }) {
         <Field label="Target completion"><input type="date" className={inputCls} value={form.dueDate} onChange={e => setForm({ ...form, dueDate: e.target.value })} /></Field>
       </div>
       <Field label="Project notes" hint="Shared with everyone."><textarea rows={3} className={textareaCls} value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} /></Field>
+      {project.batch && <BatchItems project={project} authUser={authUser} onSplit={id => { onClose(); onOpenProject && onOpenProject(id); }} />}
+      {confirmDel && <ConfirmModal title={'Delete ' + project.name + '?'} danger confirmLabel="Delete project"
+        message={'This permanently deletes the project and all its progress, notes and history. It cannot be undone.\n\nTo keep it on record instead, use Archive.'}
+        onConfirm={() => dbRemove(base).then(onDeleted)} onClose={() => setConfirmDel(false)} />}
       <Field label="Who fills each role on this project" hint="Uses the defaults from People unless you override a role here.">
         <div className="space-y-2">
           {data.roles.map(role => {
@@ -874,7 +1009,7 @@ function workflowDrift(project, data) {
   const latest = snapshotDocs(wf);
   if (docsHash(latest) === project.sourceHash) return null;
   const newIds = new Set();
-  latest.forEach(d => d.steps.forEach(s => newIds.add(d.id + '/' + s.id)));
+  (project.batch ? expandBatch(latest, project.items, project.sharedDocIds) : latest).forEach(d => d.steps.forEach(s => newIds.add(d.id + '/' + s.id)));
   const lost = [];
   project.documents.forEach(d => d.steps.forEach(s => {
     const c = cellOf(project, d.id, s.id);
@@ -889,7 +1024,7 @@ function applyWorkflowUpdate(project, data, drift, authUser) {
   if (!confirm(msg)) return;
   const syncGroupMeta = { ...project.syncGroupMeta };
   drift.latest.forEach(d => d.steps.forEach(s => { if (s.syncGroupId && data.syncGroupMeta[s.syncGroupId]) syncGroupMeta[s.syncGroupId] = data.syncGroupMeta[s.syncGroupId]; }));
-  dbUpdate('projects/' + project.id, { documents: drift.latest, sourceHash: docsHash(drift.latest), syncGroupMeta, workflowName: drift.wf.name || '', updatedAt: Date.now(), syncedAt: Date.now() });
+  dbUpdate('projects/' + project.id, { [project.batch ? 'template' : 'documents']: drift.latest, sourceHash: docsHash(drift.latest), syncGroupMeta, workflowName: drift.wf.name || '', updatedAt: Date.now(), syncedAt: Date.now() });
   logActivity(project.id, authUser, 'Updated to the latest version of the workflow', { kind: 'project' });
 }
 
@@ -926,7 +1061,16 @@ function StepModal({ project, doc, step, data, authUser, onClose }) {
   const siblings = step.syncGroupId ? project.documents.flatMap(d => d.id === doc.id ? [] :
     d.steps.filter(s => s.syncGroupId === step.syncGroupId).map(s => ({ doc: d, step: s }))) : [];
   const meetingName = step.syncGroupId && project.syncGroupMeta[step.syncGroupId] ? project.syncGroupMeta[step.syncGroupId].name : '';
-  const targets = allAtMeeting ? [{ doc, step }, ...siblings] : [{ doc, step }];
+  // In a batch, the same step of the same document in every other item.
+  const [allItems, setAllItems] = useState(false);
+  const itemSiblings = doc.itemId ? project.documents.filter(d => d.srcDocId === doc.srcDocId && d.id !== doc.id)
+    .map(d => ({ doc: d, step: d.steps.find(s => s.id === step.id) })).filter(x => x.step) : [];
+  const targets = (() => {
+    const out = [{ doc, step }];
+    if (allAtMeeting) siblings.forEach(x => out.push(x));
+    if (allItems) itemSiblings.forEach(x => { if (!out.some(o => o.doc.id === x.doc.id && o.step.id === x.step.id)) out.push(x); });
+    return out;
+  })();
 
   const setStatus = (status, reason) => targets.forEach(t => setStepStatus(project, t.doc, t.step, status, reason, authUser));
   const choose = (status) => {
@@ -988,6 +1132,12 @@ function StepModal({ project, doc, step, data, authUser, onClose }) {
           ))}
         </div>
         {cell.status === 'held_up' && <HeldReason project={project} doc={doc} step={step} cell={cell} authUser={authUser} />}
+        {itemSiblings.length > 0 && (
+          <label className="flex items-start gap-2 mt-3 text-xs text-slate-600 bg-slate-50 border rounded-lg px-3 py-2" data-testid="all-items">
+            <input type="checkbox" className="mt-0.5" checked={allItems} onChange={e => setAllItems(e.target.checked)} />
+            <span>Apply status and meeting date to every item in this batch ({itemSiblings.length + 1} items: {[doc, ...itemSiblings.map(x => x.doc)].map(d => d.itemName).join(', ')})</span>
+          </label>
+        )}
         {siblings.length > 0 && (
           <label className="flex items-start gap-2 mt-3 text-xs text-slate-600 bg-slate-50 border rounded-lg px-3 py-2">
             <input type="checkbox" className="mt-0.5" checked={allAtMeeting} onChange={e => setAllAtMeeting(e.target.checked)} />
@@ -1121,7 +1271,7 @@ function workflowDiff(oldDocs, newDocs) {
 function driftSummary(project, data) {
   const drift = workflowDrift(project, data);
   if (!drift || drift.missing) return drift ? { drift, diff: [], major: false } : null;
-  const diff = workflowDiff(project.documents, drift.latest);
+  const diff = workflowDiff(templateOf(project), drift.latest);
   return { drift, diff, major: diff.some(d => d.major) };
 }
 
@@ -1742,7 +1892,8 @@ function Overview({ project, data, authUser, onOpen }) {
           <span>Up next</span>
         </div>
       </div>
-      {project.documents.map(doc => {
+      {(() => {
+        const docRow = (doc) => {
         const w = docWindow(project, doc);
         const done = w.cur < 0 && w.total > 0;
         const open = !done || expanded[doc.id];
@@ -1752,7 +1903,7 @@ function Overview({ project, data, authUser, onOpen }) {
             <div className="px-3 py-2 flex flex-col gap-1.5 min-w-0 border-r border-slate-200" style={{ boxShadow: 'inset 3px 0 0 ' + doc.color }}>
               <div className="flex items-center gap-1.5 min-w-0">
                 {done && <span style={{ color: doc.color }}><Icon name="done" size={14} /></span>}
-                <span className="text-sm font-bold text-slate-800 truncate">{doc.name}</span>
+                <span className="text-sm font-bold text-slate-800 truncate">{doc.itemId ? doc.baseName : doc.name}{doc.shared && <span className="ml-1.5 text-[10px] font-semibold text-slate-500 border border-slate-300 rounded px-1 align-middle">Shared</span>}</span>
               </div>
               {!done && <div className="text-[11px] text-slate-500">Step {w.cur + 1} of {w.total} · {w.pct}%</div>}
               {open && <StepSegments project={project} doc={doc} cur={w.cur} onOpen={onOpen} />}
@@ -1774,7 +1925,32 @@ function Overview({ project, data, authUser, onOpen }) {
                 </button>}
           </div>
         );
-      })}
+        };
+        if (!project.batch) return project.documents.map(docRow);
+        // A batch: shared documents first, then each item as a collapsible group.
+        return <>
+          {project.documents.filter(d => d.shared).map(docRow)}
+          {project.items.map(it => {
+            const st = itemStats(project, it.id);
+            const open = expanded['item:' + it.id] !== undefined ? expanded['item:' + it.id] : !st.done;
+            return (
+              <React.Fragment key={it.id}>
+                <button onClick={() => setExpanded({ ...expanded, ['item:' + it.id]: !open })} data-testid="item-header"
+                  className="w-full flex items-center gap-2 px-3 py-1.5 bg-slate-50 border-b border-slate-200 text-left hover:bg-slate-100">
+                  <Icon name={open ? 'chev_d' : 'chev_r'} size={13} className="text-slate-400" />
+                  <span className="text-sm font-bold text-slate-800">{it.name}</span>
+                  {st.done && <span className="text-[11px] font-semibold text-emerald-700 inline-flex items-center gap-1"><Icon name="done" size={12} />Complete</span>}
+                  <span className="ml-auto flex items-center gap-2 text-[11px] text-slate-500">
+                    <span className="w-28 h-1.5 bg-slate-200 rounded-full overflow-hidden"><span className="block h-full bg-emerald-500" style={{ width: st.pct + '%' }} /></span>
+                    {st.closed}/{st.total} steps · {st.pct}%
+                  </span>
+                </button>
+                {open && itemDocs(project, it.id).map(docRow)}
+              </React.Fragment>
+            );
+          })}
+        </>;
+      })()}
       {linkDoc && <DocLinkModal project={project} doc={linkDoc} authUser={authUser} onClose={() => setLinkFor(null)} />}
     </div>
   );
@@ -1922,7 +2098,7 @@ function SyncLine({ online, children }) {
   </>;
 }
 
-function ProjectView({ project, data, authUser, online, onBack }) {
+function ProjectView({ project, data, authUser, online, onBack, onOpenProject }) {
   const [open, setOpen] = useState(null);          // { docId, stepId }
   const [modal, setModal] = useState(null);        // 'settings'
   const [drawer, setDrawer] = useState(null);      // null | 'activity' | 'workflow'
@@ -1973,7 +2149,7 @@ function ProjectView({ project, data, authUser, online, onBack }) {
       </div>
 
       {openStep && <StepModal key={open.docId + open.stepId} project={project} doc={openDoc} step={openStep} data={data} authUser={authUser} onClose={() => setOpen(null)} />}
-      {modal === 'settings' && <ProjectSettingsModal project={project} data={data} authUser={authUser} onDeleted={onBack} onClose={() => setModal(null)} />}
+      {modal === 'settings' && <ProjectSettingsModal project={project} data={data} authUser={authUser} onDeleted={onBack} onClose={() => setModal(null)} onOpenProject={onOpenProject} />}
       {drawer && <ChangesDrawer project={project} data={data} authUser={authUser} tab={drawer} onTab={setDrawer} onClose={() => setDrawer(null)} />}
     </>
   );
@@ -2020,7 +2196,7 @@ function ProjectRow({ project, people, onOpen }) {
           {stale && <span className="text-slate-400 flex-shrink-0" title={'No activity in ' + STALE_DAYS + '+ days'}><Icon name="clock" size={15} /></span>}
         </div>
         <div className="text-xs text-slate-500 mt-0.5">
-          {project.workflowName}
+          {project.workflowName}{project.batch ? ' · ' + project.items.length + (project.items.length === 1 ? ' item' : ' items') : ''}
           {' · '}
           {st.done ? <span className="text-emerald-700 font-medium">Complete</span>
             : project.dueDate ? <span className={due && due.tone !== 'slate' ? (due.tone === 'red' ? 'text-red-700 font-medium' : 'text-amber-700 font-medium') : ''}>Due: {fmtDate(project.dueDate)}{due && due.tone !== 'slate' ? ' (' + due.text.toLowerCase() + ')' : ''}</span>
@@ -2039,7 +2215,18 @@ function ProjectRow({ project, people, onOpen }) {
             style={st.pct >= 12 ? { right: 'calc(' + (100 - st.pct) + '% + 6px)' } : { left: 'calc(' + st.pct + '% + 6px)' }}>{st.pct}%</span>
         </div>
         <div className="grid gap-1.5 mt-1.5" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(128px, 1fr))' }} data-testid="doc-chips">
-          {project.documents.map(d => {
+          {project.batch && project.items.map(it => {
+            const s = itemStats(project, it.id);
+            return (
+              <span key={it.id} className="relative overflow-hidden rounded-full border text-[11px] font-medium px-2 py-0.5 text-slate-800 flex items-center gap-1 min-w-0"
+                style={{ borderColor: '#94a3b8' }} title={it.name + ' — ' + s.closed + ' of ' + s.total + ' steps'} data-testid="item-chip">
+                <span className="absolute inset-y-0 left-0" style={{ width: s.pct + '%', background: '#059669', opacity: .22 }} />
+                {s.done && <span className="relative text-emerald-700"><Icon name="check" size={10} /></span>}
+                <span className="relative truncate">{it.name}</span>
+              </span>
+            );
+          })}
+          {!project.batch && project.documents.map(d => {
             const w = docWindow(project, d);
             const c = w.cur >= 0 ? cellOf(project, d.id, d.steps[w.cur].id) : null;
             const held = c && c.status === 'held_up';
@@ -2695,7 +2882,7 @@ function App({ authUser }) {
       {sb.overlay && <div className="fixed inset-0 bg-slate-900/20 z-30" onClick={sb.close} data-testid="sidebar-backdrop" />}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         {route && project
-          ? <ProjectView key={project.id} project={project} data={data} authUser={authUser} online={online} onBack={() => go(null)} />
+          ? <ProjectView key={project.id} project={project} data={data} authUser={authUser} online={online} onBack={() => go(null)} onOpenProject={go} />
           : route
             ? <><TopBar eyebrow="Project" title="Not found" /><div className="p-6 text-sm text-slate-500">That project no longer exists. <button className="text-indigo-600 underline" onClick={() => go(null)}>Back to the dashboard</button></div></>
             : <Dashboard data={data} authUser={authUser} online={online} onOpen={go} onNew={() => setModal('new')} />}

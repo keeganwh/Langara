@@ -447,6 +447,8 @@ tracker
     │       assignees[], notes, heldReason, history/<push>,
     │       checks/r<round>/t<actionIndex> { at, by, status } }
     ├── links/<docId>  { url, label, version, at, by, history/<push> }
+    │   (batch projects instead of documents[] store: batch: true,
+    │    template[] (one workflow copy), items[] { id, name }, sharedDocIds[])
     └── activity/<push>  { at, by, text, kind, docId, step, status }
 ```
 
@@ -551,6 +553,25 @@ status colour. The Workflow Tool carries the identical `tw-brand` block (read by
   every task is complete or skipped the step asks to be marked complete.
   Marking a step complete (`setStepStatus`) completes every task not already
   complete or skipped — skipped tasks are left alone.
+- **Batches** — one project tracking several items (e.g. new courses) through
+  the same workflow. Stored as `batch`, `template`, `items`, `sharedDocIds`;
+  `normalizeProject` expands them (`expandBatch`) into ordinary `documents`
+  with ids `<docId>__<itemId>`, so stats, the dashboard, Full flow and the step
+  panel all work unchanged and progress lives at progress/<docId>__<itemId>.
+  Expanded docs carry `itemId`, `itemName`, `srcDocId`, `baseName`, and their
+  `name` is "Item · Document" so lists and activity read correctly. Created
+  from New project → Batch of several items (items one per line; each document
+  Per item or Shared; a warning above 3 per-item documents). The Overview shows
+  shared documents, then each item as a collapsible group (finished items
+  collapse). The step panel offers "Apply to every item in this batch". The
+  dashboard row shows "· N items" and one chip per item. Project settings →
+  Items in this batch: rename, add, remove (hides it; progress stays), and
+  **Split off** (a new one-item batch with that item's and the shared
+  documents' progress). Workflow updates diff and replace `template`.
+  **Shared documents are provisional** — they may be removed after testing. To
+  retire them without losing data: copy progress/<docId> into each
+  progress/<docId>__<itemId>, then drop the id from `sharedDocIds`.
+- **Deleting a project** asks in a `ConfirmModal`, not a typed prompt.
 - **Duplicate a project** — New project → Duplicate a project: an exact copy
   (workflow copy, people, notes, dates, all progress and step history) except
   file links; its activity log starts with "Duplicated from …".
@@ -586,7 +607,7 @@ pending); the steps a send-back reset to pending still show their round badge.
   next for their document, sorted by due date.
 - Routing is the hash (`#/p/<id>`), so projects can be linked directly.
 
-Checks: `cd dev && npm run tracker` (78 checks, own Firebase stub with nested
+Checks: `cd dev && npm run tracker` (85 checks, own Firebase stub with nested
 paths and live listeners — see `dev/tracker-preview.js`).
 
 ## Conventions to follow
