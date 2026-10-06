@@ -569,6 +569,13 @@ status colour. The Workflow Tool carries the identical `tw-brand` block (read by
 - **Wide dashboard fills the window**: the project list scrolls inside its
   box and the right column scrolls on its own when it overflows. Rows are
   top-aligned so opening the chips grows a row downward.
+- **Sort** (`SortMenu` / `sortProjects`, beside the filters, kept in
+  `cs_tracker_list_prefs_v1` as `sort` + `rev`): Needs attention first
+  (default — held up, overdue, sent back, stale, then the rest, each by due
+  date), Due date, Progress %, Creation date, Updated date, Alphabetical.
+  Choosing the current sort again reverses it.
+- Dashboard headers in both apps show just "Dashboard" — no tool-name
+  eyebrow (`TopBar` omits the eyebrow when none is given).
 - **Status filter**: "In progress" means moving with nothing wrong — a
   project held up, sent back, overdue or stale carries only those flags, so
   filtering to In progress alone leaves it out.
@@ -699,7 +706,7 @@ pending); the steps a send-back reset to pending still show their round badge.
   next for their document, sorted by due date.
 - Routing is the hash (`#/p/<id>`), so projects can be linked directly.
 
-Checks: `cd dev && npm run tracker` (117 checks, own Firebase stub with nested
+Checks: `cd dev && npm run tracker` (120 checks, own Firebase stub with nested
 paths and live listeners — see `dev/tracker-preview.js`).
 
 ## Conventions to follow

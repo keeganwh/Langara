@@ -201,6 +201,15 @@ const cell = (d, docId, stepId) => {
   await p.evaluate(() => document.querySelector('[data-testid=recent-group] button').click()); await p.waitForTimeout(100);
   ok('a change applied at a meeting collapses to one line', await p.evaluate(() => (document.querySelector('[data-testid=recent]').innerText.match(/JCCS: Held up/g) || []).length === 1));
   await p.evaluate(() => document.querySelector('[data-testid=recent-drawer] button[aria-label=Close]').click()); await p.waitForTimeout(100);
+  ok('the dashboard header has no repeated tool name', await p.evaluate(() => !/DEVELOPMENT TRACKER/i.test(document.querySelector('header').innerText)));
+  await p.evaluate(() => document.querySelector('[data-testid=sort] button').click()); await p.waitForTimeout(100);
+  ok('sort offers the six orders, Needs attention first by default', await p.evaluate(() => { const m = document.querySelector('[data-testid=sort-menu]'); return m.querySelectorAll('button').length === 6 && /Needs attention first\s*most urgent first/.test(m.innerText); }));
+  await p.evaluate(() => [...document.querySelectorAll('[data-testid=sort-menu] button')].find(b => b.innerText.includes('Alphabetical')).click()); await p.waitForTimeout(100);
+  await p.evaluate(() => document.querySelector('[data-testid=sort] button').click()); await p.waitForTimeout(100);
+  await p.evaluate(() => [...document.querySelectorAll('[data-testid=sort-menu] button')].find(b => b.innerText.includes('Alphabetical')).click()); await p.waitForTimeout(100);
+  ok('choosing a sort again reverses it', await p.evaluate(() => /Z–A/.test(document.querySelector('[data-testid=sort]').innerText) && JSON.parse(localStorage.getItem('cs_tracker_list_prefs_v1')).rev === true));
+  await p.evaluate(() => document.querySelector('[data-testid=sort] button').click()); await p.waitForTimeout(100);
+  await p.evaluate(() => [...document.querySelectorAll('[data-testid=sort-menu] button')].find(b => b.innerText.includes('Needs attention')).click()); await p.waitForTimeout(100);
   console.log('\nMeeting schedule');
   const mDate = await p.evaluate(() => { const d = new Date(); d.setDate(d.getDate() + 5); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); });
   await click(p, '[data-testid=schedule-btn]'); await p.waitForTimeout(150);
