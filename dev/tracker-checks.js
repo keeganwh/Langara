@@ -178,6 +178,8 @@ const cell = (d, docId, stepId) => {
   await p.evaluate(() => [...document.querySelectorAll('button')].find(b => b.innerText.trim() === 'Show all').click()); await p.waitForTimeout(100);
   ok('show all brings the project back', await p.evaluate(() => document.querySelectorAll('[data-testid=project-row]').length === 1));
   ok('recent updates are grouped under the project', await p.evaluate(() => document.querySelectorAll('[data-testid=recent-group]').length === 1 && document.querySelector('[data-testid=recent-group]').innerText.startsWith('Certificate in Testing')));
+  ok('recent updates list the project on one line until opened', await p.evaluate(() => !document.querySelector('[data-testid=recent-items]')));
+  await p.evaluate(() => document.querySelector('[data-testid=recent-group] button').click()); await p.waitForTimeout(100);
   ok('a change applied at a meeting collapses to one line', await p.evaluate(() => (document.querySelector('[data-testid=recent]').innerText.match(/JCCS: Held up/g) || []).length === 1));
   await click(p, '[data-testid=project-row]'); await p.waitForTimeout(200);
 
@@ -324,6 +326,9 @@ const cell = (d, docId, stepId) => {
   ok('merged progress moves to docId__initiativeId', !!mb && (!srcWithProg || Object.keys(mb.progress || {}).some(k => /^d1__/.test(k))));
   ok('the originals are archived with a note', singles.every(([id]) => d.tracker.projects[id].archived && /Added to the batch "Merged Batch"/.test(d.tracker.projects[id].notes)));
 
+  await p.evaluate(() => { location.hash = '#/'; }); await p.waitForTimeout(300);
+  ok('a batch shows as one line in Needs your attention', await p.evaluate(() => [...document.querySelectorAll('[data-testid=attention-batch]')].filter(x => x.innerText.startsWith('Merged Batch')).length === 1));
+  ok('upcoming lists meetings only, grouped by event', await p.evaluate(() => { const r = document.querySelector('[data-testid=report-dates]'); return !!r && !/\bdue\b/.test(r.innerText); }));
   // Tasks across initiatives, in the merged batch (every document per initiative).
   const mbId = Object.entries(d.tracker.projects).find(([, x]) => x.name === 'Merged Batch')[0];
   await p.evaluate((id) => { location.hash = '#/p/' + id; }, mbId); await p.waitForTimeout(300);

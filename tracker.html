@@ -2115,6 +2115,56 @@ function Stat({ label, value, sub, tone }) {
   );
 }
 
+// Upcoming meetings as events: one per date + step name, with the projects
+// going to it (a batch counts once).
+function meetingEvents(dates) {
+  const ev = {};
+  dates.filter(d => d.kind === 'meeting' && d.days >= 0).forEach(d => {
+    const k = d.date + '|' + stepKey(d.step.stageName);
+    const e = ev[k] || (ev[k] = { key: k, date: d.date, days: d.days, name: d.step.stageName, projects: [] });
+    if (!e.projects.some(x => x.project.id === d.project.id)) e.projects.push({ project: d.project, docs: [] });
+    const pe = e.projects.find(x => x.project.id === d.project.id);
+    if (!pe.docs.some(x => x.id === d.doc.id)) pe.docs.push(d.doc);
+  });
+  return Object.values(ev).sort((a, b) => a.date.localeCompare(b.date));
+}
+function MeetingList({ events, onOpen }) {
+  const [open, setOpen] = useState({});
+  if (!events.length) return <p className="text-xs text-slate-400">No meetings in the next 14 days.</p>;
+  return (
+    <ul className="divide-y">
+      {events.map(e => {
+        const on = !!open[e.key];
+        const tone = e.days <= 7 ? 'amber' : 'slate';
+        return (
+          <li key={e.key} data-testid="meeting-event">
+            <button onClick={() => setOpen({ ...open, [e.key]: !on })} className="w-full text-left py-1.5 flex items-center gap-2.5 hover:bg-slate-50 rounded">
+              <span className={`text-[11px] font-semibold border rounded-md w-14 text-center py-1 flex-shrink-0 leading-tight ${TONE[tone]}`}>
+                {new Date(e.date + 'T00:00').toLocaleDateString(undefined, { month: 'short' })}<br />{new Date(e.date + 'T00:00').getDate()}
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="flex items-center gap-1 text-sm text-slate-800 truncate"><Icon name="t_meet" size={12} className="text-slate-400 flex-shrink-0" />{e.name}</span>
+                <span className="text-[11px] text-slate-500">{e.projects.length} {e.projects.length === 1 ? 'project' : 'projects'}</span>
+              </span>
+              <Icon name={on ? 'chev_u' : 'chev_d'} size={12} className="text-slate-400 flex-shrink-0" />
+            </button>
+            {on && <ul className="pl-16 pb-1.5 space-y-0.5" data-testid="meeting-projects">
+              {e.projects.map(x => (
+                <li key={x.project.id}>
+                  <button onClick={() => onOpen(x.project.id)} className="w-full text-left text-xs hover:bg-slate-50 rounded px-1 py-0.5 flex items-center gap-1.5">
+                    <span className="font-medium text-slate-700 truncate">{x.project.name}</span>
+                    <span className="text-[10px] text-slate-400 truncate">{x.project.batch ? x.docs.length + (x.docs.length === 1 ? ' document' : ' documents') : x.docs.map(d => d.name).join(', ')}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>}
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
 function DateList({ items, onOpen, showProject = true, empty, limit = 12 }) {
   if (!items.length) return <p className="text-xs text-slate-400">{empty}</p>;
   return (
@@ -2400,18 +2450,31 @@ function recentByProject(projects, maxProjects = 6, perProject = 3) {
   return groups.sort((a, b) => b.lastAt - a.lastAt).slice(0, maxProjects);
 }
 
+// Projects updated in the last 14 days, one line each; click one to see its
+// latest updates in place.
 function RecentUpdates({ projects, onOpen }) {
-  const groups = recentByProject(projects);
-  if (!groups.length) return <p className="text-xs text-slate-400">No activity yet.</p>;
+  const [open, setOpen] = useState({});
+  const since = Date.now() - 14 * 86400000;
+  const groups = recentByProject(projects, 999, 5).filter(g => g.lastAt >= since);
+  if (!groups.length) return <p className="text-xs text-slate-400">No updates in the last 14 days.</p>;
   return (
-    <div className="space-y-3">
-      {groups.map(g => (
-        <button key={g.project.id} onClick={() => onOpen(g.project.id)} className="w-full text-left block hover:bg-slate-50 rounded-lg -mx-1 px-1 py-1" data-testid="recent-group">
-          <div className="flex items-baseline gap-2">
-            <span className="text-sm font-bold text-slate-800 truncate">{g.project.name}</span>
-            <span className="ml-auto text-[10px] text-slate-400 whitespace-nowrap">{timeAgo(g.lastAt)}</span>
-          </div>
-          <ul className="mt-1 space-y-1">
+    <div className="divide-y">
+      {groups.map(g => {
+        const on = !!open[g.project.id];
+        const acts = Object.values(g.project.activity);
+        const n = acts.filter(a => (a.at || 0) >= since).length;
+        const last = acts.reduce((m, a) => (a.at || 0) > (m.at || 0) ? a : m, {});
+        return (
+        <div key={g.project.id} className="py-1" data-testid="recent-group">
+          <button onClick={() => setOpen({ ...open, [g.project.id]: !on })} className="w-full text-left flex items-center gap-2 hover:bg-slate-50 rounded px-1 py-0.5">
+            <span className="min-w-0 flex-1">
+              <span className="block text-sm font-semibold text-slate-800 truncate">{g.project.name}</span>
+              <span className="block text-[11px] text-slate-500 truncate">{timeAgo(g.lastAt)} · {shortWho(last.by)} · {n} {n === 1 ? 'update' : 'updates'}</span>
+            </span>
+            <Icon name={on ? 'chev_u' : 'chev_d'} size={12} className="text-slate-400 flex-shrink-0" />
+          </button>
+          {on && <>
+          <ul className="mt-1 mb-1 space-y-1 px-1" data-testid="recent-items">
             {g.items.map((it, i) => {
               const ks = KIND_STYLE[it.kind] || KIND_STYLE.project;
               const st = it.kind === 'status' && it.status ? STATUS[it.status] : null;
@@ -2434,8 +2497,11 @@ function RecentUpdates({ projects, onOpen }) {
               );
             })}
           </ul>
-        </button>
-      ))}
+          <button onClick={() => onOpen(g.project.id)} className="text-[11px] text-indigo-600 hover:underline px-1 mb-1">Open project</button>
+          </>}
+        </div>
+        );
+      })}
     </div>
   );
 }
@@ -2761,7 +2827,17 @@ function Dashboard({ data, authUser, online, onOpen, onNew }) {
     document.addEventListener('mousedown', off);
     return () => document.removeEventListener('mousedown', off);
   }, [report]);
-  const attention = attentionFor(data.projects, data.people, me);
+  // A batch is one line however many of its steps need you.
+  const attention = (() => {
+    const out = [], byBatch = {};
+    attentionFor(data.projects, data.people, me).forEach(it => {
+      if (!it.project.batch) return out.push(it);
+      const g = byBatch[it.project.id];
+      if (g) { g.count++; if ((it.cell.dueDate || '9999') < (g.cell.dueDate || '9999')) g.cell = it.cell; return; }
+      out.push(byBatch[it.project.id] = { ...it, batchLine: true, count: 1 });
+    });
+    return out;
+  })();
   const active = data.projects.filter(p => !p.archived);
 
   const peopleOpts = [...(me ? [me] : []), ...data.people.filter(p => !me || p.id !== me.id)].map(p => ({ id: p.id, label: p.name + (me && p.id === me.id ? ' (you)' : '') }));
@@ -2785,6 +2861,7 @@ function Dashboard({ data, authUser, online, onOpen, onNew }) {
   let held = 0, sentBack = 0;
   stats.forEach(x => { held += x.st.held; sentBack += x.st.sentBack; });
   const dates = upcomingDates(active, 14);
+  const meetings = meetingEvents(dates);
   const stale = stats.filter(x => !x.st.done && (Date.now() - x.st.lastAt) > STALE_DAYS * 86400000);
   const tiles = [
     { label: 'Active projects', short: 'Active', value: active.filter(p => !projectStats(p).done).length, icon: 'dashboard', color: '#F15A22', sub: stats.filter(x => x.st.done).length + ' complete', always: true },
@@ -2808,15 +2885,17 @@ function Dashboard({ data, authUser, online, onOpen, onNew }) {
           const due = dueLabel(it.cell.dueDate);
           return (
             <button key={i} onClick={() => onOpen(it.project.id)} className={`w-full text-left px-1 flex items-center gap-2 hover:bg-slate-50 rounded ${narrow ? 'py-1' : 'py-1.5'}`}>
-              <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: it.doc.color }} />
-              {narrow
+              <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: it.batchLine ? '#94a3b8' : it.doc.color }} />
+              {it.batchLine
+                ? <span className="min-w-0 flex-1 truncate text-sm" data-testid="attention-batch"><span className="font-medium text-slate-800">{it.project.name}</span><span className="text-[11px] text-slate-500"> · {it.count} {it.count === 1 ? 'step needs' : 'steps need'} you</span></span>
+                : narrow
                 ? <span className="min-w-0 flex-1 truncate text-[13px]"><span className="font-medium text-slate-800">{it.step.stageName}</span><span className="text-[11px] text-slate-500"> · {it.doc.name} · {it.project.name}</span></span>
                 : <span className="min-w-0 flex-1">
                     <span className="block text-sm font-medium text-slate-800 truncate">{it.step.stageName}</span>
                     <span className="block text-[11px] text-slate-500 truncate">{it.doc.name} · {it.project.name}</span>
                   </span>}
               <span className={`flex items-end gap-0.5 flex-shrink-0 ${narrow ? 'flex-row items-center gap-1' : 'flex-col'}`}>
-                <StatusChip status={it.cell.status} sm />
+                {!it.batchLine && <StatusChip status={it.cell.status} sm />}
                 {due && <span className={`text-[10px] border rounded-full px-1.5 ${TONE[due.tone]}`}>{due.text}</span>}
               </span>
             </button>
@@ -2829,8 +2908,8 @@ function Dashboard({ data, authUser, online, onOpen, onNew }) {
   const reports = [
     { id: 'status', short: 'Status', title: 'Project status', icon: 'dashboard', accent: '#059669', testid: 'report-status', value: data.projects.length, sub: 'projects',
       body: <StatusDonut projects={data.projects} /> },
-    { id: 'dates', short: 'Upcoming', title: 'Next 14 days', icon: 'calendar', accent: '#0284c7', testid: 'report-dates', value: dates.length, sub: dates.length === 1 ? 'date' : 'dates',
-      body: <DateList items={dates} onOpen={it => onOpen(it.project.id)} empty="No due or meeting dates coming up." /> },
+    { id: 'dates', short: 'Meetings', title: 'Meetings, next 14 days', icon: 'calendar', accent: '#0284c7', testid: 'report-dates', value: meetings.length, sub: meetings.length === 1 ? 'meeting' : 'meetings',
+      body: <MeetingList events={meetings} onOpen={onOpen} /> },
     { id: 'recent', short: 'Updates', title: 'Recent updates', icon: 'history', accent: '#0f766e', testid: 'recent', value: recentLast ? timeAgo(recentLast) : '—', sub: 'last update',
       body: <RecentUpdates projects={active} onOpen={onOpen} /> },
   ];

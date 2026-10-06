@@ -501,7 +501,14 @@ status colour. The Workflow Tool carries the identical `tw-brand` block (read by
   The old "held up or sent back" and "stale" panels are folded into the Status
   filter. Right column: Needs your attention, a **project status donut**
   (`StatusDonut`, each project counted once by `donutCategory()`, range all /
-  12 / 6 months, legend with counts), next 14 days, recent updates.
+  12 / 6 months, legend with counts), meetings in the next 14 days, recent
+  updates. **Needs your attention** folds a batch into one line ("N steps
+  need you"); single projects stay one line per step. **Meetings**
+  (`meetingEvents` / `MeetingList`) shows meeting dates only — no due dates —
+  one line per event (date + step name) with its project count, expanding to
+  the projects. **Recent updates** lists projects updated in the last 14
+  days, one line each (when, by whom, how many); clicking expands its latest
+  updates with an Open project link.
 - **Narrow dashboard** (below 1280px) — Needs your attention first, as a
   compact panel (`Panel compact`: tight header, no explanation, one line per
   item); then one grid of slim one-line cards (32px: icon, number, short
@@ -629,7 +636,7 @@ pending); the steps a send-back reset to pending still show their round badge.
   next for their document, sorted by due date.
 - Routing is the hash (`#/p/<id>`), so projects can be linked directly.
 
-Checks: `cd dev && npm run tracker` (96 checks, own Firebase stub with nested
+Checks: `cd dev && npm run tracker` (99 checks, own Firebase stub with nested
 paths and live listeners — see `dev/tracker-preview.js`).
 
 ## Conventions to follow
