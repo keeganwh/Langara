@@ -2502,12 +2502,13 @@ function recentByProject(projects, maxProjects = 6, perProject = 3) {
 // latest updates in place.
 function RecentUpdates({ projects, onOpen }) {
   const [open, setOpen] = useState({});
+  const [all, setAll] = useState(false);
   const since = Date.now() - 14 * 86400000;
   const groups = recentByProject(projects, 999, 5).filter(g => g.lastAt >= since);
   if (!groups.length) return <p className="text-xs text-slate-400">No updates in the last 14 days.</p>;
   return (
     <div className="divide-y">
-      {groups.map(g => {
+      {(all ? groups : groups.slice(0, 5)).map(g => {
         const on = !!open[g.project.id];
         const acts = Object.values(g.project.activity);
         const n = acts.filter(a => (a.at || 0) >= since).length;
@@ -2550,6 +2551,7 @@ function RecentUpdates({ projects, onOpen }) {
         </div>
         );
       })}
+      {groups.length > 5 && <button onClick={() => setAll(!all)} className="w-full text-left px-1 pt-1.5 text-[11px] text-indigo-600 hover:underline" data-testid="recent-more">{all ? 'Show fewer' : 'Show ' + (groups.length - 5) + ' more'}</button>}
     </div>
   );
 }
@@ -2869,6 +2871,7 @@ function Dashboard({ data, authUser, online, onOpen, onNew }) {
   const [who, setWho] = useState(null);       // null = everyone
   const [types, setTypes] = useState(null);   // null = every workflow
   const [report, setReport] = useState(null); // narrow view: which report panel is open
+  const [attAll, setAttAll] = useState(false);
   const narrow = useNarrow();
   const repRef = useRef(null);
   useEffect(() => {
@@ -2886,7 +2889,15 @@ function Dashboard({ data, authUser, online, onOpen, onNew }) {
       if (g) { g.count++; if ((it.cell.dueDate || '9999') < (g.cell.dueDate || '9999')) g.cell = it.cell; return; }
       out.push(byBatch[it.project.id] = { ...it, batchLine: true, count: 1 });
     });
-    return out;
+    // Most overdue first, then soonest due; steps with no due date last,
+    // the one quiet longest first.
+    const lastAt = (c) => Math.max(0, ...Object.values(c.history || {}).map(h => h.at || 0));
+    return out.sort((a, b) => {
+      const da = a.cell.dueDate, db = b.cell.dueDate;
+      if (da && db) return da.localeCompare(db);
+      if (da || db) return da ? -1 : 1;
+      return lastAt(a.cell) - lastAt(b.cell);
+    });
   })();
   const active = data.projects.filter(p => !p.archived);
 
@@ -2931,7 +2942,7 @@ function Dashboard({ data, authUser, online, onOpen, onNew }) {
       {!me && <p className="text-sm text-slate-600">Your sign-in ({authUser.email}) is not on the People list yet, so nothing can be assigned to you. Add yourself under <strong>Settings → People</strong>.</p>}
       {me && !attention.length && <p className="text-sm text-slate-500">Nothing pending for you.</p>}
       {me && attention.length > 0 && <div className="divide-y -mx-1">
-        {attention.map((it, i) => {
+        {(attAll ? attention : attention.slice(0, 5)).map((it, i) => {
           const due = dueLabel(it.cell.dueDate);
           return (
             <button key={i} onClick={() => onOpen(it.project.id)} className={`w-full text-left px-1 flex items-center gap-2 hover:bg-slate-50 rounded ${narrow ? 'py-1' : 'py-1.5'}`}>
@@ -2952,6 +2963,7 @@ function Dashboard({ data, authUser, online, onOpen, onNew }) {
             </button>
           );
         })}
+        {attention.length > 5 && <button onClick={() => setAttAll(!attAll)} className="w-full text-left px-1 pt-1.5 text-[11px] text-indigo-600 hover:underline" data-testid="attention-more">{attAll ? 'Show fewer' : 'Show ' + (attention.length - 5) + ' more'}</button>}
       </div>}
     </Panel>
   );

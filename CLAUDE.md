@@ -505,7 +505,9 @@ status colour. The Workflow Tool carries the identical `tw-brand` block (read by
   updates. **Held up** and **Overdue** tiles count projects, not steps or
   initiatives. **Needs your attention** always leads with the project name,
   the step underneath (no document); a batch folds into one line ("N steps
-  need you"); single projects stay one line per step. **Meetings**
+  need you"); single projects stay one line per step. It shows 5 lines
+  (Show N more): most overdue first, then soonest due, then undated steps
+  quiet longest first. Recent updates also shows 5, newest first. **Meetings**
   (`meetingEvents` / `MeetingList`) shows meeting dates only — no due dates —
   one line per event (date + step name) with its project count, expanding to
   the projects. **Recent updates** lists projects updated in the last 14
