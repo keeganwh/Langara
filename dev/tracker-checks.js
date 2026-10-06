@@ -132,12 +132,12 @@ const cell = (d, docId, stepId) => {
   await openStep('Concept Paper', 'JCCS');
   t = await text(p);
   ok('offers to apply to every document at the meeting', t.includes('every document at this meeting'));
-  ok('a task naming a role tags that role (Approval by Dean)', await p.evaluate(() => /Dean/.test(document.querySelector('[data-testid=people-unfilled]').innerText)));
   ok('people list separates automatic from added by hand', await p.evaluate(() => !!document.querySelector('[data-testid=people-auto]') && !!document.querySelector('[data-testid=people-hand]') && /You Person/.test(document.querySelector('[data-testid=people-auto]').innerText)));
   await p.evaluate(() => document.querySelector('[data-testid=checklist] [data-testid=task-menu-btn]').click()); await p.waitForTimeout(100);
   await p.evaluate(() => [...document.querySelectorAll('[data-testid=task-menu] button')].find(b => b.innerText.includes('In progress')).click()); await p.waitForTimeout(150);
   d = await db(p);
   ok('a task can be set in progress from its menu', ((cell(d, 'd1', 's3').checks || {}).r1 || {}).t0 && cell(d, 'd1', 's3').checks.r1.t0.status === 'in_progress');
+  ok('a set status replaces the checkbox', await p.evaluate(() => { const r = [...document.querySelectorAll('[data-testid=checklist] [data-testid=task-row]')][0]; return r.dataset.status === 'in_progress' && !!r.querySelector('[data-testid=task-marker]') && !r.querySelector('input[type=checkbox]'); }));
   await p.evaluate(() => { const l = [...document.querySelectorAll('.fixed label')].find(l => l.innerText.includes('every document at this meeting')); l.querySelector('input').click(); });
   await click(p, '.fixed button', 'In progress'); await p.waitForTimeout(100);
   d = await db(p);

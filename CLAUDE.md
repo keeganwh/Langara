@@ -539,12 +539,12 @@ status colour. The Workflow Tool carries the identical `tw-brand` block (read by
   per-viewer preference in `localStorage` (`cs_tracker_project_view_v1`).
 - **Step panel** — status (when held up, an editable multi-line "Held up
   because" box, `HeldReason`), checklist, the map's trigger, storage and notes
-  (snapshotted), dates, people (`StepPeople`: Automatic rows with role and
-  reason, a warning row for a role nobody holds, Added by hand rows with ×,
-  and an Add someone menu), shared notes, send back, history.
+  (snapshotted), dates, people (`StepPeople`: Automatic rows labelled with
+  their role, Manually tagged rows with ×, and a Tag someone menu), shared notes, send back, history.
 - **Tasks** (`TaskRow`, on the step panel and the Now card) each have a status:
-  the checkbox toggles complete; ▾ offers not started / in progress / held up /
-  skipped / complete. Stored at `checks/r<round>/t<index>` `{ at, by, status }`
+  the checkbox toggles complete; ▾ beside it offers not started / in progress
+  / held up / skipped / complete, and a set status shows its marker in place
+  of the checkbox. Stored at `checks/r<round>/t<index>` `{ at, by, status }`
   (no status = an old tick = complete). Each task shows the initials of whoever
   holds the role it names. The step follows its tasks only two ways
   (`setTask`): a held-up task holds the step up ("Task held up: …"), and when

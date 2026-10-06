@@ -1326,28 +1326,20 @@ function StepSegments({ project, doc, onOpen, cur, h = 10 }) {
 }
 
 // People on a step, as a short list: who is on it automatically (from the
-// step's roles and the roles its tasks name, with the reason), who was added
-// by hand (removable), and an Add someone menu for everyone else. A role the
-// step needs that nobody holds shows as a warning row.
+// step's roles and the roles its tasks name, labelled with the role), who was
+// manually tagged (removable), and a Tag someone menu for everyone else.
 function StepPeople({ project, doc, step, cell, data, authUser, path }) {
   const roleLabel = (id) => (data.roles.find(r => r.id === id) || {}).label || '';
   const auto = new Map();        // personId -> { roles:Set, why:[] }
-  const empty = [];
-  const note = (rid, why) => {
-    const holders = roleHolders(project, data.people, rid);
-    if (!holders.length) { if (!empty.includes(rid)) empty.push(rid); return; }
-    holders.forEach(id => {
-      if (!auto.has(id)) auto.set(id, { roles: new Set(), why: [] });
-      const e = auto.get(id); e.roles.add(roleLabel(rid)); if (why && !e.why.includes(why)) e.why.push(why);
-    });
-  };
-  (step.roleIds || []).forEach(r => note(r, 'Presents / carries'));
-  step.actions.forEach(a => taskRoleIds(a).forEach(r => note(r, (a.label || '').replace(/\s+by\s*$/i, '').trim() || taskText(a))));
+  stepRoleIds(step).forEach(rid => roleHolders(project, data.people, rid).forEach(id => {
+    if (!auto.has(id)) auto.set(id, { roles: new Set() });
+    auto.get(id).roles.add(roleLabel(rid));
+  }));
   const hand = cell.assignees.filter(id => personById(data.people, id));
   const others = data.people.filter(p => !auto.has(p.id) && !hand.includes(p.id));
   const save = (v) => {
     dbSet(path + '/assignees', v.length ? v : null);
-    logActivity(project.id, authUser, doc.name + ' · ' + step.stageName + ': added by hand — ' + (v.map(id => (personById(data.people, id) || {}).name).filter(Boolean).join(', ') || 'nobody'), { kind: 'people', docId: doc.id, step: step.stageName });
+    logActivity(project.id, authUser, doc.name + ' · ' + step.stageName + ': tagged — ' + (v.map(id => (personById(data.people, id) || {}).name).filter(Boolean).join(', ') || 'nobody'), { kind: 'people', docId: doc.id, step: step.stageName });
   };
   const row = (p, right, sub) => (
     <div key={p.id} className="flex items-center gap-2 py-1.5">
@@ -1362,16 +1354,11 @@ function StepPeople({ project, doc, step, cell, data, authUser, path }) {
       <div className="text-sm font-semibold text-slate-700 mb-1">People on this step</div>
       <div className="border rounded-lg px-3 py-1.5">
         <SectionLabel>Automatic</SectionLabel>
-        {!auto.size && !empty.length && <p className="text-xs text-slate-400 py-1">No roles on this step or its tasks.</p>}
+        {!auto.size && <p className="text-xs text-slate-400 py-1">Nobody from this step's roles.</p>}
         <div className="divide-y divide-slate-100" data-testid="people-auto">
-          {[...auto.entries()].map(([id, e]) => row(personById(data.people, id), null, [...e.roles].filter(Boolean).join(', ') + (e.why.length ? ' · ' + e.why.join(', ') : '')))}
-          {empty.map(rid => (
-            <div key={rid} className="flex items-center gap-2 py-1.5 text-xs text-amber-800" data-testid="people-unfilled">
-              <Icon name="warn" size={14} /><span><strong>{roleLabel(rid)}</strong> — nobody assigned. Set it in Project settings, or under Settings → People.</span>
-            </div>
-          ))}
+          {[...auto.entries()].map(([id, e]) => row(personById(data.people, id), null, [...e.roles].filter(Boolean).join(', ')))}
         </div>
-        <div className="mt-2"><SectionLabel>Added by hand</SectionLabel></div>
+        <div className="mt-2"><SectionLabel>Manually tagged</SectionLabel></div>
         {!hand.length && <p className="text-xs text-slate-400 py-1">Nobody.</p>}
         <div className="divide-y divide-slate-100" data-testid="people-hand">
           {hand.map(id => row(personById(data.people, id),
@@ -1380,7 +1367,7 @@ function StepPeople({ project, doc, step, cell, data, authUser, path }) {
         {others.length > 0 && (
           <select className="mt-2 mb-1 border border-slate-300 rounded-lg px-2 py-1 text-sm bg-white" value="" data-testid="people-add"
             onChange={e => { if (e.target.value) save([...hand, e.target.value]); }}>
-            <option value="">+ Add someone…</option>
+            <option value="">+ Tag someone…</option>
             {others.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
           </select>
         )}
@@ -1468,19 +1455,25 @@ function TaskRow({ project, doc, step, cell, i, data, authUser, compact }) {
   const stop = (e) => e.stopPropagation();
   return (
     <div ref={ref} onClick={stop} className={`relative flex items-start gap-1.5 rounded ${compact ? 'text-[11px] px-0.5' : 'text-sm px-3 py-2'} hover:bg-slate-50`} data-testid="task-row" data-status={st}>
-      <input type="checkbox" className="mt-0.5 flex-shrink-0" checked={st === 'complete'} onChange={() => toggleTask(project, doc, step, cell, i, authUser)} data-testid={compact ? 'card-task' : 'panel-task'} />
+      {/* The status control sits right by the label: a checkbox while the task
+          is not started or complete, otherwise the status marker in its place
+          (click it to change). The ▾ beside it opens every status. */}
+      <span className="flex items-center flex-shrink-0 mt-0.5">
+        {st === 'pending' || st === 'complete'
+          ? <input type="checkbox" className="flex-shrink-0" checked={st === 'complete'} onChange={() => toggleTask(project, doc, step, cell, i, authUser)} data-testid={compact ? 'card-task' : 'panel-task'} />
+          : <button onClick={() => setMenu(!menu)} title={S.label + ' — change'} data-testid="task-marker" className="flex items-center justify-center" style={{ color: S.color, width: 13, height: 13 }}><Icon name={S.icon} size={compact ? 13 : 14} /></button>}
+        <button onClick={() => setMenu(!menu)} className="text-slate-400 hover:text-slate-700 rounded" title="Set task status" aria-label="Set task status" data-testid="task-menu-btn">
+          <Icon name="chev_d" size={compact ? 10 : 12} />
+        </button>
+      </span>
       {!compact && <span className="flex-shrink-0" style={{ color: ACTION_COLOR[ACTION_COLOR[a.type] ? a.type : 'custom'] }}><Icon name={ACTION_COLOR[a.type] ? a.type : 'custom'} size={14} /></span>}
       <span className={`leading-tight flex-1 min-w-0 ${st === 'complete' ? 'line-through text-slate-400' : st === 'skipped' ? 'line-through italic text-slate-400' : 'text-slate-700'}`}>
         {taskText(a)}
-        {st !== 'pending' && st !== 'complete' && <span className="ml-1 inline-flex items-center gap-0.5 no-underline align-middle" style={{ color: S.color, textDecoration: 'none' }}><Icon name={S.icon} size={compact ? 10 : 12} />{!compact && <span className="text-[11px]">{S.label}</span>}</span>}
         {who.length > 0 && <span className="ml-1 inline-flex gap-0.5 align-middle" style={{ textDecoration: 'none' }}>{who.map(p => <Avatar key={p.id} person={p} size={compact ? 15 : 18} />)}</span>}
       </span>
-      {!compact && entry && <span className="text-[11px] text-slate-400 whitespace-nowrap">{shortWho(entry.by)} · {fmtStamp(entry.at)}</span>}
-      <button onClick={() => setMenu(!menu)} className="flex-shrink-0 text-slate-400 hover:text-slate-700 rounded px-0.5" title="Set task status" aria-label="Set task status" data-testid="task-menu-btn">
-        <Icon name="chev_d" size={compact ? 11 : 13} />
-      </button>
+      {!compact && entry && <span className="text-[11px] text-slate-400 whitespace-nowrap">{st !== 'complete' && st !== 'pending' ? S.label + ' · ' : ''}{shortWho(entry.by)} · {fmtStamp(entry.at)}</span>}
       {menu && (
-        <div className="absolute right-0 top-full mt-0.5 z-30 bg-white border border-slate-200 rounded-lg shadow-lg py-1 min-w-[150px] fade-in" data-testid="task-menu">
+        <div className="absolute left-0 top-full mt-0.5 z-30 bg-white border border-slate-200 rounded-lg shadow-lg py-1 min-w-[150px] fade-in" data-testid="task-menu">
           {TASK_MENU.map(id => (
             <button key={id} onClick={() => { setMenu(false); if (id !== st) setTask(project, doc, step, cell, i, id, authUser); }}
               className={`w-full text-left flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-slate-50 ${id === st ? 'font-semibold' : ''}`}>
