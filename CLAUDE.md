@@ -495,11 +495,12 @@ status colour. The Workflow Tool carries the identical `tw-brand` block (read by
   filter. Right column: Needs your attention, a **project status donut**
   (`StatusDonut`, each project counted once by `donutCategory()`, range all /
   12 / 6 months, legend with counts), next 14 days, recent updates.
-- **Narrow dashboard** (below 1280px) — first one grid of slim one-line
-  cards (32px: icon, number, short label): the stat tiles (toggle filters)
-  and Status / Upcoming / Updates, which drop their report panel open below
-  the cards (click again or click away to close); then Needs your attention
-  as a full panel; then the projects. The projects toolbar
+- **Narrow dashboard** (below 1280px) — Needs your attention first, as a
+  compact panel (`Panel compact`: tight header, no explanation, one line per
+  item); then one grid of slim one-line cards (32px: icon, number, short
+  label) — the stat tiles (toggle filters) and Status / Upcoming / Updates,
+  which drop their report panel open below the cards (click again or away to
+  close) — sitting right above the projects list they filter. The projects toolbar
   puts search and New project on line 1, the filters on line 2.
 - **Project rows** — title, "workflow · Due · Updated", the people on it as
   separate initials; a wide outlined bar with the % at the end of the fill and

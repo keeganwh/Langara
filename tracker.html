@@ -1797,19 +1797,19 @@ function ProjectView({ project, data, authUser, online, onBack }) {
 // ── Dashboard ──────────────────────────────────────────────────────────────────
 const STALE_DAYS = 14;
 
-function Panel({ title, icon, children, testid, right, accent = '#64748b', count, sub }) {
+function Panel({ title, icon, children, testid, right, accent = '#64748b', count, sub, compact }) {
   return (
     <section className="bg-white border rounded-xl overflow-hidden" data-testid={testid}>
-      <h2 className="text-sm font-bold text-slate-800 px-4 py-2.5 flex items-center gap-2 border-b" style={{ borderTop: '3px solid ' + accent }}>
+      <h2 className={`text-sm font-bold text-slate-800 flex items-center gap-2 border-b ${compact ? 'px-3 py-1.5' : 'px-4 py-2.5'}`} style={{ borderTop: '3px solid ' + accent }}>
         <span className="w-6 h-6 rounded-md flex items-center justify-center" style={{ background: accent + '1a', color: accent }}><Icon name={icon} size={14} /></span>
         <span className="min-w-0 leading-tight">
           <span className="block">{title}</span>
-          {sub && <span className="block text-[11px] font-normal text-slate-500">{sub}</span>}
+          {sub && !compact && <span className="block text-[11px] font-normal text-slate-500">{sub}</span>}
         </span>
         {count > 0 && <span className="text-[11px] font-bold rounded-full px-1.5 text-white" style={{ background: accent }}>{count}</span>}
         <span className="ml-auto font-normal">{right}</span>
       </h2>
-      <div className="px-4 py-3">{children}</div>
+      <div className={compact ? 'px-3 py-1.5' : 'px-4 py-3'}>{children}</div>
     </section>
   );
 }
@@ -2169,20 +2169,22 @@ function Dashboard({ data, authUser, online, onOpen, onNew }) {
   const clickTile = (t) => { if (!t.flag) return; setFlags(tileOn(t) ? new Set(DEFAULT_FLAGS) : new Set([t.flag])); };
 
   const attentionPanel = (
-    <Panel title="Needs your attention" icon="t_cust" testid="attention" accent="#F15A22" sub="Your steps that are active or next">
+    <Panel title="Needs your attention" icon="t_cust" testid="attention" accent="#F15A22" sub="Your steps that are active or next" compact={narrow}>
       {!me && <p className="text-sm text-slate-600">Your sign-in ({authUser.email}) is not on the People list yet, so nothing can be assigned to you. Add yourself under <strong>Settings → People</strong>.</p>}
       {me && !attention.length && <p className="text-sm text-slate-500">Nothing pending for you.</p>}
       {me && attention.length > 0 && <div className="divide-y -mx-1">
         {attention.map((it, i) => {
           const due = dueLabel(it.cell.dueDate);
           return (
-            <button key={i} onClick={() => onOpen(it.project.id)} className="w-full text-left px-1 py-1.5 flex items-center gap-2 hover:bg-slate-50 rounded">
+            <button key={i} onClick={() => onOpen(it.project.id)} className={`w-full text-left px-1 flex items-center gap-2 hover:bg-slate-50 rounded ${narrow ? 'py-1' : 'py-1.5'}`}>
               <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: it.doc.color }} />
-              <span className="min-w-0 flex-1">
-                <span className="block text-sm font-medium text-slate-800 truncate">{it.step.stageName}</span>
-                <span className="block text-[11px] text-slate-500 truncate">{it.doc.name} · {it.project.name}</span>
-              </span>
-              <span className="flex flex-col items-end gap-0.5 flex-shrink-0">
+              {narrow
+                ? <span className="min-w-0 flex-1 truncate text-[13px]"><span className="font-medium text-slate-800">{it.step.stageName}</span><span className="text-[11px] text-slate-500"> · {it.doc.name} · {it.project.name}</span></span>
+                : <span className="min-w-0 flex-1">
+                    <span className="block text-sm font-medium text-slate-800 truncate">{it.step.stageName}</span>
+                    <span className="block text-[11px] text-slate-500 truncate">{it.doc.name} · {it.project.name}</span>
+                  </span>}
+              <span className={`flex items-end gap-0.5 flex-shrink-0 ${narrow ? 'flex-row items-center gap-1' : 'flex-col'}`}>
                 <StatusChip status={it.cell.status} sm />
                 {due && <span className={`text-[10px] border rounded-full px-1.5 ${TONE[due.tone]}`}>{due.text}</span>}
               </span>
@@ -2269,6 +2271,7 @@ function Dashboard({ data, authUser, online, onOpen, onNew }) {
         {narrow ? <>
           {/* Narrow: Needs your attention in full, then one row of small cards —
               stats filter the list (toggling), reports drop a panel open below. */}
+          <div className="mb-2">{attentionPanel}</div>
           <div ref={repRef} className="mb-3">
             <div className="grid gap-1.5" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(118px, 1fr))' }} data-testid="tiles">
               {tiles.map(t => tileEl(t, true))}
@@ -2287,7 +2290,6 @@ function Dashboard({ data, authUser, online, onOpen, onNew }) {
               <Panel title={openRep.title} icon={openRep.icon} testid={openRep.testid} accent={openRep.accent}>{openRep.body}</Panel>
             </div>}
           </div>
-          <div className="mb-3">{attentionPanel}</div>
           {projectsBox}
         </> : <>
           <div className="grid grid-cols-5 gap-3 mb-4" data-testid="tiles">{tiles.map(t => tileEl(t, false))}</div>
