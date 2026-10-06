@@ -124,12 +124,20 @@ const cell = (d, docId, stepId) => {
   d = await db(p);
   ok('ticking a task records it against round 1', !!((cell(d, 'd1', 's1').checks || {}).r1 || {}).t0);
   await click(p, '.fixed button', 'Complete'); await p.waitForTimeout(100);
+  d = await db(p);
+  ok('completing the step completes its remaining tasks', ((cell(d, 'd1', 's1').checks || {}).r1 || {}).t1 && ((cell(d, 'd1', 's1').checks.r1.t1.status) === 'complete'));
   await p.evaluate(() => document.querySelector('.fixed button[aria-label="Close"]').click()); await p.waitForTimeout(100);
 
   console.log('\nMeeting shortcut');
   await openStep('Concept Paper', 'JCCS');
   t = await text(p);
   ok('offers to apply to every document at the meeting', t.includes('every document at this meeting'));
+  ok('a task naming a role tags that role (Approval by Dean)', await p.evaluate(() => /Dean/.test(document.querySelector('[data-testid=people-unfilled]').innerText)));
+  ok('people list separates automatic from added by hand', await p.evaluate(() => !!document.querySelector('[data-testid=people-auto]') && !!document.querySelector('[data-testid=people-hand]') && /You Person/.test(document.querySelector('[data-testid=people-auto]').innerText)));
+  await p.evaluate(() => document.querySelector('[data-testid=checklist] [data-testid=task-menu-btn]').click()); await p.waitForTimeout(100);
+  await p.evaluate(() => [...document.querySelectorAll('[data-testid=task-menu] button')].find(b => b.innerText.includes('In progress')).click()); await p.waitForTimeout(150);
+  d = await db(p);
+  ok('a task can be set in progress from its menu', ((cell(d, 'd1', 's3').checks || {}).r1 || {}).t0 && cell(d, 'd1', 's3').checks.r1.t0.status === 'in_progress');
   await p.evaluate(() => { const l = [...document.querySelectorAll('.fixed label')].find(l => l.innerText.includes('every document at this meeting')); l.querySelector('input').click(); });
   await click(p, '.fixed button', 'In progress'); await p.waitForTimeout(100);
   d = await db(p);
@@ -143,6 +151,13 @@ const cell = (d, docId, stepId) => {
   await click(p, '.fixed button', 'Mark held up'); await p.waitForTimeout(100);
   d = await db(p);
   ok('held up stores the reason', cell(d, 'd1', 's3').status === 'held_up' && cell(d, 'd1', 's3').heldReason === 'Waiting on the Dean');
+  ok('the held-up reason is editable on the step, with line breaks', await p.evaluate(() => { const ta = document.querySelector('[data-testid=held-reason] textarea'); return !!ta && ta.value === 'Waiting on the Dean'; }));
+  await p.locator('[data-testid=held-reason] textarea').fill('Waiting on the Dean\nback on the 12th');
+  await p.evaluate(() => document.querySelector('[data-testid=held-reason] textarea').blur()); await p.waitForTimeout(150);
+  d = await db(p);
+  ok('an edited reason saves with its line break', cell(d, 'd1', 's3').heldReason === 'Waiting on the Dean\nback on the 12th');
+  await p.locator('[data-testid=held-reason] textarea').fill('Waiting on the Dean');
+  await p.evaluate(() => document.querySelector('[data-testid=held-reason] textarea').blur()); await p.waitForTimeout(150);
 
   console.log('\nAttention');
   await p.evaluate(() => document.querySelector('.fixed button[aria-label="Close"]').click()); await p.waitForTimeout(100);
@@ -228,6 +243,18 @@ const cell = (d, docId, stepId) => {
   await p.evaluate(() => { if (!document.querySelector('[data-testid=changes-drawer]')) document.querySelector('[data-testid=changes-btn]').click(); }); await p.waitForTimeout(100);
   await click(p, '[data-testid=changes-drawer] button[data-tab=workflow]'); await p.waitForTimeout(150);
   ok('minor changes collapse to one summary line', await p.evaluate(() => /minor detail changes on 1 step \(notes\)/.test(document.querySelector('[data-testid=minor-summary]').innerText)));
+
+  console.log('\nDuplicate');
+  await p.evaluate(() => { location.hash = '#/'; }); await p.waitForTimeout(200);
+  await click(p, '[data-testid=new-project]'); await p.waitForTimeout(150);
+  await click(p, '[data-testid=new-mode] button', 'Duplicate a project'); await p.waitForTimeout(100);
+  await click(p, '.fixed button', 'Duplicate project'); await p.waitForTimeout(300);
+  d = await db(p);
+  const prs = Object.values(d.tracker.projects);
+  const dup = prs.find(x => /^Copy of /.test(x.name));
+  ok('duplicate copies progress', !!dup && JSON.stringify(dup.progress) === JSON.stringify(prs.find(x => x !== dup).progress));
+  ok('duplicate leaves out file links', !!dup && !dup.links);
+  ok('duplicate starts its own activity', !!dup && Object.values(dup.activity || {}).length === 1 && /Duplicated from/.test(Object.values(dup.activity)[0].text));
 
   console.log('\nNarrow window');
   await p.setViewportSize({ width: 1100, height: 900 });

@@ -445,7 +445,7 @@ tracker
     ├── progress/<docId>/<stepId>
     │     { status, round, startDate, dueDate, meetingDate,
     │       assignees[], notes, heldReason, history/<push>,
-    │       checks/r<round>/t<actionIndex> { at, by } }
+    │       checks/r<round>/t<actionIndex> { at, by, status } }
     ├── links/<docId>  { url, label, version, at, by, history/<push> }
     └── activity/<push>  { at, by, text, kind, docId, step, status }
 ```
@@ -464,8 +464,13 @@ tracker
   defaults on read, and an empty role override is stored as `'none'` so
   "nobody" stays distinct from "use the default".
 - **People** match a sign-in by email (`meOf`). A step's people are the holders
-  of its roles (the map's `presenterIds` + `carrierIds`) plus anyone tagged on
-  it directly. Role holders come from the project's override, else from each
+  of its roles — the map's `presenterIds` + `carrierIds` **plus every role its
+  tasks name** (`taskRoleIds`: "Approval by Dean" → Dean, a whole-word match of
+  role labels against the task's label and person text, via `stepRoleIds`) —
+  plus anyone added by hand. The map stores who does a task only as free text,
+  so without this match a Dean named only in tasks was never tagged.
+  `ROLE_LIST` is a module-level copy of the map's roles, set by
+  `useTrackerData`, so these helpers need no extra arguments. Role holders come from the project's override, else from each
   person's default `roleIds`.
 
 ### Views
@@ -532,9 +537,23 @@ status colour. The Workflow Tool carries the identical `tw-brand` block (read by
   history/<push> }. Saving a new link keeps the previous one in `history`.
 - **Full flow** — the Step-Flow-style grid (`FlowGrid`). The chosen view is a
   per-viewer preference in `localStorage` (`cs_tracker_project_view_v1`).
-- **Step panel** — status, checklist (`checks/r<round>/t<index>`, fresh each
-  round), the map's trigger, storage and notes (snapshotted), dates, people,
-  shared notes, send back, history.
+- **Step panel** — status (when held up, an editable multi-line "Held up
+  because" box, `HeldReason`), checklist, the map's trigger, storage and notes
+  (snapshotted), dates, people (`StepPeople`: Automatic rows with role and
+  reason, a warning row for a role nobody holds, Added by hand rows with ×,
+  and an Add someone menu), shared notes, send back, history.
+- **Tasks** (`TaskRow`, on the step panel and the Now card) each have a status:
+  the checkbox toggles complete; ▾ offers not started / in progress / held up /
+  skipped / complete. Stored at `checks/r<round>/t<index>` `{ at, by, status }`
+  (no status = an old tick = complete). Each task shows the initials of whoever
+  holds the role it names. The step follows its tasks only two ways
+  (`setTask`): a held-up task holds the step up ("Task held up: …"), and when
+  every task is complete or skipped the step asks to be marked complete.
+  Marking a step complete (`setStepStatus`) completes every task not already
+  complete or skipped — skipped tasks are left alone.
+- **Duplicate a project** — New project → Duplicate a project: an exact copy
+  (workflow copy, people, notes, dates, all progress and step history) except
+  file links; its activity log starts with "Duplicated from …".
 
 **"Workflow changed"** compares the project's copy with the map's current
 version through `driftSummary()` / `workflowDiff()`, which ignore empty-vs-unset
@@ -567,7 +586,7 @@ pending); the steps a send-back reset to pending still show their round badge.
   next for their document, sorted by due date.
 - Routing is the hash (`#/p/<id>`), so projects can be linked directly.
 
-Checks: `cd dev && npm run tracker` (69 checks, own Firebase stub with nested
+Checks: `cd dev && npm run tracker` (78 checks, own Firebase stub with nested
 paths and live listeners — see `dev/tracker-preview.js`).
 
 ## Conventions to follow
