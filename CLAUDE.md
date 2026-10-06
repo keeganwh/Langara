@@ -319,7 +319,9 @@ rail scrolls and a scrolling box clips anything that overflows sideways.
 Dashboard, the other app and Settings sit at the **top** of both sidebars
 (and rails), under the brand block; the foot is empty. In the open sidebar a
 cut-off workflow or project name floats in full on hover (`HoverTitle`, the
-same portal idea, `.hover-title` CSS).
+same portal idea, `.hover-title` CSS). It listens on the whole row and the
+float covers the row exactly (with the row's trailing % passed as `trail`) —
+an offset float looked like a stray shadow, and hovering the % did nothing.
 
 ## Change history
 
@@ -552,10 +554,15 @@ status colour. The Workflow Tool carries the identical `tw-brand` block (read by
 - **Project rows** — title, then "workflow · Due · Updated" with the people's
   initials on the same line; a bar coloured by `projectTone()` (held up >
   sent back > in progress > not started; green when complete). Document chips
-  are hidden; a chevron opens one row's. The list (which scrolls on its own
-  on wide windows) has two per-viewer toggles on the Select-all row,
-  `cs_tracker_list_prefs_v1`: **Documents** (chips on every row) and
-  **Detailed progress** (the bar split per document, `docTone()`).
+  sit under the bar but are hidden; a chevron opens one row's. The list
+  (which scrolls on its own on wide windows) has two per-viewer toggles on the
+  Select-all row, `cs_tracker_list_prefs_v1`: **Documents** (chips on every
+  row) and **Detailed progress** — still one continuous bar, where each
+  document owns a stretch in proportion to its steps and fills it in its own
+  status colour (`docTone()`). Separate per-document blocks were tried and
+  rejected.
+- **Recent updates** is not a panel: a slim rail at the dashboard's right
+  edge opens `RecentDrawer`, built like the Workflow Tool's History drawer.
 - **Recent updates** are grouped by project and thinned (`recentByProject`):
   only the newest checklist tick per project, and entries with the same kind,
   step and status within 10 minutes collapse into one line. Activity entries
@@ -683,7 +690,7 @@ pending); the steps a send-back reset to pending still show their round badge.
   next for their document, sorted by due date.
 - Routing is the hash (`#/p/<id>`), so projects can be linked directly.
 
-Checks: `cd dev && npm run tracker` (115 checks, own Firebase stub with nested
+Checks: `cd dev && npm run tracker` (116 checks, own Firebase stub with nested
 paths and live listeners — see `dev/tracker-preview.js`).
 
 ## Conventions to follow

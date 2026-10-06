@@ -274,8 +274,8 @@
       .pub-block { margin-bottom:0.22in; }
       .pub-legend { break-inside:avoid; }
     }
-  .hover-title { position: fixed; z-index: 100000; pointer-events: none; display: flex; align-items: center; padding: 4px 8px;
-  background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; box-shadow: 0 8px 24px rgba(15,23,42,.14);
+  .hover-title { position: fixed; z-index: 100000; pointer-events: none; display: flex; align-items: center; gap: 8px; padding: 0 8px;
+  background: #fff; border-radius: 8px; box-shadow: 0 2px 10px rgba(15,23,42,.12), 0 0 0 1px #e2e8f0;
   font-size: 14px; font-weight: 500; color: #1e293b; white-space: nowrap; }
 </style>
 </head>
@@ -3643,15 +3643,26 @@ const CHROME_BAR_H = 68;
 
 // Same as the tracker: the full name of a sidebar item floats over it on
 // hover when the name is cut off, through a portal so the sidebar can't clip it.
-function HoverTitle({ text, className }) {
+function HoverTitle({ text, className, trail }) {
   const [rect, setRect] = useState(null);
   const ref = useRef(null);
-  const show = () => { const el = ref.current; if (el && el.scrollWidth > el.clientWidth) { const r = el.getBoundingClientRect(); setRect({ top: r.top, left: r.left, height: r.height }); } };
+  // Listen on the whole row, so hovering anywhere on it (the % too) shows
+  // the full name; the float covers the row exactly, so nothing peeks out.
+  useEffect(() => {
+    const el = ref.current, row = el && el.parentElement;
+    if (!row) return;
+    const show = () => { if (el.scrollWidth > el.clientWidth) { const r = row.getBoundingClientRect(); setRect({ top: r.top, left: r.left, height: r.height, width: r.width }); } };
+    const hide = () => setRect(null);
+    row.addEventListener('mouseenter', show); row.addEventListener('mouseleave', hide);
+    return () => { row.removeEventListener('mouseenter', show); row.removeEventListener('mouseleave', hide); };
+  }, []);
   return (
-    <span ref={ref} className={className} onMouseEnter={show} onMouseLeave={() => setRect(null)}>
+    <span ref={ref} className={className}>
       {text}
       {rect && ReactDOM.createPortal(
-        <span className="hover-title" style={{ top: rect.top - 4, left: rect.left - 8, minHeight: rect.height + 8 }} data-testid="hover-title">{text}</span>, document.body)}
+        <span className="hover-title" style={{ top: rect.top, left: rect.left, height: rect.height, minWidth: rect.width }} data-testid="hover-title">
+          <span className="flex-1">{text}</span>{trail}
+        </span>, document.body)}
     </span>
   );
 }
@@ -3673,7 +3684,7 @@ function HomeView({ store, onNew, onEdit, onPublish, onHistory }) {
   return (
     <div className="h-full overflow-auto p-6" data-testid="home">
       <div className="max-w-4xl mx-auto">
-        <h2 className="text-xl font-bold text-slate-800 mb-1">What are we doing today?</h2>
+        <h2 className="text-xl font-bold text-slate-800 mb-1">What are you working on today?</h2>
         <p className="text-sm text-slate-500 mb-5">Pick one to get started.</p>
         <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))' }}>
           {cards.map(c => {

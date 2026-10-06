@@ -188,10 +188,13 @@ const cell = (d, docId, stepId) => {
   ok('clicking a tile filters to those projects', await p.evaluate(() => document.querySelectorAll('[data-testid=project-row]').length === 0 && document.body.innerText.includes('No projects match')));
   await p.evaluate(() => [...document.querySelectorAll('button')].find(b => b.innerText.trim() === 'Show all').click()); await p.waitForTimeout(100);
   ok('show all brings the project back', await p.evaluate(() => document.querySelectorAll('[data-testid=project-row]').length === 1));
+  ok('recent updates start collapsed to a rail', await p.evaluate(() => !!document.querySelector('[data-testid=recent-rail]') && !document.querySelector('[data-testid=recent-drawer]')));
+  await p.evaluate(() => document.querySelector('[data-testid=recent-rail]').click()); await p.waitForTimeout(150);
   ok('recent updates are grouped under the project', await p.evaluate(() => document.querySelectorAll('[data-testid=recent-group]').length === 1 && document.querySelector('[data-testid=recent-group]').innerText.startsWith('Certificate in Testing')));
   ok('recent updates list the project on one line until opened', await p.evaluate(() => !document.querySelector('[data-testid=recent-items]')));
   await p.evaluate(() => document.querySelector('[data-testid=recent-group] button').click()); await p.waitForTimeout(100);
   ok('a change applied at a meeting collapses to one line', await p.evaluate(() => (document.querySelector('[data-testid=recent]').innerText.match(/JCCS: Held up/g) || []).length === 1));
+  await p.evaluate(() => document.querySelector('[data-testid=recent-drawer] button[aria-label=Close]').click()); await p.waitForTimeout(100);
   console.log('\nMeeting schedule');
   const mDate = await p.evaluate(() => { const d = new Date(); d.setDate(d.getDate() + 5); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); });
   await click(p, '[data-testid=schedule-btn]'); await p.waitForTimeout(150);
