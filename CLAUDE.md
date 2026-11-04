@@ -470,7 +470,7 @@ tracker
     │   (batch projects instead of documents[] store: batch: true,
     │    template[] (one workflow copy), items[] { id, name }, sharedDocIds[])
     └── activity/<push>  { at, by, text, kind, docId, step, status }
-└── meetings/<id>      { name, date }                    — the meeting schedule
+└── meetings/<id>      { name, date, deadline }          — the meeting schedule
 ```
 
 - **Meeting schedule.** `MeetingScheduleModal` (Schedule, on the Meetings
@@ -483,6 +483,17 @@ tracker
   (`MeetingDateField` / `MeetingCalendar`) that highlights matching scheduled
   dates; picking an unscheduled one asks "was the meeting rescheduled?"
   (Yes moves the nearest scheduled one) and flags it "Not on the schedule".
+  Each meeting has an optional agenda / submission `deadline` (entered beside
+  each date, editable in the schedule's Coming up list). Meeting types get a
+  colour (`meetingHue`, from the name minus "meeting" etc.); the calendar
+  shows every scheduled meeting in its colour, faint unless it matches the
+  step, with the days from deadline to meeting tinted and a ring on the
+  deadline, plus a legend. It opens on the step's date's month, else the next
+  matching meeting's, else this month. The Meetings panel adds "submit by".
+- **New batch, part-way** ("Where are they now?" in New project): per
+  document, the current step and its status (with a reason when held up);
+  earlier steps are written complete, for every initiative (or once for a
+  shared document).
 - **Person colours.** `personHue()`: `person.hue` if picked under People,
   else a hue from the name. `Avatar` uses it.
 
@@ -713,7 +724,7 @@ pending); the steps a send-back reset to pending still show their round badge.
   next for their document, sorted by due date.
 - Routing is the hash (`#/p/<id>`), so projects can be linked directly.
 
-Checks: `cd dev && npm run tracker` (121 checks, own Firebase stub with nested
+Checks: `cd dev && npm run tracker` (125 checks, own Firebase stub with nested
 paths and live listeners — see `dev/tracker-preview.js`).
 
 ## Conventions to follow

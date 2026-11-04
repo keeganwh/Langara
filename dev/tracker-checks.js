@@ -223,7 +223,14 @@ const cell = (d, docId, stepId) => {
   const mDate = await p.evaluate(() => { const d = new Date(); d.setDate(d.getDate() + 5); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); });
   await click(p, '[data-testid=schedule-btn]'); await p.waitForTimeout(150);
   await p.locator('[data-testid=meeting-name]').fill('JCCS Meeting');
-  await p.locator('[data-testid=meeting-dates] input[type=date]').first().fill(mDate);
+  const dDate = await p.evaluate(() => { const d = new Date(); d.setDate(d.getDate() + 2); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); });
+  const later = await p.evaluate(() => { const d = new Date(); d.setDate(d.getDate() + 70); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); });
+  const past = await p.evaluate(() => { const d = new Date(); d.setDate(d.getDate() - 70); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); });
+  await p.locator('[data-testid=meeting-date]').first().fill(mDate);
+  await p.locator('[data-testid=meeting-deadline]').first().fill(dDate);
+  // A past meeting and a much later one: the calendar must open on the next one, not the earliest.
+  await click(p, '[data-testid=meeting-add-date]'); await p.locator('[data-testid=meeting-date]').nth(1).fill(past);
+  await click(p, '[data-testid=meeting-add-date]'); await p.locator('[data-testid=meeting-date]').nth(2).fill(later);
   await click(p, '.fixed button', 'Add to schedule'); await p.waitForTimeout(200);
   ok('a meeting can be added to the schedule', await p.evaluate(() => /JCCS Meeting/.test(document.querySelector('[data-testid=meeting-schedule]').innerText)));
   await p.evaluate(() => [...document.querySelectorAll('.fixed button')].find(b => b.innerText.trim() === 'Done').click()); await p.waitForTimeout(150);
@@ -231,7 +238,10 @@ const cell = (d, docId, stepId) => {
   await click(p, '[data-testid=project-row]'); await p.waitForTimeout(200);
   await openStep('Concept Paper', 'JCCS');
   await click(p, '[data-testid=meeting-date-btn]'); await p.waitForTimeout(100);
-  ok('the meeting calendar highlights the matching scheduled date', await p.evaluate((d) => { const c = document.querySelector('[data-testid=meeting-cal]'); return !!c && [...c.querySelectorAll('[data-marked=yes]')].length === 1; }, mDate));
+  ok('the calendar opens on the month of the next meeting, not the earliest', await p.evaluate((d) => { const t = document.querySelector('[data-testid=cal-month]').innerText; const want = new Date(d + 'T00:00').toLocaleDateString(undefined, { month: 'long', year: 'numeric' }); return t === want; }, mDate));
+  ok('the submission deadline is marked on the calendar', mDate.slice(0, 7) !== dDate.slice(0, 7) || await p.evaluate(() => document.querySelectorAll('[data-testid=meeting-cal] [data-deadline=yes]').length === 1));
+  ok('the calendar has a colour legend of meeting types', await p.evaluate(() => /JCCS Meeting/.test(document.querySelector('[data-testid=cal-legend]').innerText)));
+  ok('the meeting calendar highlights the matching scheduled date', await p.evaluate((d) => { const c = document.querySelector('[data-testid=meeting-cal]'); return !!c && [...c.querySelectorAll('[data-marked=yes]')].length >= 1; }, mDate));
   await p.evaluate(() => { const b = [...document.querySelectorAll('[data-testid=meeting-cal] [data-marked=no]')].find(x => /^\d+$/.test(x.innerText.trim())); b.click(); }); await p.waitForTimeout(150);
   ok('picking an off-schedule date asks if the meeting was rescheduled', await p.evaluate(() => !!document.querySelector('[data-testid=reschedule-ask]')));
   await click(p, '.fixed button', 'No, just use this date'); await p.waitForTimeout(150);
@@ -322,9 +332,12 @@ const cell = (d, docId, stepId) => {
   await p.evaluate(() => document.querySelector('[data-testid=batch-toggle] input').click()); await p.waitForTimeout(100);
   await p.locator('[data-testid=batch-items]').fill('CPSC 1010\nCPSC 1020');
   await p.evaluate(() => [...document.querySelectorAll('[data-testid=batch-setup] button')].filter(b => b.innerText.trim() === 'Shared')[0].click()); await p.waitForTimeout(100);
+  // Where are they now: Concept Paper (d1, shared) at step 2, in progress.
+  await p.evaluate(() => { const rows = document.querySelectorAll('[data-testid=batch-start] select'); const sel = [...rows].find(x => [...x.options].some(o => /JCCS/.test(o.text)) && x.closest('div').innerText.includes('Concept Paper')); const set = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set; set.call(sel, '1'); sel.dispatchEvent(new Event('change', { bubbles: true })); }); await p.waitForTimeout(100);
   await click(p, '.fixed button', 'Create project'); await p.waitForTimeout(300);
   d = await db(p);
   const bp = Object.entries(d.tracker.projects).find(([, x]) => x.name === 'New Courses Fall');
+  ok('a new batch can start part-way: earlier steps complete, the chosen step in progress', !!bp && (() => { const g = (bp[1].progress || {}).d1 || {}; return (g.s1 || {}).status === 'complete' && (g.s2 || {}).status === 'in_progress' && !g.s3; })());
   ok('a batch stores its items, shared documents and one workflow copy', !!bp && bp[1].batch && bp[1].items.length === 2 && bp[1].sharedDocIds[0] === 'd1' && !bp[1].documents);
   await p.evaluate(() => { const b = document.querySelector('button[data-view=overview]'); if (b) b.click(); }); await p.waitForTimeout(200);
   ok('the overview groups the batch by item', await p.evaluate(() => document.querySelectorAll('[data-testid=item-header]').length === 2 && document.querySelectorAll('[data-testid=ov-doc]').length === 3));
