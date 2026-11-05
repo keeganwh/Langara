@@ -3796,6 +3796,76 @@ function Sidebar({ data, route, go, authUser, onModal, sb }) {
   );
 }
 
+// ── Meeting follow-up ─────────────────────────────────────────────────────────
+// Steps you are on whose meeting date has passed but which are still open:
+// on opening the tracker, ask what happened. One line per project + step +
+// meeting (a batch's initiatives together). "Ask me later" hides a line for
+// this viewer until tomorrow (localStorage, never shared).
+const FOLLOW_KEY = 'cs_tracker_meeting_followup_v1';
+function pastMeetingsFor(projects, people, me) {
+  if (!me) return [];
+  const groups = {};
+  projects.filter(p => !p.archived).forEach(project => project.documents.forEach(doc => doc.steps.forEach(step => {
+    const c = cellOf(project, doc.id, step.id);
+    if (!c.meetingDate || isClosed(c.status) || daysUntil(c.meetingDate) >= 0) return;
+    if (!stepPeople(project, people, step, c).includes(me.id)) return;
+    const k = project.id + '|' + step.id + '|' + c.meetingDate;
+    (groups[k] = groups[k] || { key: k, project, step, date: c.meetingDate, items: [] }).items.push({ doc, cell: c });
+  })));
+  return Object.values(groups).sort((a, b) => a.date.localeCompare(b.date));
+}
+function MeetingFollowUp({ data, authUser, onOpen }) {
+  const me = meOf(data.people, authUser);
+  const [snooze, setSnooze] = useState(() => { try { return JSON.parse(localStorage.getItem(FOLLOW_KEY) || '{}'); } catch (e) { return {}; } });
+  const [closed, setClosed] = useState(false);
+  const [ask, setAsk] = useState(null);
+  const today = todayStr();
+  const list = pastMeetingsFor(data.projects, data.people, me).filter(g => !(snooze[g.key] && snooze[g.key] >= today));
+  const later = (g) => {
+    const t = new Date(); t.setDate(t.getDate() + 1);
+    const until = t.getFullYear() + '-' + String(t.getMonth() + 1).padStart(2, '0') + '-' + String(t.getDate()).padStart(2, '0');
+    const n = { ...snooze, [g.key]: until };
+    setSnooze(n); try { localStorage.setItem(FOLLOW_KEY, JSON.stringify(n)); } catch (e) {}
+  };
+  const setAll = (g, status, reason) => g.items.forEach(it => setStepStatus(g.project, it.doc, g.step, status, reason, authUser));
+  if (closed || !list.length) return null;
+  const btn = 'text-xs font-medium rounded-lg px-2.5 py-1.5 border whitespace-nowrap';
+  return (
+    <Modal title={list.length === 1 ? 'A meeting has passed' : list.length + ' meetings have passed'} wide onClose={() => setClosed(true)}
+      footer={<Btn variant="secondary" onClick={() => setClosed(true)}>Done for now</Btn>}>
+      <p className="text-sm text-slate-600 mb-3">These steps you are on went to a meeting that has now happened. What came of it?</p>
+      <div className="space-y-2" data-testid="followup">
+        {list.map(g => {
+          const docs = g.items.map(it => it.doc);
+          return (
+            <div key={g.key} className="border rounded-lg p-3" data-testid="followup-item">
+              <div className="flex items-start gap-2 mb-2">
+                <span style={{ color: meetingColor(g.step.stageName) }} className="mt-0.5"><Icon name="t_meet" size={15} /></span>
+                <div className="min-w-0 flex-1">
+                  <div className="text-sm font-semibold text-slate-800 truncate">{g.project.name}</div>
+                  <div className="text-xs text-slate-500">{g.step.stageName} · met {fmtDate(g.date)} ({-daysUntil(g.date)} {-daysUntil(g.date) === 1 ? 'day' : 'days'} ago)
+                    {' · '}{docs.length === 1 ? docs[0].name : docs.length + ' documents'}</div>
+                </div>
+                <StatusChip status={g.items[0].cell.status} sm />
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                <button className={btn + ' bg-emerald-50 border-emerald-300 text-emerald-800 hover:bg-emerald-100'} onClick={() => setAll(g, 'complete')} data-testid="fu-complete">
+                  Approved — mark complete</button>
+                <button className={btn + ' bg-amber-50 border-amber-300 text-amber-800 hover:bg-amber-100'}
+                  onClick={() => setAsk({ g, title: 'Held up', label: 'What is it waiting on?', run: r => setAll(g, 'held_up', r) })}>Held up</button>
+                <button className={btn + ' bg-white border-slate-300 text-slate-700 hover:bg-slate-50'} onClick={() => { setClosed(true); onOpen(g.project.id); }}
+                  title="Open the project to send it back or change the meeting date">Sent back or moved — open project</button>
+                <button className={btn + ' bg-white border-slate-200 text-slate-500 hover:bg-slate-50 ml-auto'} onClick={() => later(g)} data-testid="fu-later">Ask me tomorrow</button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      {ask && <ReasonModal title={ask.title} label={ask.label} confirmLabel="Mark held up" onConfirm={r => { ask.run(r); setAsk(null); }} onClose={() => setAsk(null)} />}
+    </Modal>
+  );
+}
+
 function App({ authUser }) {
   const [data, online] = useTrackerData(authUser);
   const presence = usePresence(authUser);
@@ -3849,6 +3919,7 @@ function App({ authUser }) {
       {modal === 'settings' && <SettingsModal authUser={authUser} onOpen={setModal} onClose={() => setModal(null)} />}
       {modal === 'people' && <PeopleModal data={data} onClose={() => setModal(null)} />}
       <UndoToast />
+      {!finishedP && <MeetingFollowUp data={data} authUser={authUser} onOpen={go} />}
       {finishedP && <Modal title={finishedP.name + ' is complete'} onClose={() => setFinished(null)} footer={<>
         <Btn variant="secondary" onClick={() => { dbUpdate('projects/' + finishedP.id, { keepActive: true }); setFinished(null); }}>Keep it active</Btn>
         <Btn onClick={() => { setArchived([finishedP], true, authUser); setFinished(null); }}>Archive it</Btn>
