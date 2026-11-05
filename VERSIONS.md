@@ -42,6 +42,12 @@ about to do something risky, take both.
 
 ## Released versions
 
+### v2.7.x — follow-ups on v2.7 (no archive branch; roll back with `git revert`)
+Sort and Filter menus, meeting deadlines and colours, batches that start
+part-way, archive prompt for finished projects with a sidebar Archive, and a
+prompt after a step's meeting date passes. New data: `meetings/*/deadline`,
+`projects/*/keepActive`; older pages ignore both.
+
 ### v2.7 — dashboards, meeting schedule, Development Tracker
 Archive branch: `archive/v2.7-pre-dashboards` (commit `0be0b21`, the version before)
 
