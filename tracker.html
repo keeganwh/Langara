@@ -3699,7 +3699,11 @@ function HoverTitle({ text, className, trail }) {
 }
 
 function Sidebar({ data, route, go, authUser, onModal, sb }) {
-  const projects = data.projects.filter(p => !p.archived);
+  // Finished and archived projects leave the main list for the Archive at the
+  // foot of the sidebar.
+  const [archOpen, setArchOpen] = useState(false);
+  const projects = data.projects.filter(p => !p.archived && !projectStats(p).done);
+  const shelved = data.projects.filter(p => p.archived || projectStats(p).done);
   const pick = (id) => { go(id); sb.close(); };
   const item = (active) => `group flex items-center gap-2 px-2 py-2 rounded-lg cursor-pointer mb-1 transition-colors ${active ? 'bg-indigo-600 text-white' : 'text-slate-700 hover:bg-slate-100'}`;
   const brand = (
@@ -3727,6 +3731,9 @@ function Sidebar({ data, route, go, authUser, onModal, sb }) {
             label={p.name} sub={label + ' · ' + projectStats(p).pct + '%'} onClick={() => pick(p.id)} testid="rail-project" />;
         })}
       </div>
+      {shelved.length > 0 && <div className="py-2 pl-3 border-t border-slate-200">
+        <RailItem icon="archive" label={'Archive · ' + shelved.length} sub="Completed and archived projects" onClick={() => { setArchOpen(true); sb.toggle(); }} testid="rail-archive" />
+      </div>}
     </aside>
   );
   return (
@@ -3765,6 +3772,26 @@ function Sidebar({ data, route, go, authUser, onModal, sb }) {
           );
         })}
       </div>
+      {shelved.length > 0 && <div className="border-t border-slate-200 p-3 shrink-0" data-testid="sidebar-archive">
+        {archOpen && <div className="max-h-[40vh] overflow-y-auto mb-2" data-testid="archive-list">
+          {shelved.map(p => {
+            const on = route === p.id;
+            return (
+              <div key={p.id} onClick={() => pick(p.id)} className={item(on)}>
+                <span className={on ? 'text-indigo-200' : p.archived ? 'text-slate-400' : 'text-emerald-600'} title={p.archived ? 'Archived' : 'Complete'}><Icon name={p.archived ? 'archive' : 'done'} size={13} /></span>
+                <HoverTitle text={p.name} className="text-sm truncate flex-1 min-w-0" />
+              </div>
+            );
+          })}
+        </div>}
+        <button onClick={() => setArchOpen(!archOpen)} data-testid="archive-toggle"
+          className="w-full flex items-center gap-2 px-2 py-2 rounded-lg text-sm text-slate-600 hover:bg-slate-100">
+          <Icon name="archive" size={15} className="text-slate-400" />
+          <span className="flex-1 text-left font-medium">Archive</span>
+          <span className="text-[10px] rounded-full px-1.5 bg-slate-100 text-slate-500">{shelved.length}</span>
+          <Icon name={archOpen ? 'chev_d' : 'chev_u'} size={12} className="text-slate-400" />
+        </button>
+      </div>}
     </aside>
   );
 }
@@ -3782,6 +3809,23 @@ function App({ authUser }) {
   }, []);
   const go = useCallback((id) => { location.hash = id ? '#/p/' + id : '#/'; setRoute(id); }, []);
   const project = data && route ? data.projects.find(p => p.id === route) : null;
+  // When a project finishes while you are here, offer to archive it (the
+  // default). "Keep it active" is remembered on the project so it is not
+  // asked again. Only a change seen in this tab prompts — projects that were
+  // already complete when the page loaded are left alone.
+  const doneRef = useRef(null);
+  const [finished, setFinished] = useState(null);
+  useEffect(() => {
+    if (!data) return;
+    const now = {};
+    data.projects.forEach(p => { now[p.id] = projectStats(p).done; });
+    if (doneRef.current) {
+      const p = data.projects.find(x => now[x.id] && doneRef.current[x.id] === false && !x.archived && !x.keepActive);
+      if (p) setFinished(p.id);
+    }
+    doneRef.current = now;
+  }, [data]);
+  const finishedP = finished && data ? data.projects.find(p => p.id === finished) : null;
   useEffect(() => { document.title = project ? project.name + ' · Development Tracker' : 'Development Tracker'; }, [project && project.name]);
 
   if (!data) return <div className="flex items-center justify-center h-screen text-slate-400 text-sm">Loading…</div>;
@@ -3805,6 +3849,12 @@ function App({ authUser }) {
       {modal === 'settings' && <SettingsModal authUser={authUser} onOpen={setModal} onClose={() => setModal(null)} />}
       {modal === 'people' && <PeopleModal data={data} onClose={() => setModal(null)} />}
       <UndoToast />
+      {finishedP && <Modal title={finishedP.name + ' is complete'} onClose={() => setFinished(null)} footer={<>
+        <Btn variant="secondary" onClick={() => { dbUpdate('projects/' + finishedP.id, { keepActive: true }); setFinished(null); }}>Keep it active</Btn>
+        <Btn onClick={() => { setArchived([finishedP], true, authUser); setFinished(null); }}>Archive it</Btn>
+      </>}>
+        <p className="text-sm text-slate-700" data-testid="complete-ask">Every step is done. Archive it to take it off the dashboard? It stays in the Archive at the foot of the sidebar, and can be restored any time.</p>
+      </Modal>}
       {modal === 'new' && <NewProjectModal data={data} authUser={authUser} onClose={() => setModal(null)} onCreated={id => { setModal(null); go(id); }} />}
     </div>
     </PresenceCtx.Provider>

@@ -423,6 +423,31 @@ const cell = (d, docId, stepId) => {
     await p.evaluate(() => document.querySelector('[data-testid=unhide-doc]').click()); await p.waitForTimeout(300);
     ok('show again brings one back', await p.evaluate(() => document.querySelectorAll('[data-testid=ov-doc]').length) === before - 1); }
 
+  console.log('\nFinishing a project');
+  await p.evaluate(() => { location.hash = '#/'; }); await p.waitForTimeout(300);
+  await click(p, '[data-testid=new-project]'); await p.waitForTimeout(150);
+  await fill(p, '.fixed input >> nth=0', 'Finish Line');
+  await click(p, '.fixed button', 'Create project'); await p.waitForTimeout(300);
+  await p.evaluate(() => { location.hash = '#/'; }); await p.waitForTimeout(300);
+  // Mark the current step complete for every document until all are done.
+  for (let i = 0; i < 6; i++) {
+    const asked = await p.evaluate(() => !!document.querySelector('[data-testid=complete-ask]'));
+    if (asked) break;
+    await p.evaluate(() => { const s = document.querySelector('input[placeholder="Search projects"]'); const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set; set.call(s, 'Finish Line'); s.dispatchEvent(new Event('input', { bubbles: true })); }); await p.waitForTimeout(100);
+    await p.evaluate(() => { const a = document.querySelector('[data-testid=select-all]'); if (a && !a.checked) a.click(); }); await p.waitForTimeout(80);
+    await click(p, '[data-testid=bulk-status]'); await p.waitForTimeout(100);
+    await p.evaluate(() => [...document.querySelectorAll('[data-testid=bulk-status-pick] button')].find(b => b.innerText.trim() === 'Complete').click()); await p.waitForTimeout(80);
+    await click(p, '.fixed button', 'Apply'); await p.waitForTimeout(250);
+  }
+  ok('finishing a project asks to archive it', await p.evaluate(() => !!document.querySelector('[data-testid=complete-ask]')));
+  await click(p, '.fixed button', 'Archive it'); await p.waitForTimeout(300);
+  d = await db(p);
+  ok('archive it archives the project', Object.values(d.tracker.projects).some(x => x.name === 'Finish Line' && x.archived));
+  ok('a finished project leaves the sidebar list for the Archive', await p.evaluate(() => { const aside = document.querySelector('aside'); const main = [...aside.querySelectorAll('div')].some(x => x.innerText.trim() === 'Finish Line' && !x.closest('[data-testid=sidebar-archive]')); return !main && !!document.querySelector('[data-testid=archive-toggle]'); }));
+  await click(p, '[data-testid=archive-toggle]'); await p.waitForTimeout(100);
+  ok('the sidebar Archive lists it', await p.evaluate(() => /Finish Line/.test(document.querySelector('[data-testid=archive-list]').innerText)));
+  await p.evaluate(() => { const s = document.querySelector('input[placeholder="Search projects"]'); const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set; set.call(s, ''); s.dispatchEvent(new Event('input', { bubbles: true })); });
+
   console.log('\nNarrow window');
   await p.setViewportSize({ width: 1100, height: 900 });
   await p.evaluate(() => { location.hash = '#/'; }); await p.waitForTimeout(300);

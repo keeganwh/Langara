@@ -689,6 +689,13 @@ status colour. The Workflow Tool carries the identical `tw-brand` block (read by
   non-batch projects on one workflow (a batch holds one workflow copy), every
   document per initiative, progress and links moved to `<docId>__<itemId>`,
   originals archived with a note "Added to the batch …".
+- **Finishing a project**: when a project becomes complete while the page
+  is open, `App` asks "Archive it" (default) or "Keep it active"; keeping it
+  sets `project.keepActive` so it is not asked again. Only a change seen in
+  this tab prompts (projects already complete at load are left alone). The
+  sidebar lists only unfinished, unarchived projects; complete and archived
+  ones sit in a collapsible **Archive** at its foot (an Archive icon on the
+  rail opens the sidebar with it expanded).
 - **Duplicate a project** — New project → Duplicate a project: an exact copy
   (workflow copy, people, notes, dates, all progress and step history) except
   file links; its activity log starts with "Duplicated from …".
@@ -724,7 +731,7 @@ pending); the steps a send-back reset to pending still show their round badge.
   next for their document, sorted by due date.
 - Routing is the hash (`#/p/<id>`), so projects can be linked directly.
 
-Checks: `cd dev && npm run tracker` (125 checks, own Firebase stub with nested
+Checks: `cd dev && npm run tracker` (129 checks, own Firebase stub with nested
 paths and live listeners — see `dev/tracker-preview.js`).
 
 ## Conventions to follow
