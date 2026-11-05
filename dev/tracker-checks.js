@@ -427,12 +427,18 @@ const cell = (d, docId, stepId) => {
   {
     const [pid, pname, dkey] = await p.evaluate(() => { const [id, x] = Object.entries(window.__stubDb().tracker.projects).find(([, x]) => !x.archived && (x.batch ? !(x.sharedDocIds || []).includes('d1') : true)); return [id, x.name, x.batch ? 'd1__' + Object.values(x.items)[0].id : 'd1']; });
     const past = await p.evaluate(() => { const d = new Date(); d.setDate(d.getDate() - 3); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); });
-    await p.evaluate(([id, dt, k]) => firebase.database().ref('tracker/projects/' + id + '/progress/' + k + '/s3').update({ meetingDate: dt, status: 'in_progress' }), [pid, past, dkey]);
+    await p.evaluate(([id, dt, k]) => firebase.database().ref('tracker/projects/' + id + '/progress/' + k + '/s3').update({ meetingDate: dt, status: 'in_progress', history: null }), [pid, past, dkey]);
     await p.evaluate(() => { location.hash = '#/'; }); await p.reload(); await p.waitForTimeout(1500);
     ok('a passed meeting on my step asks what happened when I open the tracker', await p.evaluate((n) => [...document.querySelectorAll('[data-testid=followup-item]')].some(x => /JCCS/.test(x.innerText) && x.innerText.includes(n)), pname));
     await p.evaluate((n) => [...document.querySelectorAll('[data-testid=followup-item]')].find(x => x.innerText.includes(n)).querySelector('[data-testid=fu-later]').click(), pname); await p.waitForTimeout(150);
     ok('ask me tomorrow takes it off the list', await p.evaluate((n) => ![...document.querySelectorAll('[data-testid=followup-item]')].some(x => x.innerText.includes(n)), pname));
     await p.evaluate(() => localStorage.removeItem('cs_tracker_meeting_followup_v1')); await p.reload(); await p.waitForTimeout(1500);
+    await p.evaluate((n) => [...[...document.querySelectorAll('[data-testid=followup-item]')].find(x => x.innerText.includes(n)).querySelectorAll('button')].find(b => b.innerText.trim() === 'Held up').click(), pname); await p.waitForTimeout(150);
+    await p.locator('textarea').last().fill('Waiting on revisions');
+    await click(p, '.fixed button', 'Mark held up'); await p.waitForTimeout(300);
+    ok('answering held up takes it off the list', await p.evaluate((n) => ![...document.querySelectorAll('[data-testid=followup-item]')].some(x => x.innerText.includes(n)), pname));
+    await p.evaluate(([id, k]) => firebase.database().ref('tracker/projects/' + id + '/progress/' + k + '/s3/history').remove(), [pid, dkey]);
+    await p.reload(); await p.waitForTimeout(1500);
     await p.evaluate((n) => [...document.querySelectorAll('[data-testid=followup-item]')].find(x => x.innerText.includes(n)).querySelector('[data-testid=fu-complete]').click(), pname); await p.waitForTimeout(300);
     d = await db(p);
     ok('approved marks the step complete', ((d.tracker.projects[pid].progress || {})[dkey] || {}).s3.status === 'complete');

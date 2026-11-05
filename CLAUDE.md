@@ -702,7 +702,8 @@ status colour. The Workflow Tool carries the identical `tw-brand` block (read by
   batch's initiatives together): Approved — mark complete, Held up (asks a
   reason), Sent back or moved — open project, Ask me tomorrow (per viewer,
   `cs_tracker_meeting_followup_v1`). Done for now closes it until the next
-  page load.
+  page load. A step drops off once anyone changes its status after the meeting
+  day (any `history` entry dated after it), so answering Held up clears it.
 - **Duplicate a project** — New project → Duplicate a project: an exact copy
   (workflow copy, people, notes, dates, all progress and step history) except
   file links; its activity log starts with "Duplicated from …".
@@ -738,7 +739,7 @@ pending); the steps a send-back reset to pending still show their round badge.
   next for their document, sorted by due date.
 - Routing is the hash (`#/p/<id>`), so projects can be linked directly.
 
-Checks: `cd dev && npm run tracker` (132 checks, own Firebase stub with nested
+Checks: `cd dev && npm run tracker` (133 checks, own Firebase stub with nested
 paths and live listeners — see `dev/tracker-preview.js`).
 
 ## Conventions to follow
