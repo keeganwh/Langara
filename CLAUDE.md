@@ -489,10 +489,11 @@ tracker
   shows every scheduled meeting in its colour, faint unless it matches the
   step, with the days from deadline to meeting tinted and a ring on the
   deadline, plus a legend. It opens on the step's date's month, else the next
-  matching meeting's, else this month. The calendar is drawn fixed-position through a
-  portal under its field, kept inside the window and flipped above it when
-  there is no room below — as an absolute popup inside the step panel's
-  scrolling body it was clipped and its next-month arrow unreachable. The Meetings panel adds "submit by".
+  matching meeting's, else this month. The calendar hangs directly under its field,
+  **right-aligned** to it (`absolute right-0`), so it opens leftward into the
+  panel instead of off its right edge. A fixed-position portal clamped to the
+  window was tried and rejected: it drifted away from the field (and did not
+  follow the panel's scroll). The Meetings panel adds "submit by".
 - **New batch, part-way** ("Where are they now?" in New project): per
   document, the current step and its status (with a reason when held up);
   earlier steps are written complete, for every initiative (or once for a

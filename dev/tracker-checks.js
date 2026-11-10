@@ -238,16 +238,15 @@ const cell = (d, docId, stepId) => {
   await click(p, '[data-testid=project-row]'); await p.waitForTimeout(200);
   await openStep('Concept Paper', 'JCCS');
   await click(p, '[data-testid=meeting-date-btn]'); await p.waitForTimeout(100);
-  ok('the calendar sits fully inside the window', await p.evaluate(() => { const r = document.querySelector('[data-testid=meeting-cal]').getBoundingClientRect(); return r.top >= 0 && r.left >= 0 && r.bottom <= innerHeight && r.right <= innerWidth; }));
+  ok('the calendar opens right under its date field', await p.evaluate(() => { const c = document.querySelector('[data-testid=meeting-cal]').getBoundingClientRect(), f = document.querySelector('[data-testid=meeting-date-btn]').getBoundingClientRect(); return c.top - f.bottom >= 0 && c.top - f.bottom <= 8 && Math.abs(c.right - f.right) < 1; }));
+  ok('it stays inside the step panel sideways', await p.evaluate(() => { const c = document.querySelector('[data-testid=meeting-cal]'), m = c.closest('.rounded-xl').getBoundingClientRect(), r = c.getBoundingClientRect(); return r.left >= m.left && r.right <= m.right; }));
   {
     const vp = p.viewportSize();
     await click(p, '[data-testid=meeting-date-btn]'); await p.waitForTimeout(100);
     await p.setViewportSize({ width: 860, height: 520 }); await p.waitForTimeout(150);
-    await p.evaluate(() => { const b = document.querySelector('[data-testid=meeting-date-btn]'); b.scrollIntoView({ block: 'end' }); });
     await click(p, '[data-testid=meeting-date-btn]'); await p.waitForTimeout(200);
-    ok('in a small window the calendar still fits, flipping above its field if needed', await p.evaluate(() => { const r = document.querySelector('[data-testid=meeting-cal]').getBoundingClientRect(); return r.top >= 0 && r.left >= 0 && r.bottom <= innerHeight && r.right <= innerWidth; }));
-    await p.evaluate(() => document.querySelector('[aria-label="Next month"]').click()); await p.waitForTimeout(100);
-    ok('its next-month button is reachable', await p.evaluate(() => { const r = document.querySelector('[aria-label="Next month"]').getBoundingClientRect(); return r.right <= innerWidth && r.top >= 0; }));
+    await p.evaluate(() => document.querySelector('[aria-label="Next month"]').scrollIntoView({ block: 'nearest' })); await p.waitForTimeout(100);
+    ok('in a small window its next-month button can be reached', await p.evaluate(() => { const r = document.querySelector('[aria-label="Next month"]').getBoundingClientRect(), m = document.querySelector('[data-testid=meeting-cal]').closest('.rounded-xl').getBoundingClientRect(); return r.right <= m.right && r.top >= 0 && r.bottom <= innerHeight; }));
     await click(p, '[data-testid=meeting-date-btn]'); await p.waitForTimeout(100);
     await p.setViewportSize(vp); await p.waitForTimeout(150);
     await click(p, '[data-testid=meeting-date-btn]'); await p.waitForTimeout(150);
