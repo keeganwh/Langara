@@ -238,6 +238,20 @@ const cell = (d, docId, stepId) => {
   await click(p, '[data-testid=project-row]'); await p.waitForTimeout(200);
   await openStep('Concept Paper', 'JCCS');
   await click(p, '[data-testid=meeting-date-btn]'); await p.waitForTimeout(100);
+  ok('the calendar sits fully inside the window', await p.evaluate(() => { const r = document.querySelector('[data-testid=meeting-cal]').getBoundingClientRect(); return r.top >= 0 && r.left >= 0 && r.bottom <= innerHeight && r.right <= innerWidth; }));
+  {
+    const vp = p.viewportSize();
+    await click(p, '[data-testid=meeting-date-btn]'); await p.waitForTimeout(100);
+    await p.setViewportSize({ width: 860, height: 520 }); await p.waitForTimeout(150);
+    await p.evaluate(() => { const b = document.querySelector('[data-testid=meeting-date-btn]'); b.scrollIntoView({ block: 'end' }); });
+    await click(p, '[data-testid=meeting-date-btn]'); await p.waitForTimeout(200);
+    ok('in a small window the calendar still fits, flipping above its field if needed', await p.evaluate(() => { const r = document.querySelector('[data-testid=meeting-cal]').getBoundingClientRect(); return r.top >= 0 && r.left >= 0 && r.bottom <= innerHeight && r.right <= innerWidth; }));
+    await p.evaluate(() => document.querySelector('[aria-label="Next month"]').click()); await p.waitForTimeout(100);
+    ok('its next-month button is reachable', await p.evaluate(() => { const r = document.querySelector('[aria-label="Next month"]').getBoundingClientRect(); return r.right <= innerWidth && r.top >= 0; }));
+    await click(p, '[data-testid=meeting-date-btn]'); await p.waitForTimeout(100);
+    await p.setViewportSize(vp); await p.waitForTimeout(150);
+    await click(p, '[data-testid=meeting-date-btn]'); await p.waitForTimeout(150);
+  }
   ok('the calendar opens on the month of the next meeting, not the earliest', await p.evaluate((d) => { const t = document.querySelector('[data-testid=cal-month]').innerText; const want = new Date(d + 'T00:00').toLocaleDateString(undefined, { month: 'long', year: 'numeric' }); return t === want; }, mDate));
   ok('the submission deadline is marked on the calendar', mDate.slice(0, 7) !== dDate.slice(0, 7) || await p.evaluate(() => document.querySelectorAll('[data-testid=meeting-cal] [data-deadline=yes]').length === 1));
   ok('the calendar has a colour legend of meeting types', await p.evaluate(() => /JCCS Meeting/.test(document.querySelector('[data-testid=cal-legend]').innerText)));

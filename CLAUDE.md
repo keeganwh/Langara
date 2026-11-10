@@ -489,7 +489,10 @@ tracker
   shows every scheduled meeting in its colour, faint unless it matches the
   step, with the days from deadline to meeting tinted and a ring on the
   deadline, plus a legend. It opens on the step's date's month, else the next
-  matching meeting's, else this month. The Meetings panel adds "submit by".
+  matching meeting's, else this month. The calendar is drawn fixed-position through a
+  portal under its field, kept inside the window and flipped above it when
+  there is no room below — as an absolute popup inside the step panel's
+  scrolling body it was clipped and its next-month arrow unreachable. The Meetings panel adds "submit by".
 - **New batch, part-way** ("Where are they now?" in New project): per
   document, the current step and its status (with a reason when held up);
   earlier steps are written complete, for every initiative (or once for a
@@ -739,7 +742,7 @@ pending); the steps a send-back reset to pending still show their round badge.
   next for their document, sorted by due date.
 - Routing is the hash (`#/p/<id>`), so projects can be linked directly.
 
-Checks: `cd dev && npm run tracker` (133 checks, own Firebase stub with nested
+Checks: `cd dev && npm run tracker` (136 checks, own Firebase stub with nested
 paths and live listeners — see `dev/tracker-preview.js`).
 
 ## Conventions to follow

@@ -2344,7 +2344,7 @@ function MeetingScheduleModal({ data, onClose }) {
 // meeting; meetings matching this step are full strength and easy to pick,
 // others faint. It opens on the month of the step's date, else of the next
 // matching meeting, else this month.
-function MeetingCalendar({ value, marks, all, onPick, onClose }) {
+function MeetingCalendar({ value, marks, all, onPick, onClose, anchor }) {
   const today = todayStr();
   const next = marks.find(m => m.date >= today);
   const start = value || (next && next.date) || today;
@@ -2355,6 +2355,24 @@ function MeetingCalendar({ value, marks, all, onPick, onClose }) {
     document.addEventListener('mousedown', off);
     return () => document.removeEventListener('mousedown', off);
   }, []);
+  // Drawn fixed-position through a portal, placed under its field and kept
+  // inside the window (flipped above when there is no room below): inside the
+  // step panel's scrolling body an absolute popup was clipped.
+  const [pos, setPos] = useState(null);
+  React.useLayoutEffect(() => {
+    const a = anchor && anchor.current, el = ref.current;
+    if (!a || !el) return;
+    const place = () => {
+      const r = a.getBoundingClientRect(), w = el.offsetWidth, h = el.offsetHeight;
+      const left = Math.max(8, Math.min(r.left, window.innerWidth - w - 8));
+      const below = r.bottom + 4, above = r.top - h - 4;
+      const top = below + h <= window.innerHeight - 8 ? below : Math.max(8, above);
+      setPos({ top, left });
+    };
+    place();
+    window.addEventListener('resize', place);
+    return () => window.removeEventListener('resize', place);
+  }, [ym]);
   const [y, m] = ym.split('-').map(Number);
   const first = new Date(y, m - 1, 1);
   const days = new Date(y, m, 0).getDate();
@@ -2366,7 +2384,8 @@ function MeetingCalendar({ value, marks, all, onPick, onClose }) {
   const isMark = (mt) => marks.some(x => x.id === mt.id);
   const types = [...new Set(all.map(x => x.name))];
   return (
-    <div ref={ref} className="absolute z-40 mt-1 bg-white border border-slate-200 rounded-lg shadow-xl p-2 w-72 fade-in" data-testid="meeting-cal">
+    ReactDOM.createPortal(<div ref={ref} className="fixed bg-white border border-slate-200 rounded-lg shadow-xl p-2 w-72 max-h-[calc(100vh-16px)] overflow-y-auto fade-in" data-testid="meeting-cal"
+      style={{ zIndex: 100001, top: pos ? pos.top : -9999, left: pos ? pos.left : -9999 }}>
       <div className="flex items-center justify-between mb-1">
         <button className="p-1 text-slate-500 hover:text-slate-800" onClick={() => shift(-1)} aria-label="Previous month"><Icon name="chev_l" size={14} /></button>
         <span className="text-sm font-semibold text-slate-700" data-testid="cal-month">{first.toLocaleDateString(undefined, { month: 'long', year: 'numeric' })}</span>
@@ -2403,13 +2422,14 @@ function MeetingCalendar({ value, marks, all, onPick, onClose }) {
         <div className="flex items-center gap-1.5 text-[10px] text-slate-400"><span className="w-1.5 h-1.5 rounded-full border border-slate-500" />Submission deadline, shaded up to its meeting</div>
       </div>}
       {value && <button className="text-[11px] text-slate-500 hover:underline mt-1" onClick={() => onPick('')}>Clear date</button>}
-    </div>
+    </div>, document.body)
   );
 }
 
 function MeetingDateField({ step, value, onChange }) {
   const [open, setOpen] = useState(false);
   const [ask, setAsk] = useState(null);
+  const btnRef = useRef(null);
   const marks = meetingsForStep(step);
   const pick = (d) => {
     setOpen(false);
@@ -2421,12 +2441,12 @@ function MeetingDateField({ step, value, onChange }) {
   };
   return (
     <div className="relative">
-      <button onClick={() => setOpen(!open)} className={inputCls + ' text-left flex items-center gap-2'} data-testid="meeting-date-btn">
+      <button ref={btnRef} onMouseDown={e => { if (open) e.stopPropagation(); }} onClick={() => setOpen(!open)} className={inputCls + ' text-left flex items-center gap-2'} data-testid="meeting-date-btn">
         <Icon name="calendar" size={14} className="text-slate-400" />
         <span className={value ? 'text-slate-800' : 'text-slate-400'}>{value ? fmtDate(value) : 'Pick a date'}</span>
         {value && marks.length > 0 && !marks.some(m => m.date === value) && <span className="ml-auto text-[10px] text-amber-700 bg-amber-50 border border-amber-200 rounded px-1.5" data-testid="meeting-off-schedule">Not on the schedule</span>}
       </button>
-      {open && <MeetingCalendar value={value} marks={marks} all={MEETING_LIST} onPick={pick} onClose={() => setOpen(false)} />}
+      {open && <MeetingCalendar value={value} marks={marks} all={MEETING_LIST} onPick={pick} onClose={() => setOpen(false)} anchor={btnRef} />}
       {ask && <Modal title="Was the meeting rescheduled?" onClose={() => setAsk(null)} footer={<>
         <Btn variant="secondary" onClick={() => setAsk(null)}>Cancel</Btn>
         <Btn variant="secondary" onClick={() => { onChange(ask.d); setAsk(null); }} >No, just use this date</Btn>
