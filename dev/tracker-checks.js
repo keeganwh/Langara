@@ -507,6 +507,51 @@ const cell = (d, docId, stepId) => {
   await p.setViewportSize({ width: 1400, height: 900 }); await p.waitForTimeout(200);
   ok('a wide window opens the full sidebar again', await p.evaluate(() => !document.querySelector('[data-testid=rail]')));
 
+  console.log('\nCommittee calendar');
+  {
+    const CAL = 'file://' + path.join(__dirname, '.out', 'calendar.html');
+    await p.goto(CAL); await p.waitForTimeout(1200);
+    ok('the calendar opens on 2027, empty, offering the approved EdCo dates', await p.evaluate(() => !!document.querySelector('[data-testid=cal-seed]')));
+    await click(p, '[data-testid=cal-seed]'); await p.waitForTimeout(400);
+    ok('seeding gives the ten 2027 cycles', await p.evaluate(() => document.querySelectorAll('[data-testid=cal-row]').length === 10));
+    ok('JCCS and TCDC start blank, waiting for JCCS', await p.evaluate(() => { const r = document.querySelector('[data-testid=cal-row]'); return ['tcdc', 'jccsA', 'jccs'].every(k => /Set date/.test(r.querySelector('[data-k=' + k + ']').innerText)); }));
+    ok('the first CRC submission is held to Dec 17, before winter break', await p.evaluate(() => /Dec 17, 2026/.test(document.querySelector('[data-testid=cal-row] [data-k=crcA]').innerText)));
+    d = await db(p);
+    const calMeet = () => Object.entries(d.tracker.meetings || {}).filter(([id]) => id.startsWith('cal_2027_'));
+    ok('every CRC and EdCo meeting reaches the tracker with its deadline', calMeet().length === 20 && calMeet().every(([, m]) => m.date && m.deadline));
+    // Set a JCCS meeting: its deadlines fill in a week before.
+    const cell = (i, k) => p.locator('[data-testid=cal-row]').nth(i).locator('[data-k=' + k + '] button');
+    await cell(2, 'jccs').click(); await p.locator('[data-testid=cal-row] input[type=date]').fill('2027-01-20'); await p.keyboard.press('Enter'); await p.waitForTimeout(300);
+    ok('setting JCCS fills TCDC and its agenda a week before', await p.evaluate(() => { const r = document.querySelectorAll('[data-testid=cal-row]')[2]; return /Jan 13/.test(r.querySelector('[data-k=tcdc]').innerText) && /Jan 13/.test(r.querySelector('[data-k=jccsA]').innerText) && /Wed, Jan 20/.test(r.querySelector('[data-k=jccs]').innerText); }));
+    // Move that row's CRC a week later: RES and the CRC submission follow.
+    await cell(2, 'crc').click(); await p.locator('[data-testid=cal-row] input[type=date]').fill('2027-03-11'); await p.keyboard.press('Enter'); await p.waitForTimeout(300);
+    ok('moving CRC moves RES and the CRC submission with it', await p.evaluate(() => { const r = document.querySelectorAll('[data-testid=cal-row]')[2]; return /Feb 4/.test(r.querySelector('[data-k=res]').innerText) && /Mar 2/.test(r.querySelector('[data-k=crcA]').innerText); }));
+    ok('and the tracker\'s CRC meeting moved too', await (async () => { d = await db(p); return calMeet().some(([id, m]) => id.endsWith('_crc') && m.date === '2027-03-11' && m.deadline === '2027-03-02'); })());
+    await p.evaluate(() => [...document.querySelectorAll('[data-testid=cal-toast] button')].find(b => b.innerText === 'Undo').click()); await p.waitForTimeout(300);
+    ok('undo puts it back', await p.evaluate(() => /Mar 4/.test(document.querySelectorAll('[data-testid=cal-row]')[2].querySelector('[data-k=crc]').innerText)));
+    await p.locator('[data-testid=cal-eff]').nth(0).click(); await p.locator('[data-testid=cal-row] select').selectOption('2028-2 (Summer 2028)'); await p.waitForTimeout(300);
+    ok('the effective semester can be changed', await p.evaluate(() => /Summer 2028/.test(document.querySelectorAll('[data-testid=cal-eff]')[0].innerText)));
+    // Edit a calendar meeting's deadline from the tracker: it lands in the calendar.
+    await p.goto(PAGE); await p.waitForTimeout(1500);
+    await p.evaluate(() => { const b = [...document.querySelectorAll('.fixed button')].find(b => b.innerText.trim() === 'Done for now'); if (b) b.click(); });
+    d = await db(p);
+
+    await click(p, '[data-testid=schedule-btn]'); await p.waitForTimeout(200);
+    await p.evaluate(() => { const li = [...document.querySelectorAll('[data-testid=meeting-schedule] li')].find(l => /EDCO Meeting/.test(l.innerText)); const inp = li.querySelector('input[type=date]'); const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set; set.call(inp, '2027-01-12'); inp.dispatchEvent(new Event('input', { bubbles: true })); inp.dispatchEvent(new Event('change', { bubbles: true })); }); await p.waitForTimeout(300);
+    d = await db(p);
+    ok('a deadline changed in the tracker is written back to the calendar, marked by hand', Object.values(d.tracker.calendar[2027]).some(r => r.edcoA === '2027-01-12' && r.manual && r.manual.edcoA));
+    await p.evaluate(() => [...document.querySelectorAll('.fixed button')].find(b => b.innerText.trim() === 'Done').click()); await p.waitForTimeout(150);
+    // Share link: a read-only page without sign-in.
+    await p.goto(CAL); await p.waitForTimeout(1200);
+    await click(p, '[data-testid=cal-share]'); await p.waitForTimeout(400);
+    d = await db(p);
+    ok('share link publishes a snapshot', !!(d.published && d.published['cal-2027']) && Object.keys(d.published['cal-2027'].rows).length === 10);
+    await p.goto(CAL + '?p=cal-2027'); await p.waitForTimeout(1200);
+    ok('the shared page shows the table read-only', await p.evaluate(() => document.querySelectorAll('[data-testid=cal-row]').length === 10 && [...document.querySelectorAll('td .cell')].every(b => b.disabled) && !document.querySelector('[data-testid=cal-add]')));
+    await p.goto(PAGE); await p.waitForTimeout(1500);
+    await p.evaluate(() => { const b = [...document.querySelectorAll('.fixed button')].find(b => b.innerText.trim() === 'Done for now'); if (b) b.click(); });
+  }
+
   console.log('\nIcons');
   ok('no emoji in the rendered page', await p.evaluate(() => !/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/u.test(document.body.innerText)));
 

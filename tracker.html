@@ -2251,6 +2251,23 @@ function meetingMatches(name, stepName) {
   const a = meetingWords(name), b = new Set(meetingWords(stepName));
   return a.some(w => b.has(w));
 }
+// Meetings named cal_<year>_<rowId>_<type> belong to the committee calendar
+// (calendar.html), which is their source of truth: edits made here are
+// written back to its row too, so the two never disagree.
+function writeMeeting(id, patch) {
+  dbUpdate('meetings/' + id, patch);
+  const m = /^cal_(\d{4})_(.+)_(jccs|crc|edco)$/.exec(id);
+  if (!m) return;
+  const upd = {};
+  if ('date' in patch) upd[m[3]] = patch.date || '';
+  if ('deadline' in patch) { upd[m[3] + 'A'] = patch.deadline || ''; upd['manual/' + m[3] + 'A'] = patch.deadline ? true : null; }
+  dbUpdate('calendar/' + m[1] + '/' + m[2], upd);
+}
+function removeMeeting(id) {
+  dbRemove('meetings/' + id);
+  const m = /^cal_(\d{4})_(.+)_(jccs|crc|edco)$/.exec(id);
+  if (m) dbUpdate('calendar/' + m[1] + '/' + m[2], { [m[3]]: '', [m[3] + 'A']: '' });
+}
 const meetingsForStep = (step) => MEETING_LIST.filter(m => meetingMatches(m.name, step.stageName));
 
 function meetingEvents(dates, meetings, withinDays) {
@@ -2328,10 +2345,10 @@ function MeetingScheduleModal({ data, onClose }) {
             <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: meetingColor(m.name) }} />
             <span className="flex-1 min-w-0 truncate text-slate-800">{m.name}</span>
             <label className="text-[11px] text-slate-500 flex items-center gap-1">Deadline
-              <input type="date" className="border border-slate-200 rounded px-1 py-0.5 text-xs" value={m.deadline || ''} max={m.date} onChange={e => dbUpdate('meetings/' + m.id, { deadline: e.target.value || null })} /></label>
+              <input type="date" className="border border-slate-200 rounded px-1 py-0.5 text-xs" value={m.deadline || ''} max={m.date} onChange={e => writeMeeting(m.id, { deadline: e.target.value || null })} /></label>
             <label className="text-[11px] text-slate-500 flex items-center gap-1">Meeting
-              <input type="date" className="border border-slate-200 rounded px-1 py-0.5 text-xs" value={m.date} onChange={e => e.target.value && dbUpdate('meetings/' + m.id, { date: e.target.value })} /></label>
-            <button className="text-slate-400 hover:text-red-600" title="Remove from schedule" onClick={() => dbRemove('meetings/' + m.id)}><Icon name="trash" size={13} /></button>
+              <input type="date" className="border border-slate-200 rounded px-1 py-0.5 text-xs" value={m.date} onChange={e => e.target.value && writeMeeting(m.id, { date: e.target.value })} /></label>
+            <button className="text-slate-400 hover:text-red-600" title="Remove from schedule" onClick={() => removeMeeting(m.id)}><Icon name="trash" size={13} /></button>
           </li>
         ))}
       </ul>
@@ -2431,7 +2448,7 @@ function MeetingDateField({ step, value, onChange }) {
       {ask && <Modal title="Was the meeting rescheduled?" onClose={() => setAsk(null)} footer={<>
         <Btn variant="secondary" onClick={() => setAsk(null)}>Cancel</Btn>
         <Btn variant="secondary" onClick={() => { onChange(ask.d); setAsk(null); }} >No, just use this date</Btn>
-        <Btn onClick={() => { dbUpdate('meetings/' + ask.near.id, { date: ask.d }); onChange(ask.d); setAsk(null); }} >Yes, move it</Btn>
+        <Btn onClick={() => { writeMeeting(ask.near.id, { date: ask.d }); onChange(ask.d); setAsk(null); }} >Yes, move it</Btn>
       </>}>
         <p className="text-sm text-slate-700" data-testid="reschedule-ask">No {ask.near.name} is scheduled on {fmtDate(ask.d)}. Has the {fmtDate(ask.near.date)} {ask.near.name} been moved to {fmtDate(ask.d)}? Moving it updates the schedule for everyone.</p>
       </Modal>}

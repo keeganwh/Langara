@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Committee Calendar</title>
+  <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.23.10/babel.min.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: system-ui, -apple-system, sans-serif; background: #f1f5f9; color: #1e293b; }
+    .bar { height: 68px; background: #fff; border-bottom: 1px solid #e2e8f0; display: flex; align-items: center; gap: 12px; padding: 0 20px; position: sticky; top: 0; z-index: 5; }
+    .bar h1 { font-size: 17px; margin: 0; }
+    .eyebrow { font-size: 9px; font-weight: 700; letter-spacing: .13em; color: #94a3b8; text-transform: uppercase; }
+    .tabs { display: flex; gap: 2px; background: #f1f5f9; border-radius: 8px; padding: 2px; margin-left: 16px; }
+    .tabs button { border: 0; background: none; padding: 6px 12px; font-size: 13px; border-radius: 6px; color: #64748b; cursor: pointer; }
+    .tabs button.on { background: #fff; color: #DD4513; font-weight: 600; box-shadow: 0 1px 2px rgba(0,0,0,.08); }
+    .btn { border: 1px solid #cbd5e1; background: #fff; border-radius: 8px; padding: 7px 12px; font-size: 12px; font-weight: 600; color: #475569; cursor: pointer; }
+    .btn:hover { background: #f8fafc; }
+    .btn:disabled { opacity: .5; cursor: default; }
+    .btn.primary { background: #DD4513; border-color: #DD4513; color: #fff; }
+    .wrap { padding: 20px; max-width: 1400px; margin: 0 auto; }
+    .note { font-size: 12px; color: #475569; background: #fff7ed; border: 1px solid #fed7aa; border-radius: 8px; padding: 10px 12px; margin-bottom: 14px; line-height: 1.5; }
+    .sheet { background: #fff; border: 3px solid #111; }
+    .title { background: #FF6A00; color: #fff; font-weight: 800; text-align: center; font-size: 18px; padding: 6px; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th { background: #f8c9a8; font-weight: 700; padding: 4px 6px; border: 1px solid #111; border-top: 0; line-height: 1.25; }
+    th small { display: block; font-weight: 400; font-size: 11.5px; }
+    td { border-left: 1px solid #111; border-right: 1px solid #111; text-align: center; padding: 0; height: 28px; }
+    tbody tr:nth-child(even) td { background: #fde3d6; }
+    td .cell { display: block; width: 100%; height: 28px; line-height: 28px; border: 0; background: transparent; font: inherit; color: inherit; cursor: pointer; position: relative; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 0 4px; }
+    .ro td .cell { cursor: default; }
+    td .cell:hover { outline: 2px solid #F15A22; outline-offset: -2px; }
+    .ro td .cell:hover { outline: none; }
+    td.meet .cell { font-weight: 600; }
+    td.moved .cell { background: #fef3c7; }
+    td.manual .cell::after { content: ''; position: absolute; top: 4px; right: 4px; width: 5px; height: 5px; border-radius: 50%; background: #2563eb; }
+    .unset { color: #94a3b8; font-weight: 400; }
+    td input[type=date], td select { width: 100%; height: 28px; border: 2px solid #F15A22; font: inherit; text-align: center; }
+    .rowtools { width: 30px; border: 0 !important; background: #f1f5f9 !important; }
+    .rowtools button { border: 0; background: none; color: #94a3b8; cursor: pointer; font-size: 16px; }
+    .toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: #1e293b; color: #fff; padding: 10px 14px; border-radius: 10px; font-size: 13px; display: flex; align-items: center; gap: 12px; box-shadow: 0 10px 30px rgba(0,0,0,.25); max-width: 90vw; z-index: 10; }
+    .toast button { background: none; border: 0; color: #fdba74; font-weight: 700; cursor: pointer; }
+    .legend { display: flex; gap: 16px; font-size: 11.5px; color: #64748b; margin-top: 10px; flex-wrap: wrap; }
+    .legend span::before { content: ''; display: inline-block; width: 10px; height: 10px; margin-right: 5px; vertical-align: -1px; border-radius: 2px; }
+    .l-meet::before { background: #fff; border: 1px solid #111; }
+    .l-moved::before { background: #fef3c7; }
+    .l-man::before { background: #2563eb; border-radius: 50% !important; width: 6px !important; height: 6px !important; }
+    .empty { background: #fff; border: 1px dashed #cbd5e1; border-radius: 10px; padding: 28px; text-align: center; color: #475569; font-size: 14px; }
+    .login { min-height: 100vh; display: flex; align-items: center; justify-content: center; }
+    .login form { background: #fff; border-radius: 16px; box-shadow: 0 10px 30px rgba(0,0,0,.1); padding: 28px; width: 340px; display: grid; gap: 10px; }
+    .login input { border: 1px solid #cbd5e1; border-radius: 8px; padding: 9px 10px; font: inherit; font-size: 14px; }
+    .muted { color: #64748b; font-size: 13px; }
+    @media print {
+      @page { size: 11in 8.5in; margin: .4in; }
+      body { background: #fff !important; min-height: 0 !important; }
+      .bar, .note, .legend, .add, .rowtools, .toast, .noprint { display: none !important; }
+      .wrap { padding: 0; max-width: none; }
+      td .cell { outline: none !important; } td.moved .cell { background: transparent; }
+      td.manual .cell::after { display: none; }
+      .unset { visibility: hidden; }
+      table { font-size: 11.5px; }
+      * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    }
+  </style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useEffect, useMemo } = React;
+
+// ── Committee calendar ─────────────────────────────────────────────────────────
+// Not linked from anywhere yet: /Langara/calendar.html. One table per year, one
+// row per EdCo cycle. Stored at tracker/calendar/<year>/<rowId>. It is the
+// source of truth for JCCS, CRC and EdCo meetings: every row writes them to
+// tracker/meetings as cal_<year>_<rowId>_<type> (date + submission deadline),
+// which is what the tracker's step calendars offer. The tracker writes edits
+// to those meetings back here (see writeMeeting in tracker.html).
+// `?p=cal-<year>` renders a published, read-only snapshot without sign-in.
+const FIREBASE_CONFIG = {
+  apiKey:            'AIzaSyA_YvPJhYcbonyz3xkuelvEnSuFVvAc6zQ',
+  authDomain:        'cs-program-development-flow.firebaseapp.com',
+  databaseURL:       'https://cs-program-development-flow-default-rtdb.firebaseio.com',
+  projectId:         'cs-program-development-flow',
+  storageBucket:     'cs-program-development-flow.firebasestorage.app',
+  messagingSenderId: '919178147665',
+  appId:             '1:919178147665:web:e63d7582e776b84454c570',
+};
+let _app = null;
+const fbApp = () => _app || (_app = firebase.initializeApp(FIREBASE_CONFIG));
+const fbDb = () => firebase.database(fbApp());
+const ref = (p) => fbDb().ref(p);
+const uid = () => Math.random().toString(36).slice(2, 9);
+
+// Columns. `dep` is the meeting a deadline hangs off: when that meeting moves,
+// the deadline moves the same number of days (unless set by hand).
+const COLS = [
+  { k: 'tcdc', h: 'TCDC', s: 'Proposal Submission', dep: 'jccs' },
+  { k: 'jccsA', h: 'JCCS', s: 'Agenda Deadline', dep: 'jccs' },
+  { k: 'jccs', h: 'JCCS', s: 'Meeting Schedule', meet: true },
+  { k: 'res', h: 'RES', s: 'Submit for Review', dep: 'crc' },
+  { k: 'crcA', h: 'CRC', s: 'Submission Deadline', dep: 'crc' },
+  { k: 'crc', h: 'CRC', s: 'Meeting Schedule', meet: true },
+  { k: 'edcoA', h: 'EdCo', s: 'Submission Deadline', dep: 'edco' },
+  { k: 'edco', h: 'EdCo', s: 'Meeting Schedule', meet: true },
+];
+// When JCCS is first set, its deadlines start a week before it (the 2026
+// pattern: TCDC and the JCCS agenda on the same day, the meeting a week later).
+const FIRST_GAP = { tcdc: -7, jccsA: -7 };
+// Meetings feed the tracker under these names; its loose name matching ties
+// them to steps called "JCCS Review", "CRC – EDCO Approved" and so on.
+const MEETING = { jccs: ['JCCS Meeting', 'jccsA'], crc: ['CRC Meeting', 'crcA'], edco: ['EDCO Meeting', 'edcoA'] };
+
+const add = (iso, n) => { const [y, m, d] = iso.split('-').map(Number); const t = new Date(y, m - 1, d + n); return t.getFullYear() + '-' + String(t.getMonth() + 1).padStart(2, '0') + '-' + String(t.getDate()).padStart(2, '0'); };
+const diff = (a, b) => { const p = s => { const [y, m, d] = s.split('-').map(Number); return new Date(y, m - 1, d); }; return Math.round((p(a) - p(b)) / 86400000); };
+const sem = (code) => { const y = code.slice(0, 4), t = { '10': ['1', 'Spring'], '20': ['2', 'Summer'], '30': ['3', 'Fall'] }[code.slice(4)]; return y + '-' + t[0] + ' (' + t[1] + ' ' + y + ')'; };
+const fmt = (iso, year) => {
+  if (!iso) return '';
+  const [y, m, d] = iso.split('-').map(Number);
+  const s = new Date(y, m - 1, d).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  return y !== year ? s + ', ' + y : s;
+};
+const weekday = (iso) => { const [y, m, d] = iso.split('-').map(Number); return new Date(y, m - 1, d).toLocaleDateString(undefined, { weekday: 'short' }); };
+const sortRows = (rows) => rows.slice().sort((a, b) => (a.edco || '9999').localeCompare(b.edco || '9999'));
+
+// 2027 approved EdCo calendar (202810–202830): RES, CRC agenda, CRC, EdCo
+// agenda, EdCo, effective term. CRC submission keeps CS's 9 days before the
+// meeting, except the first, held to Dec 17 (last date before winter break).
+// TCDC and JCCS start blank and fill in once a JCCS meeting is set.
+const SEED_2027 = [
+  ['2026-11-18', '2027-01-07', '2027-01-14', '2027-01-26', '202810', '2026-12-17'],
+  ['2026-12-17', '2027-02-04', '2027-02-11', '2027-02-23', '202810'],
+  ['2027-01-28', '2027-03-04', '2027-03-11', '2027-03-23', '202810'],
+  ['2027-02-25', '2027-04-01', '2027-04-08', '2027-04-20', '202810'],
+  ['2027-03-25', '2027-04-29', '2027-05-06', '2027-05-18', '202820'],
+  ['2027-04-29', '2027-06-03', '2027-06-10', '2027-06-22', '202820'],
+  ['2027-07-29', '2027-09-02', '2027-09-09', '2027-09-21', '202830'],
+  ['2027-08-31', '2027-10-07', '2027-10-14', '2027-10-19', '202830'],
+  ['2027-09-23', '2027-10-28', '2027-11-04', '2027-11-16', '202830'],
+  ['2027-10-21', '2027-11-25', '2027-12-02', '2027-12-14', '202830'],
+];
+const seedRows = () => SEED_2027.map(([res, crc, edcoA, edco, term, crcA]) => ({
+  id: uid(), tcdc: '', jccsA: '', jccs: '', res, crcA: crcA || add(crc, -9), crc, edcoA, edco,
+  eff: sem(term), manual: crcA ? { crcA: true } : {},
+}));
+
+// Keep tracker/meetings in step with one row: a cal_ meeting per committee
+// with a date, none without. A hand-entered meeting of the same committee
+// within 10 days is the same meeting under an older entry, so it is removed.
+function syncMeetings(year, row, meetings) {
+  const upd = {};
+  Object.entries(MEETING).forEach(([type, [name, dl]]) => {
+    const id = 'cal_' + year + '_' + row.id + '_' + type;
+    if (!row[type]) { upd[id] = null; return; }
+    upd[id] = { name, date: row[type], deadline: row[dl] || null, cal: true };
+    meetings.forEach(m => {
+      if (m.id.startsWith('cal_') || !m.date) return;
+      const words = (m.name || '').toLowerCase().split(/[^a-z0-9]+/);
+      if (words.includes(type) && Math.abs(diff(m.date, row[type])) <= 10) upd[m.id] = null;
+    });
+  });
+  return ref('tracker/meetings').update(upd);
+}
+const unsyncRow = (year, row) => ref('tracker/meetings').update(Object.fromEntries(Object.keys(MEETING).map(t => ['cal_' + year + '_' + row.id + '_' + t, null])));
+const clean = (row) => { const { id, moved, ...rest } = row; return JSON.parse(JSON.stringify(rest)); };
+
+// ── The table (editable, or read-only for the published page) ──────────────────
+function Sheet({ year, rows, onCell, onEff, onRemove, moved, readOnly }) {
+  const [editing, setEditing] = useState(null);   // { id, k }
+  const terms = [];
+  for (let y = year; y <= year + 2; y++) ['10', '20', '30'].forEach(t => terms.push(sem(y + t)));
+  return (
+    <div className="sheet">
+      <div className="title">{year} Continuing Studies → EDCO Submission Schedule</div>
+      <table className={readOnly ? 'ro' : ''}>
+        <thead><tr>
+          {COLS.map(c => <th key={c.k}>{c.h}<small>{c.s}</small></th>)}
+          <th>Effective Semester<small>Implementation Date</small></th>
+          {!readOnly && <th className="rowtools" />}
+        </tr></thead>
+        <tbody>
+          {rows.map(r => (
+            <tr key={r.id} data-testid="cal-row">
+              {COLS.map(c => {
+                const on = editing && editing.id === r.id && editing.k === c.k;
+                const cls = [c.meet ? 'meet' : '', moved[r.id + c.k] ? 'moved' : '', r.manual && r.manual[c.k] ? 'manual' : ''].join(' ');
+                if (on) return <td key={c.k} className={cls}><input type="date" autoFocus defaultValue={r[c.k]}
+                  onKeyDown={e => { if (e.key === 'Enter') e.target.blur(); if (e.key === 'Escape') setEditing(null); }}
+                  onBlur={e => { setEditing(null); if (e.target.value !== (r[c.k] || '')) onCell(r, c.k, e.target.value); }} /></td>;
+                return (
+                  <td key={c.k} className={cls} data-k={c.k}>
+                    <button className="cell" disabled={readOnly} onClick={() => setEditing({ id: r.id, k: c.k })}
+                      title={readOnly ? '' : c.h + ' ' + c.s.toLowerCase() + ' — click to change'}>
+                      {r[c.k] ? (c.k === 'jccs' ? weekday(r[c.k]) + ', ' : '') + fmt(r[c.k], year) : <span className="unset">Set date</span>}
+                    </button>
+                  </td>
+                );
+              })}
+              <td>
+                {editing && editing.id === r.id && editing.k === 'eff'
+                  ? <select autoFocus defaultValue={r.eff} onChange={e => { setEditing(null); onEff(r, e.target.value); }} onBlur={() => setEditing(null)}>
+                      {terms.map(t => <option key={t}>{t}</option>)}
+                    </select>
+                  : <button className="cell" disabled={readOnly} onClick={() => setEditing({ id: r.id, k: 'eff' })} data-testid="cal-eff">{r.eff || <span className="unset">Set</span>}</button>}
+              </td>
+              {!readOnly && <td className="rowtools"><button title="Remove this cycle" onClick={() => onRemove(r)}>×</button></td>}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+// ── Signed-in editor ───────────────────────────────────────────────────────────
+function Editor({ user }) {
+  const [cal, setCal] = useState(null);
+  const [meetings, setMeetings] = useState([]);
+  const [year, setYear] = useState(null);
+  const [moved, setMoved] = useState({});
+  const [toast, setToast] = useState(null);       // { text, undo }
+  const [shared, setShared] = useState('');
+  useEffect(() => {
+    const c = ref('tracker/calendar'), m = ref('tracker/meetings');
+    const a = c.on('value', s => setCal(s.val() || {}));
+    const b = m.on('value', s => setMeetings(Object.entries(s.val() || {}).map(([id, v]) => ({ ...v, id }))));
+    return () => { c.off('value', a); m.off('value', b); };
+  }, []);
+  useEffect(() => { if (!toast) return; const t = setTimeout(() => setToast(null), 8000); return () => clearTimeout(t); }, [toast]);
+  const years = useMemo(() => {
+    const ys = new Set(Object.keys(cal || {}).map(Number));
+    ys.add(2027); if (year) ys.add(year);
+    return [...ys].sort();
+  }, [cal, year]);
+  const y = year || (years.includes(new Date().getFullYear() + 1) ? new Date().getFullYear() + 1 : years[years.length - 1]);
+  const rows = sortRows(Object.entries((cal || {})[y] || {}).map(([id, v]) => ({ ...v, id, manual: v.manual || {} })));
+
+  const save = (row) => { ref('tracker/calendar/' + y + '/' + row.id).set(clean(row)); return syncMeetings(y, row, meetings); };
+  const restore = (before) => () => { save(before); setMoved({}); setToast(null); };
+
+  const onCell = (r, k, v) => {
+    const before = JSON.parse(JSON.stringify(r));
+    const row = { ...r, manual: { ...(r.manual || {}) } };
+    const col = COLS.find(c => c.k === k);
+    const mv = {};
+    if (col.meet) {
+      const old = r[k];
+      row[k] = v;
+      const deps = COLS.filter(c => c.dep === k && !row.manual[c.k]);
+      if (v && old) {
+        const n = diff(v, old);
+        deps.forEach(c => { if (row[c.k]) { row[c.k] = add(row[c.k], n); mv[row.id + c.k] = 1; } });
+        setToast({ text: col.h + ' meeting moved ' + (n > 0 ? n + ' days later' : -n + ' days earlier') + (deps.length ? ', and its deadlines with it.' : '.'), undo: restore(before) });
+      } else if (v) {
+        // First time set: fill its empty deadlines from the usual gaps.
+        deps.forEach(c => { if (!row[c.k] && FIRST_GAP[c.k] != null) { row[c.k] = add(v, FIRST_GAP[c.k]); mv[row.id + c.k] = 1; } });
+        setToast({ text: col.h + ' meeting set' + (Object.keys(mv).length ? '; its deadlines were filled in a week before.' : '.'), undo: restore(before) });
+      } else setToast({ text: col.h + ' meeting cleared.', undo: restore(before) });
+    } else {
+      row[k] = v;
+      if (v) row.manual[k] = true; else delete row.manual[k];
+      setToast({ text: col.h + ' ' + col.s.toLowerCase() + (v ? ' set by hand — it stays put when its meeting moves.' : ' cleared.'), undo: restore(before) });
+    }
+    setMoved(mv);
+    save(row);
+  };
+  const onEff = (r, v) => save({ ...r, eff: v });
+  const onRemove = (r) => {
+    if (!confirm('Remove this cycle? Its meetings also leave the tracker\'s meeting calendar.')) return;
+    ref('tracker/calendar/' + y + '/' + r.id).remove(); unsyncRow(y, r);
+    setToast({ text: 'Cycle removed.', undo: restore(r) });
+  };
+  const addCycle = () => {
+    const prev = rows[rows.length - 1];
+    const edco = prompt('EdCo meeting date for the new cycle (YYYY-MM-DD)', prev ? add(prev.edco, 28) : y + '-01-26');
+    if (!edco || !/^\d{4}-\d{2}-\d{2}$/.test(edco)) return;
+    const gap = (k) => prev && prev[k] && prev.edco ? diff(prev[k], prev.edco) : null;
+    const row = { id: uid(), edco, eff: prev ? prev.eff : '', manual: {} };
+    const mv = {};
+    ['res', 'crcA', 'crc', 'edcoA'].forEach(k => { const g = gap(k); row[k] = g == null ? '' : add(edco, g); if (row[k]) mv[row.id + k] = 1; });
+    ['tcdc', 'jccsA', 'jccs'].forEach(k => { row[k] = ''; });
+    setMoved(mv); save(row);
+    setToast({ text: 'Cycle added; RES, CRC and EdCo dates suggested from the previous cycle\'s gaps. JCCS is left for you.', undo: () => { ref('tracker/calendar/' + y + '/' + row.id).remove(); unsyncRow(y, row); setToast(null); } });
+  };
+  const seed = () => { seedRows().forEach(r => save(r)); };
+  const publish = () => {
+    const slug = 'cal-' + y;
+    ref('published/' + slug).set({ kind: 'calendar', year: y, rows: rows.map(clean), publishedAt: firebase.database.ServerValue.TIMESTAMP, by: user.email || '' }).then(() => {
+      const url = location.origin + location.pathname + '?p=' + slug;
+      setShared(url);
+      try { navigator.clipboard.writeText(url); } catch (e) {}
+    });
+  };
+  if (!cal) return <div className="wrap muted">Loading…</div>;
+  return (
+    <>
+      <div className="bar">
+        <div><div className="eyebrow">Committee calendar</div><h1>Submission schedule</h1></div>
+        <div className="tabs" data-testid="cal-years">
+          {years.map(n => <button key={n} className={n === y ? 'on' : ''} onClick={() => setYear(n)}>{n}</button>)}
+          <button onClick={() => setYear(years[years.length - 1] + 1)} title="Start the next year" data-testid="cal-next-year">+</button>
+        </div>
+        <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
+          <button className="btn" onClick={publish} disabled={!rows.length} data-testid="cal-share">Share link</button>
+          <button className="btn primary" onClick={() => window.print()} disabled={!rows.length}>Export PDF</button>
+        </div>
+      </div>
+      <div className="wrap">
+        {shared && <div className="note noprint" data-testid="cal-shared">Read-only link (copied): <a href={shared} target="_blank">{shared}</a> — a snapshot; press Share link again after changes to refresh it.</div>}
+        <div className="note">Click any date to change it. Move a <b>meeting</b> (bold) and the deadlines that feed it move by the same number of days — TCDC and the JCCS agenda with JCCS, RES and the CRC submission with CRC, the EdCo submission with EdCo — highlighted, with Undo.
+          A deadline set by hand gets a blue dot and stays put. JCCS, CRC and EdCo meetings and their submission deadlines appear in the Development Tracker's meeting calendar.</div>
+        {rows.length
+          ? <Sheet year={y} rows={rows} onCell={onCell} onEff={onEff} onRemove={onRemove} moved={moved} />
+          : <div className="empty" data-testid="cal-empty">No cycles for {y} yet.
+              {y === 2027 && <div style={{ marginTop: 12 }}><button className="btn primary" onClick={seed} data-testid="cal-seed">Start from the approved 2027 EdCo calendar</button></div>}
+            </div>}
+        {rows.length > 0 && <div className="legend"><span className="l-meet">Meeting</span><span className="l-moved">Just moved with its meeting</span><span className="l-man">Deadline set by hand</span></div>}
+        <button className="btn add" style={{ marginTop: 10 }} onClick={addCycle} data-testid="cal-add">+ Add a cycle</button>
+      </div>
+      {toast && <div className="toast" data-testid="cal-toast"><span>{toast.text}</span>{toast.undo && <button onClick={toast.undo}>Undo</button>}</div>}
+    </>
+  );
+}
+
+function Login() {
+  const [email, setEmail] = useState(''), [pw, setPw] = useState(''), [err, setErr] = useState('');
+  const submit = (e) => { e.preventDefault(); setErr(''); firebase.auth(fbApp()).signInWithEmailAndPassword(email.trim(), pw).catch(() => setErr('Invalid email or password.')); };
+  return (
+    <div className="login"><form onSubmit={submit}>
+      <div style={{ fontWeight: 700, fontSize: 18 }}>Committee Calendar</div>
+      <div className="muted">Continuing Studies · Langara College</div>
+      <input type="email" placeholder="you@langara.ca" value={email} onChange={e => setEmail(e.target.value)} required autoFocus />
+      <input type="password" placeholder="Password" value={pw} onChange={e => setPw(e.target.value)} required />
+      {err && <div style={{ color: '#b91c1c', fontSize: 12 }}>{err}</div>}
+      <button className="btn primary" type="submit">Sign in</button>
+    </form></div>
+  );
+}
+function Root() {
+  const [user, setUser] = useState(undefined);
+  useEffect(() => firebase.auth(fbApp()).onAuthStateChanged(u => setUser(u)), []);
+  if (user === undefined) return <div className="wrap muted">Checking sign-in…</div>;
+  return user ? <Editor user={user} /> : <Login />;
+}
+
+// Published snapshot: no sign-in (the `published` subtree is publicly readable).
+function Published({ slug }) {
+  const [pub, setPub] = useState(undefined);
+  useEffect(() => { ref('published/' + slug).get().then(s => setPub(s.val())).catch(() => setPub(null)); }, []);
+  useEffect(() => { if (pub) document.title = pub.year + ' CS → EDCO Submission Schedule'; }, [pub]);
+  if (pub === undefined) return <div className="wrap muted">Loading…</div>;
+  if (!pub) return <div className="wrap muted">This calendar could not be loaded.</div>;
+  const rows = sortRows(Object.values(pub.rows || {}).map((r, i) => ({ ...r, id: 'r' + i, manual: {} })));
+  return (
+    <div className="wrap">
+      <div className="noprint" style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 10 }}><button className="btn primary" onClick={() => window.print()}>Print / save as PDF</button></div>
+      <Sheet year={pub.year} rows={rows} onCell={() => {}} onEff={() => {}} onRemove={() => {}} moved={{}} readOnly />
+    </div>
+  );
+}
+
+const pSlug = new URLSearchParams(location.search).get('p');
+ReactDOM.createRoot(document.getElementById('root')).render(pSlug ? <Published slug={pSlug} /> : <Root />);
+</script>
+</body>
+</html>

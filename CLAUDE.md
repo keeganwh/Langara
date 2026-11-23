@@ -438,6 +438,41 @@ and will happily draw longer than the segment it terminates, overhanging
 backwards past the start of the line and reading as an arrow pointing the
 wrong way at narrow widths.
 
+## Committee calendar (`calendar.html`)
+
+A third page, **not linked from anywhere yet** (`/Langara/calendar.html`):
+the year's CS → EDCO submission schedule, one table per year, one row per
+EdCo cycle — TCDC, JCCS agenda, JCCS meeting, RES, CRC submission, CRC
+meeting, EdCo submission, EdCo meeting, effective semester. Same sign-in and
+Firebase project; plain CSS (it mirrors the printed sheet, so no Tailwind).
+
+- **Data:** `tracker/calendar/<year>/<rowId>` { tcdc, jccsA, jccs, res, crcA,
+  crc, edcoA, edco, eff, manual{} }.
+- **Editing:** click a date. Moving a **meeting** moves the deadlines that
+  feed it by the same number of days — TCDC and the JCCS agenda with JCCS, RES
+  and the CRC submission with CRC, the EdCo submission with EdCo — with Undo.
+  A deadline set by hand is marked (`manual`) and then stays put. Setting a
+  JCCS meeting for the first time fills TCDC and the agenda a week before.
+  Other committees' meetings never move with it.
+- **Source of truth for JCCS, CRC and EdCo meetings:** every row writes
+  `tracker/meetings/cal_<year>_<rowId>_<type>` { name: "JCCS Meeting" / "CRC
+  Meeting" / "EDCO Meeting", date, deadline, cal } (`syncMeetings`); a
+  hand-entered meeting of the same committee within 10 days is removed as a
+  duplicate. The tracker's schedule edits go back to the row through
+  `writeMeeting` / `removeMeeting` (tracker.html). TCDC and RES are not
+  meetings and stay out of the tracker.
+- **Starting data:** "Start from the approved 2027 EdCo calendar" (`SEED_2027`)
+  — RES, CRC, EdCo submission and EdCo from the college's 202810–202830 sheet;
+  CRC submission 9 days before CRC (CS's own room, not the college's 7-day
+  agenda), the first held to Dec 17 for winter break; TCDC and JCCS blank.
+- **Export / share:** Export PDF prints one landscape page in the sheet's
+  style. Share link writes `published/cal-<year>` (a snapshot, refreshed by
+  sharing again) and copies `calendar.html?p=cal-<year>`, which renders
+  read-only without sign-in (the `published` rule).
+- Checks: the calendar section of `dev/tracker-checks.js`;
+  `dev/tracker-preview.js` also builds `.out/calendar.html` on the same stub
+  database, so sync with the tracker is tested end to end.
+
 ## The Development Tracker (`tracker.html`)
 
 (Formerly "Program Tracker" — renamed in the UI only; the file and the
@@ -743,7 +778,7 @@ pending); the steps a send-back reset to pending still show their round badge.
   next for their document, sorted by due date.
 - Routing is the hash (`#/p/<id>`), so projects can be linked directly.
 
-Checks: `cd dev && npm run tracker` (136 checks, own Firebase stub with nested
+Checks: `cd dev && npm run tracker` (149 checks, own Firebase stub with nested
 paths and live listeners — see `dev/tracker-preview.js`).
 
 ## Conventions to follow

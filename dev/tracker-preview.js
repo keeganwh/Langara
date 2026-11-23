@@ -105,3 +105,24 @@ const html = `<!DOCTYPE html>
 </body></html>`;
 fs.writeFileSync(path.join(OUT, 'tracker.html'), html);
 console.log('tracker preview written — dev/.out/tracker.html');
+
+// The committee calendar (calendar.html): same stub and libraries, its own
+// <style> block, and the same localStorage-backed database, so the checks can
+// see its meetings arrive in the tracker.
+const calSrc = R(path.join(ROOT, 'calendar.html'));
+const cm = calSrc.match(/<script type="text\/babel">([\s\S]*?)<\/script>\s*<\/body>/);
+let calCode;
+try { calCode = babel.transform(cm[1], { presets: ['react'] }).code; }
+catch (e) { console.error('BABEL ERROR in calendar.html:\n\n' + e.message); process.exit(1); }
+const calCss = (calSrc.match(/<style>([\s\S]*?)<\/style>/) || [, ''])[1];
+fs.writeFileSync(path.join(OUT, 'calendar.html'), `<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"/><title>Committee Calendar — local preview</title>
+<style>${calCss}</style></head><body>
+<div id="root"></div>
+<script>window.__SAMPLE__ = ${sample};</script>
+<script>${R(path.join(__dirname, 'node_modules/react/umd/react.production.min.js'))}<\/script>
+<script>${R(path.join(__dirname, 'node_modules/react-dom/umd/react-dom.production.min.js'))}<\/script>
+<script>${stub}<\/script>
+<script>${calCode}<\/script>
+</body></html>`);
+console.log('calendar preview written — dev/.out/calendar.html');

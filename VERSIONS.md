@@ -42,6 +42,11 @@ about to do something risky, take both.
 
 ## Released versions
 
+### v2.8 — committee calendar (`calendar.html`)
+New page, not linked yet. New data: `tracker/calendar/*`, meetings named
+`cal_*`, and `published/cal-*`. Rolling back the code leaves the calendar's
+meetings in the tracker as ordinary meetings.
+
 ### v2.7.x — follow-ups on v2.7 (no archive branch; roll back with `git revert`)
 Sort and Filter menus, meeting deadlines and colours, batches that start
 part-way, archive prompt for finished projects with a sidebar Archive, and a
