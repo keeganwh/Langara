@@ -3175,6 +3175,31 @@ function BulkBar({ selected, shown, data, authUser, onSelectAll, onClear, onOpen
     }));
     close(); onClear();
   };
+  // Meeting date: the current step of each selected project's documents gets
+  // the chosen meeting's date — only steps whose name matches that meeting
+  // (e.g. "JCCS Review" for a JCCS meeting), so other documents are untouched.
+  const [meetPick, setMeetPick] = useState('');
+  const [meetDate, setMeetDate] = useState('');
+  const upcomingMeets = MEETING_LIST.filter(m => daysUntil(m.date) >= -14);
+  const chosen = MEETING_LIST.find(m => m.id === meetPick);
+  const meetTargets = (() => {
+    const out = [];
+    selected.forEach(p => p.documents.forEach(d => {
+      const w = docWindow(p, d);
+      if (w.cur < 0) return;
+      const st = d.steps[w.cur];
+      if (chosen ? meetingMatches(chosen.name, st.stageName) : true) out.push({ p, d, st });
+    }));
+    return out;
+  })();
+  const applyMeeting = () => {
+    const date = chosen ? chosen.date : meetDate;
+    meetTargets.forEach(({ p, d, st }) => {
+      dbUpdate(cellPath(p.id, d.id, st.id), { meetingDate: date });
+      logActivity(p.id, authUser, d.name + ' · ' + st.stageName + ': meeting date set to ' + fmtDate(date), { kind: 'date', docId: d.id, step: st.stageName });
+    });
+    close(); onClear();
+  };
   const applyDates = () => {
     const upd = {};
     if (dates.startDate) upd.startDate = dates.startDate;
@@ -3205,6 +3230,7 @@ function BulkBar({ selected, shown, data, authUser, onSelectAll, onClear, onOpen
       {n > 0 && <>
         <button className={btn} onClick={() => { setReason(''); setModal('status'); }} data-testid="bulk-status"><Icon name="check" size={12} />Step status</button>
         <button className={btn} onClick={() => { setDates({ startDate: '', dueDate: '' }); setModal('dates'); }} data-testid="bulk-dates"><Icon name="calendar" size={12} />Dates</button>
+        <button className={btn} onClick={() => { setMeetPick(''); setMeetDate(''); setModal('meeting'); }} data-testid="bulk-meeting"><Icon name="t_meet" size={12} />Meeting date</button>
         <button className={btn} onClick={() => { setBatchName(''); setBatchMode('new'); setTargetId(''); setModal('batch'); }} data-testid="bulk-batch"><Icon name="copy" size={12} />Batch</button>
         <button className={btn} onClick={() => { setArchived(selected, true, authUser); onClear(); }} disabled={selected.every(p => p.archived)} data-testid="bulk-archive"><Icon name="archive" size={12} />Archive</button>
         <button className={btn} onClick={() => { setArchived(selected, false, authUser); onClear(); }} disabled={!selected.some(p => p.archived)} data-testid="bulk-restore"><Icon name="archive" size={12} />Restore</button>
@@ -3228,6 +3254,32 @@ function BulkBar({ selected, shown, data, authUser, onSelectAll, onClear, onOpen
         {needsReason && <Field label={status === 'held_up' ? 'What is it waiting on?' : 'Why is it being skipped?'}>
           <textarea rows={2} className={textareaCls} value={reason} onChange={e => setReason(e.target.value)} />
         </Field>}
+      </Modal>}
+      {modal === 'meeting' && <Modal title={'Meeting date for ' + n + (n === 1 ? ' project' : ' projects')} onClose={close} footer={<>
+        <Btn variant="secondary" onClick={close}>Cancel</Btn>
+        <Btn disabled={!(chosen || meetDate) || !meetTargets.length} onClick={applyMeeting} >Set on {meetTargets.length} {meetTargets.length === 1 ? 'step' : 'steps'}</Btn>
+      </>}>
+        <p className="text-sm text-slate-600 mb-3">Sets the meeting date on each selected project's current step. Pick a scheduled meeting and only current steps that go to it are set.</p>
+        <Field label="Scheduled meeting">
+          <div className="border rounded-lg divide-y max-h-64 overflow-y-auto" data-testid="bulk-meeting-list">
+            {!upcomingMeets.length && <div className="px-3 py-2 text-xs text-slate-400">Nothing scheduled — add meetings from the Meetings panel or the committee calendar.</div>}
+            {upcomingMeets.map(m => (
+              <label key={m.id} className={`flex items-center gap-2 px-3 py-1.5 text-sm cursor-pointer ${meetPick === m.id ? 'bg-indigo-50' : 'hover:bg-slate-50'}`}>
+                <input type="radio" name="bulk-meet" checked={meetPick === m.id} onChange={() => { setMeetPick(m.id); setMeetDate(''); }} />
+                <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: meetingColor(m.name) }} />
+                <span className="flex-1">{m.name}</span>
+                <span className="text-xs text-slate-500">{fmtDate(m.date)}{m.deadline ? ' · submit by ' + fmtDate(m.deadline) : ''}</span>
+              </label>
+            ))}
+          </div>
+        </Field>
+        <Field label="Or a date that isn't scheduled" hint="Sets it on every selected project's current step.">
+          <input type="date" className={inputCls} value={meetDate} onChange={e => { setMeetDate(e.target.value); setMeetPick(''); }} />
+        </Field>
+        {(chosen || meetDate) && <div className="text-xs text-slate-600 bg-slate-50 border rounded-lg px-3 py-2" data-testid="bulk-meeting-preview">
+          {meetTargets.length ? meetTargets.map(t => t.p.name + ' — ' + t.d.name + ' · ' + t.st.stageName).join('\n').split('\n').map((l, i) => <div key={i}>{l}</div>)
+            : 'None of the selected projects is currently at a step that goes to this meeting.'}
+        </div>}
       </Modal>}
       {modal === 'dates' && <Modal title={'Dates for ' + n + (n === 1 ? ' project' : ' projects')} onClose={close} footer={<>
         <Btn variant="secondary" onClick={close}>Cancel</Btn>

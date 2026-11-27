@@ -263,6 +263,17 @@ const cell = (d, docId, stepId) => {
   await p.evaluate(() => document.querySelector('[data-testid=meeting-cal] [data-marked=yes]') ? document.querySelector('[data-testid=meeting-cal] [data-marked=yes]').click() : [...document.querySelectorAll('[data-testid=meeting-cal] button')].find(b => b.innerText.includes('Clear')).click()); await p.waitForTimeout(150);
   await p.evaluate(() => document.querySelector('.fixed button[aria-label="Close"]').click()); await p.waitForTimeout(100);
 
+  // Bulk: set a scheduled meeting on selected projects' current steps.
+  await p.evaluate(() => { location.hash = '#/'; }); await p.waitForTimeout(300);
+  await p.evaluate(() => { const a = document.querySelector('[data-testid=select-all]'); if (a && !a.checked) a.click(); }); await p.waitForTimeout(100);
+  await click(p, '[data-testid=bulk-meeting]'); await p.waitForTimeout(150);
+  await p.evaluate(() => { const l = [...document.querySelectorAll('[data-testid=bulk-meeting-list] label')].find(x => /JCCS Meeting/.test(x.innerText)); l.querySelector('input').click(); }); await p.waitForTimeout(100);
+  ok('bulk meeting date previews only current steps that go to that meeting', await p.evaluate(() => /JCCS/.test(document.querySelector('[data-testid=bulk-meeting-preview]').innerText) && !/Draft/.test(document.querySelector('[data-testid=bulk-meeting-preview]').innerText)));
+  await p.evaluate(() => [...document.querySelectorAll('.fixed button')].find(b => /^Set on \d/.test(b.innerText.trim())).click()); await p.waitForTimeout(300);
+  d = await db(p);
+  ok('bulk meeting date sets it on those steps', cell(d, 'd1', 's3').meetingDate === mDate);
+  await click(p, '[data-testid=project-row]'); await p.waitForTimeout(200);
+
   console.log('\nSkip');
   await openStep('Concept Paper', 'Dean Review');
   await click(p, '.fixed button', 'Skipped'); await p.waitForTimeout(100);

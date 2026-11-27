@@ -728,6 +728,10 @@ status colour. The Workflow Tool carries the identical `tw-brand` block (read by
   non-batch projects on one workflow (a batch holds one workflow copy), every
   document per initiative, progress and links moved to `<docId>__<itemId>`,
   originals archived with a note "Added to the batch …".
+  **Meeting date** sets a scheduled meeting (or a typed date) on the current
+  step of each selected project's documents — with a scheduled meeting, only
+  current steps whose name matches it (`meetingMatches`); it previews which
+  steps it will set.
 - **Finishing a project**: when a project becomes complete while the page
   is open, `App` asks "Archive it" (default) or "Keep it active"; keeping it
   sets `project.keepActive` so it is not asked again. Only a change seen in
@@ -778,7 +782,7 @@ pending); the steps a send-back reset to pending still show their round badge.
   next for their document, sorted by due date.
 - Routing is the hash (`#/p/<id>`), so projects can be linked directly.
 
-Checks: `cd dev && npm run tracker` (149 checks, own Firebase stub with nested
+Checks: `cd dev && npm run tracker` (151 checks, own Firebase stub with nested
 paths and live listeners — see `dev/tracker-preview.js`).
 
 ## Conventions to follow
